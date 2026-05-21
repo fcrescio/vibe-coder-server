@@ -16,8 +16,8 @@ android {
         applicationId = "com.siamakerlab.vibecoder.console"
         minSdk = 26
         targetSdk = 35
-        versionCode = 260521004          // yymmddrrr — per global CLAUDE.md §5
-        versionName = "0.3.0"
+        versionCode = 260521005          // yymmddrrr — per global CLAUDE.md §5
+        versionName = "0.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

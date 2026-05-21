@@ -8,7 +8,9 @@ Version codes follow the global convention `yymmddrrr` (date + run counter).
 
 ## [Unreleased]
 
-### Added — Docker 이미지 + Admin 웹 + 통합 인증 (v0.4.0 후보)
+## [0.4.0] - 2026-05-21
+
+### Added — Docker 이미지 + Admin 웹 + 통합 인증
 
 > 서버를 도커 이미지로 패키징하고, Android 앱 외에 브라우저 admin 웹을
 > 통해 초기 셋업 / 비밀번호 변경 / 디바이스 관리가 가능하도록 인증
