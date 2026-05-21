@@ -8,6 +8,13 @@ Version codes follow the global convention `yymmddrrr` (date + run counter).
 
 ## [Unreleased]
 
+### Changed
+- `gradle/wrapper/gradle-wrapper.jar`를 Gradle 9.5.1 정본 배포본에서 ship한
+  wrapper로 재생성하여 동기 (`./gradlew wrapper --gradle-version 9.5.1
+  --distribution-type bin`). jar 48966 → 48462 bytes. SHA-256 변경.
+  `gradle-wrapper.properties`에 9.5.1 기본값 `retries=0` /
+  `retryBackOffMs=500` 자동 추가. 분석 보고서 F-1 항목 해소.
+
 ## [0.2.1] - 2026-05-21
 
 > v0.2.0의 deferred 항목 중 deprecated 엔드포인트 제거. one-shot Claude task
