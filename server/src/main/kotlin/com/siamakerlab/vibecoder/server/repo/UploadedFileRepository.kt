@@ -4,10 +4,11 @@ import com.siamakerlab.vibecoder.server.core.Clock
 import com.siamakerlab.vibecoder.server.db.UploadedFiles
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 
 data class UploadedFileRow(
@@ -40,12 +41,12 @@ class UploadedFileRepository(private val clock: Clock) {
     }
 
     fun get(projectId: String, id: String): UploadedFileRow? = transaction {
-        UploadedFiles.select { (UploadedFiles.projectId eq projectId) and (UploadedFiles.id eq id) }
+        UploadedFiles.selectAll().where { (UploadedFiles.projectId eq projectId) and (UploadedFiles.id eq id) }
             .map { it.toRow() }.singleOrNull()
     }
 
     fun listForProject(projectId: String): List<UploadedFileRow> = transaction {
-        UploadedFiles.select { UploadedFiles.projectId eq projectId }
+        UploadedFiles.selectAll().where { UploadedFiles.projectId eq projectId }
             .orderBy(UploadedFiles.createdAt to SortOrder.DESC)
             .map { it.toRow() }
     }

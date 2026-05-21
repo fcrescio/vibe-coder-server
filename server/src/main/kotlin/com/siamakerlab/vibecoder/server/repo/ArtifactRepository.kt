@@ -6,7 +6,7 @@ import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 
 data class ArtifactRow(
@@ -49,12 +49,12 @@ class ArtifactRepository(private val clock: Clock) {
     }
 
     fun get(projectId: String, artifactId: String): ArtifactRow? = transaction {
-        Artifacts.select { (Artifacts.projectId eq projectId) and (Artifacts.id eq artifactId) }
+        Artifacts.selectAll().where { (Artifacts.projectId eq projectId) and (Artifacts.id eq artifactId) }
             .map { it.toRow() }.singleOrNull()
     }
 
     fun listForProject(projectId: String, limit: Int = 50): List<ArtifactRow> = transaction {
-        Artifacts.select { Artifacts.projectId eq projectId }
+        Artifacts.selectAll().where { Artifacts.projectId eq projectId }
             .orderBy(Artifacts.createdAt to SortOrder.DESC)
             .limit(limit)
             .map { it.toRow() }

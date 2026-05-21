@@ -2,10 +2,13 @@ server:
   name: Vibe Coder Server
   host: 0.0.0.0
   port: 17880
-  version: 0.1.0
+  version: 0.2.0
 
 workspace:
-  root: ./vibe-coder-server-data/workspace
+  # Each project lives at <root>/<projectId>/.
+  # Metadata (logs/builds/artifacts/uploads/patches) lives at <root>/.vibecoder/<projectId>/.
+  # Override at launch with --workspace <path>.
+  root: ./workspace
   maxUploadSizeMb: 100
   artifactKeepCount: 20
   uploadDeniedExtensions:
@@ -18,7 +21,6 @@ workspace:
 security:
   pairingEnabled: true
   pairingCodeExpireMinutes: 10
-  restrictToWorkspace: true
   allowRawShell: false
 
 claude:

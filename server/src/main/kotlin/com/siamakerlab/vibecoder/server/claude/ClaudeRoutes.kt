@@ -24,6 +24,12 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.post
 
+/**
+ * DEPRECATED: One-shot Claude task endpoint. Superseded by the persistent console
+ * (`/api/projects/{id}/claude/console/prompt` + `/ws/projects/{id}/console/logs`).
+ *
+ * Retained one cycle for clients that haven't migrated. Will be removed next cycle.
+ */
 fun Routing.claudeRoutes(
     config: ServerConfig,
     workspace: WorkspacePath,

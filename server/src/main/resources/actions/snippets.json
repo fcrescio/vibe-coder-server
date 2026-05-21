@@ -1,0 +1,25 @@
+{
+  "categories": [
+    {
+      "id": "snippets",
+      "label": "Snippets",
+      "icon": "Bookmark",
+      "actions": [
+        {
+          "type": "SnippetInsertAction",
+          "id": "snippet:why",
+          "label": "Why?",
+          "icon": "MessageCircleQuestion",
+          "text": "Why did you choose this approach? List 2-3 alternatives you rejected."
+        },
+        {
+          "type": "SnippetInsertAction",
+          "id": "snippet:add-tests",
+          "label": "Add tests",
+          "icon": "ShieldCheck",
+          "text": "Add unit tests covering the change. Cover both the happy path and one edge case."
+        }
+      ]
+    }
+  ]
+}

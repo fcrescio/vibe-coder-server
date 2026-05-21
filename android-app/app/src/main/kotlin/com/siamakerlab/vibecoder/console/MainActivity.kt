@@ -18,15 +18,15 @@ import androidx.navigation.navArgument
 import com.siamakerlab.vibecoder.console.data.local.AppPreferences
 import com.siamakerlab.vibecoder.console.ui.artifact.ArtifactScreen
 import com.siamakerlab.vibecoder.console.ui.build.BuildScreen
-import com.siamakerlab.vibecoder.console.ui.claude.ClaudePromptScreen
 import com.siamakerlab.vibecoder.console.ui.connect.ConnectScreen
+import com.siamakerlab.vibecoder.console.ui.console.ConsoleViewModel
+import com.siamakerlab.vibecoder.console.ui.console.ProjectConsoleScreen
 import com.siamakerlab.vibecoder.console.ui.dashboard.DashboardScreen
 import com.siamakerlab.vibecoder.console.ui.environment.EnvironmentScreen
 import com.siamakerlab.vibecoder.console.ui.files.FileTransferScreen
 import com.siamakerlab.vibecoder.console.ui.git.GitScreen
 import com.siamakerlab.vibecoder.console.ui.log.LogScreen
 import com.siamakerlab.vibecoder.console.ui.nav.Routes
-import com.siamakerlab.vibecoder.console.ui.projects.ProjectDetailScreen
 import com.siamakerlab.vibecoder.console.ui.projects.ProjectListScreen
 import com.siamakerlab.vibecoder.console.ui.projects.ProjectRegisterScreen
 import com.siamakerlab.vibecoder.console.ui.theme.VibeCoderTheme
@@ -94,7 +94,7 @@ fun AppNavHost(prefs: AppPreferences) {
         composable(Routes.PROJECT_LIST) {
             ProjectListScreen(
                 onRegister = { nav.navigate(Routes.PROJECT_REGISTER) },
-                onOpen = { id -> nav.navigate(Routes.projectDetail(id)) },
+                onOpen = { id -> nav.navigate(Routes.console(id)) },
                 onBack = { nav.popBackStack() },
                 vm = hiltViewModel(),
             )
@@ -103,38 +103,31 @@ fun AppNavHost(prefs: AppPreferences) {
             ProjectRegisterScreen(
                 onRegistered = { id ->
                     nav.popBackStack()
-                    nav.navigate(Routes.projectDetail(id))
+                    nav.navigate(Routes.console(id))
                 },
                 onBack = { nav.popBackStack() },
                 vm = hiltViewModel(),
             )
         }
         composable(
-            Routes.PROJECT_DETAIL,
+            Routes.CONSOLE,
             arguments = listOf(navArgument(Routes.ARG_PROJECT_ID) { type = NavType.StringType })
         ) { entry ->
             val projectId = entry.arguments?.getString(Routes.ARG_PROJECT_ID) ?: return@composable
-            ProjectDetailScreen(
+            val vm: ConsoleViewModel = hiltViewModel()
+            ProjectConsoleScreen(
                 projectId = projectId,
-                onClaude = { nav.navigate(Routes.claudePrompt(projectId)) },
-                onBuilds = { nav.navigate(Routes.builds(projectId)) },
-                onArtifacts = { nav.navigate(Routes.artifacts(projectId)) },
-                onGit = { nav.navigate(Routes.git(projectId)) },
-                onFiles = { nav.navigate(Routes.files(projectId)) },
                 onBack = { nav.popBackStack() },
-                vm = hiltViewModel(),
-            )
-        }
-        composable(
-            Routes.CLAUDE_PROMPT,
-            arguments = listOf(navArgument(Routes.ARG_PROJECT_ID) { type = NavType.StringType })
-        ) { entry ->
-            val projectId = entry.arguments?.getString(Routes.ARG_PROJECT_ID) ?: return@composable
-            ClaudePromptScreen(
-                projectId = projectId,
-                onTaskStarted = { taskId -> nav.navigate(Routes.log(projectId, "task", taskId)) },
-                onBack = { nav.popBackStack() },
-                vm = hiltViewModel(),
+                onOpenBuild = { nav.navigate(Routes.builds(projectId)) },
+                onOpenGit = { nav.navigate(Routes.git(projectId)) },
+                onOpenFiles = { nav.navigate(Routes.files(projectId)) },
+                onOpenArtifacts = { nav.navigate(Routes.artifacts(projectId)) },
+                onDeleteProject = {
+                    vm.deleteProject {
+                        nav.popBackStack(Routes.PROJECT_LIST, inclusive = false)
+                    }
+                },
+                vm = vm,
             )
         }
         composable(

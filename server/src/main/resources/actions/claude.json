@@ -1,0 +1,46 @@
+{
+  "categories": [
+    {
+      "id": "claude",
+      "label": "Claude",
+      "icon": "Sparkles",
+      "actions": [
+        {
+          "type": "SendPromptAction",
+          "id": "prompt:explain-last-error",
+          "label": "Explain last error",
+          "icon": "HelpCircle",
+          "promptTemplate": "Look at the most recent build/test output and explain the error. Suggest the smallest viable fix and apply it."
+        },
+        {
+          "type": "SendPromptAction",
+          "id": "prompt:run-tests",
+          "label": "Run tests",
+          "icon": "FlaskConical",
+          "promptTemplate": "Run the unit tests for this module and report the results. If any fail, identify the root cause."
+        },
+        {
+          "type": "InvokeClaudeSlashCommandAction",
+          "id": "slash:status",
+          "label": "/status",
+          "icon": "Activity",
+          "command": "status"
+        },
+        {
+          "type": "InvokeClaudeSlashCommandAction",
+          "id": "slash:cost",
+          "label": "/cost",
+          "icon": "DollarSign",
+          "command": "cost"
+        },
+        {
+          "type": "InvokeClaudeSlashCommandAction",
+          "id": "slash:compact",
+          "label": "/compact",
+          "icon": "Minimize",
+          "command": "compact"
+        }
+      ]
+    }
+  ]
+}

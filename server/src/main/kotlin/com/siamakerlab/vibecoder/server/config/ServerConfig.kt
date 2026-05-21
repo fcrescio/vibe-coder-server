@@ -22,7 +22,7 @@ data class ServerSection(
 
 @Serializable
 data class WorkspaceSection(
-    val root: String = "./vibe-coder-server-data/workspace",
+    val root: String = "./workspace",
     val maxUploadSizeMb: Long = 100,
     val artifactKeepCount: Int = 20,
     val uploadDeniedExtensions: List<String> = listOf("exe", "bat", "cmd", "ps1", "sh"),
@@ -32,7 +32,6 @@ data class WorkspaceSection(
 data class SecuritySection(
     val pairingEnabled: Boolean = true,
     val pairingCodeExpireMinutes: Int = 10,
-    val restrictToWorkspace: Boolean = true,
     val allowRawShell: Boolean = false,
 )
 

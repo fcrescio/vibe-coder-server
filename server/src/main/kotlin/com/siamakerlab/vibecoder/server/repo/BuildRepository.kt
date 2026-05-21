@@ -6,7 +6,7 @@ import com.siamakerlab.vibecoder.shared.dto.TaskStatus
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 
@@ -58,11 +58,11 @@ class BuildRepository(private val clock: Clock) {
     }
 
     fun get(id: String): BuildRow? = transaction {
-        Builds.select { Builds.id eq id }.map { it.toRow() }.singleOrNull()
+        Builds.selectAll().where { Builds.id eq id }.map { it.toRow() }.singleOrNull()
     }
 
     fun listForProject(projectId: String, limit: Int = 50): List<BuildRow> = transaction {
-        Builds.select { Builds.projectId eq projectId }
+        Builds.selectAll().where { Builds.projectId eq projectId }
             .orderBy(Builds.createdAt to SortOrder.DESC)
             .limit(limit)
             .map { it.toRow() }

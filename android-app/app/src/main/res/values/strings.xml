@@ -41,14 +41,15 @@
     <string name="projects_empty">No projects yet. Register your first one.</string>
 
     <!-- Register -->
-    <string name="register_title">Register project</string>
-    <string name="register_id">Project ID</string>
-    <string name="register_name">Project name</string>
+    <string name="register_title">Create project</string>
+    <string name="register_app_name">App name</string>
+    <string name="register_folder_name">Project folder name</string>
     <string name="register_package">Package name</string>
-    <string name="register_source_path">Source path on server</string>
-    <string name="register_module">Module name</string>
-    <string name="register_debug_task">Debug task</string>
-    <string name="register_button">Register</string>
+    <string name="register_keystore_create">Create keystore</string>
+    <string name="register_keystore_hint">Stored outside the project folder for safety. Use this to sign release builds later.</string>
+    <string name="register_keystore_alias">Key alias</string>
+    <string name="register_keystore_password">Password (min 6 chars)</string>
+    <string name="register_button">Create</string>
 
     <!-- Detail -->
     <string name="detail_claude">Send Claude prompt</string>
@@ -89,6 +90,53 @@
     <string name="files_title">File transfer</string>
     <string name="files_pick">Pick a file to upload</string>
     <string name="files_empty">No uploads yet.</string>
+
+    <!-- Console -->
+    <string name="console_title">Claude console</string>
+    <string name="console_input_hint">Message Claude…</string>
+    <string name="console_send">Send</string>
+    <string name="console_back">Back</string>
+    <string name="console_menu_open">More</string>
+    <string name="console_menu_new_session">Start new session</string>
+    <string name="console_menu_build">Run debug build</string>
+    <string name="console_menu_git">Git</string>
+    <string name="console_menu_files">File transfer</string>
+    <string name="console_menu_artifacts">APKs</string>
+    <string name="console_menu_delete">Delete project</string>
+    <string name="console_new_session_title">Start a new session?</string>
+    <string name="console_new_session_body">The current conversation will be reset and a fresh Claude session will be started on the next prompt.</string>
+    <string name="console_new_session_confirm">Start new session</string>
+    <string name="console_error_dismiss">Dismiss</string>
+    <string name="console_jump_to_latest">Jump to latest</string>
+    <string name="console_session_started">Session started</string>
+    <string name="console_tool_result_ok">tool result</string>
+    <string name="console_tool_result_error">tool error</string>
+    <string name="console_unknown_event">unknown event</string>
+    <string name="console_turn_done_prefix">— turn complete</string>
+    <string name="console_voice_start">Start voice input</string>
+    <string name="console_voice_stop">Stop voice input</string>
+    <string name="console_conn_disconnected">disconnected</string>
+    <string name="console_conn_connecting">connecting…</string>
+    <string name="console_conn_live">live</string>
+    <string name="console_conn_reconnecting">reconnecting…</string>
+    <string name="console_conn_failed">failed</string>
+    <string name="console_proc_alive">claude alive</string>
+    <string name="console_proc_idle">claude idle</string>
+    <string name="status_refresh">Refresh /status</string>
+    <string name="status_expand">Expand</string>
+    <string name="status_collapse">Collapse</string>
+    <string name="status_unknown">Claude · status unknown</string>
+    <string name="status_model_unknown">model?</string>
+    <string name="status_alive">alive</string>
+    <string name="status_idle">idle</string>
+    <string name="status_key_session">session</string>
+    <string name="status_key_process">process</string>
+    <string name="status_key_model">model</string>
+    <string name="status_key_plan">plan</string>
+    <string name="status_key_quota">quota</string>
+    <string name="status_key_updated">updated</string>
+    <string name="status_dash">—</string>
+    <string name="status_prefix">Claude</string>
 
     <string name="common_loading">Loading…</string>
     <string name="common_error">Error</string>

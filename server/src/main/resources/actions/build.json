@@ -1,0 +1,18 @@
+{
+  "categories": [
+    {
+      "id": "build",
+      "label": "Build",
+      "icon": "Hammer",
+      "actions": [
+        {
+          "type": "RunServerAction",
+          "id": "build:debug",
+          "label": "Debug build",
+          "icon": "Play",
+          "serverAction": "build.debug"
+        }
+      ]
+    }
+  ]
+}

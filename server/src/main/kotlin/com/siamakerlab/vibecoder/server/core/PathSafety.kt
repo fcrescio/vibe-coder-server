@@ -49,8 +49,8 @@ object PathSafety {
     }
 
     /**
-     * Accept a user-supplied absolute path (project sourcePath registration) and
-     * verify it lies inside [workspaceRoot] when restrictToWorkspace is on.
+     * Defense-in-depth check for paths read from DB rows / uploads:
+     * verify [absolute] lies inside [workspaceRoot].
      */
     fun checkAbsoluteIsInsideWorkspace(workspaceRoot: Path, absolute: Path): Path {
         val r = workspaceRoot.toAbsolutePath().normalize()

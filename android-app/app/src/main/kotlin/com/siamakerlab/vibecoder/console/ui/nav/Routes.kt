@@ -8,16 +8,14 @@ object Routes {
     const val PROJECT_REGISTER = "projects/register"
 
     // path templates
-    const val PROJECT_DETAIL = "projects/{projectId}"
-    const val CLAUDE_PROMPT = "projects/{projectId}/claude"
+    const val CONSOLE = "projects/{projectId}/console"
     const val LOG = "projects/{projectId}/logs/{kind}/{taskId}"
     const val BUILDS = "projects/{projectId}/builds"
     const val ARTIFACTS = "projects/{projectId}/artifacts"
     const val GIT = "projects/{projectId}/git"
     const val FILES = "projects/{projectId}/files"
 
-    fun projectDetail(id: String) = "projects/$id"
-    fun claudePrompt(id: String) = "projects/$id/claude"
+    fun console(id: String) = "projects/$id/console"
     fun log(id: String, kind: String, taskId: String) = "projects/$id/logs/$kind/$taskId"
     fun builds(id: String) = "projects/$id/builds"
     fun artifacts(id: String) = "projects/$id/artifacts"

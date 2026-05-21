@@ -24,12 +24,25 @@ object ApiPath {
     const val PROJECTS_REGISTER = "/api/projects/register"
     fun project(id: String) = "/api/projects/$id"
 
-    // Claude tasks
+    // Claude tasks (DEPRECATED — superseded by Console; kept for one cycle)
     fun claudeTasks(projectId: String) = "/api/projects/$projectId/claude/tasks"
     fun claudeTask(projectId: String, taskId: String) =
         "/api/projects/$projectId/claude/tasks/$taskId"
     fun claudeTaskCancel(projectId: String, taskId: String) =
         "/api/projects/$projectId/claude/tasks/$taskId/cancel"
+
+    // Claude console (persistent session)
+    fun claudeConsolePrompt(projectId: String) =
+        "/api/projects/$projectId/claude/console/prompt"
+    fun claudeConsoleNew(projectId: String) =
+        "/api/projects/$projectId/claude/console/new"
+    fun claudeStatus(projectId: String) =
+        "/api/projects/$projectId/claude/status"
+
+    // Project actions (chip system)
+    fun projectActions(projectId: String) = "/api/projects/$projectId/actions"
+    fun projectActionsInvoke(projectId: String) =
+        "/api/projects/$projectId/actions/invoke"
 
     // Builds
     fun buildDebug(projectId: String) = "/api/projects/$projectId/build/debug"
@@ -64,6 +77,8 @@ object ApiPath {
         "/ws/projects/$projectId/tasks/$taskId/logs"
     fun wsBuildLogs(projectId: String, buildId: String) =
         "/ws/projects/$projectId/builds/$buildId/logs"
+    fun wsConsoleLogs(projectId: String) =
+        "/ws/projects/$projectId/console/logs"
 }
 
 object ApiHeader {

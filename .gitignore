@@ -16,6 +16,8 @@ captures/
 
 # Server runtime data (workspace, db, logs)
 vibe-coder-server-data/
+server/workspace/
+/workspace/
 
 # DB
 *.db

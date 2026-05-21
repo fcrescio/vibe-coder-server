@@ -8,7 +8,7 @@ import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 
@@ -66,22 +66,22 @@ class TaskRepository(private val clock: Clock) {
     }
 
     fun get(id: String): TaskRow? = transaction {
-        Tasks.select { Tasks.id eq id }.map { it.toRow() }.singleOrNull()
+        Tasks.selectAll().where { Tasks.id eq id }.map { it.toRow() }.singleOrNull()
     }
 
     fun listForProject(projectId: String, limit: Int = 50): List<TaskRow> = transaction {
-        Tasks.select { Tasks.projectId eq projectId }
+        Tasks.selectAll().where { Tasks.projectId eq projectId }
             .orderBy(Tasks.createdAt to SortOrder.DESC)
             .limit(limit)
             .map { it.toRow() }
     }
 
     fun countRunning(): Int = transaction {
-        Tasks.select { Tasks.status eq TaskStatus.RUNNING.name }.count().toInt()
+        Tasks.selectAll().where { Tasks.status eq TaskStatus.RUNNING.name }.count().toInt()
     }
 
     fun listForProjectAndType(projectId: String, type: TaskType, limit: Int = 50): List<TaskRow> = transaction {
-        Tasks.select { (Tasks.projectId eq projectId) and (Tasks.type eq type.name) }
+        Tasks.selectAll().where { (Tasks.projectId eq projectId) and (Tasks.type eq type.name) }
             .orderBy(Tasks.createdAt to SortOrder.DESC)
             .limit(limit)
             .map { it.toRow() }

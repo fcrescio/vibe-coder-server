@@ -3,9 +3,9 @@ package com.siamakerlab.vibecoder.server.repo
 import com.siamakerlab.vibecoder.server.core.Clock
 import com.siamakerlab.vibecoder.server.db.Projects
 import org.jetbrains.exposed.sql.ResultRow
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 
@@ -45,7 +45,7 @@ class ProjectRepository(private val clock: Clock) {
     }
 
     fun findById(id: String): ProjectRow? = transaction {
-        Projects.select { Projects.id eq id }.map { it.toRow() }.singleOrNull()
+        Projects.selectAll().where { Projects.id eq id }.map { it.toRow() }.singleOrNull()
     }
 
     fun list(): List<ProjectRow> = transaction {

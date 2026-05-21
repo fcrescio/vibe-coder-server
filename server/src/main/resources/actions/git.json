@@ -1,0 +1,32 @@
+{
+  "categories": [
+    {
+      "id": "git",
+      "label": "Git",
+      "icon": "GitBranch",
+      "actions": [
+        {
+          "type": "RunServerAction",
+          "id": "git:status",
+          "label": "Status",
+          "icon": "Eye",
+          "serverAction": "git.status"
+        },
+        {
+          "type": "RunServerAction",
+          "id": "git:diff",
+          "label": "Diff",
+          "icon": "FileDiff",
+          "serverAction": "git.diff"
+        },
+        {
+          "type": "RunServerAction",
+          "id": "git:log",
+          "label": "Log",
+          "icon": "History",
+          "serverAction": "git.log"
+        }
+      ]
+    }
+  ]
+}

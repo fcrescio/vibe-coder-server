@@ -81,12 +81,26 @@ data class ProjectDto(
 
 @Serializable
 data class RegisterProjectRequestDto(
+    /** Folder name under workspace (= projectId). Kebab-case recommended. */
     val projectId: String,
-    val name: String,
+    /** Human display name shown in lists. */
+    val appName: String,
+    /** Android applicationId, e.g. `com.siamakerlab.myapp`. */
     val packageName: String,
-    val sourcePath: String,
-    val moduleName: String = "app",
-    val debugTask: String = "assembleDebug",
+    /** Optional keystore generation request. If null, no keystore is created. */
+    val keystore: KeystoreRequestDto? = null,
+)
+
+@Serializable
+data class KeystoreRequestDto(
+    /** Key alias inside the keystore (e.g. "myapp"). */
+    val alias: String,
+    /** Password used for BOTH -storepass and -keypass for simplicity. */
+    val password: String,
+    /** Optional override of the -dname certificate distinguished name. */
+    val dname: String? = null,
+    /** Validity in days. Default ≈100 years for personal projects. */
+    val validityDays: Int = 36500,
 )
 
 // endregion

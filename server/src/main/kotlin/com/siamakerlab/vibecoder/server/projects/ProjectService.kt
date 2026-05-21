@@ -1,6 +1,5 @@
 package com.siamakerlab.vibecoder.server.projects
 
-import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.repo.BuildRepository
@@ -8,6 +7,7 @@ import com.siamakerlab.vibecoder.server.repo.ProjectRepository
 import com.siamakerlab.vibecoder.server.repo.ProjectRow
 import com.siamakerlab.vibecoder.shared.dto.ProjectDto
 import com.siamakerlab.vibecoder.shared.dto.RegisterProjectRequestDto
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
@@ -15,70 +15,67 @@ import kotlin.io.path.exists
 import kotlin.io.path.notExists
 import kotlin.io.path.writeText
 
+private val log = KotlinLogging.logger {}
+
 class ProjectService(
-    private val config: ServerConfig,
     private val workspace: WorkspacePath,
     private val repo: ProjectRepository,
     private val buildRepo: BuildRepository,
+    private val keystoreGen: KeystoreGenerator,
 ) {
 
+    /**
+     * Project creation (v0.3):
+     *   - Client supplies projectId / appName / packageName / optional keystore.
+     *   - Server creates `<workspace>/<projectId>/` (empty is fine — Claude scaffolds later).
+     *   - Server writes `CLAUDE.md` template inside the project folder.
+     *   - If a keystore is requested, server generates it under
+     *     `<workspace>/.vibecoder/keystores/<projectId>/` (OUTSIDE the project folder).
+     *   - moduleName defaults to "app", debugTask to "assembleDebug".
+     */
     fun register(body: RegisterProjectRequestDto): ProjectDto {
         require(body.projectId.isNotBlank()) { "projectId required" }
         require(!body.projectId.contains('/') && !body.projectId.contains('\\') && !body.projectId.contains("..")) {
             "projectId must not contain path separators"
         }
+        require(body.appName.isNotBlank()) { "appName required" }
+        require(body.packageName.isNotBlank()) { "packageName required" }
+
         if (repo.findById(body.projectId) != null) {
             throw ApiException(409, "project_already_registered", "${body.projectId} already exists")
         }
 
-        val srcRaw = Path.of(body.sourcePath).toAbsolutePath().normalize()
-        if (config.security.restrictToWorkspace) {
-            workspace.ensureUnderWorkspace(srcRaw)
-        } else if (srcRaw.notExists()) {
-            throw ApiException(404, "source_not_found", "${body.sourcePath} does not exist")
+        // Keystore generation runs FIRST so a validation failure (weak password etc.)
+        // doesn't leave behind an orphaned project folder on disk.
+        val keystoreSummary = body.keystore?.let { ksReq ->
+            val res = keystoreGen.generate(body.projectId, body.appName, ksReq)
+            "alias=${res.alias} file=${res.keystoreFile.fileName}"
         }
 
-        val gradlewBat = srcRaw.resolve("gradlew.bat")
-        val gradlewSh = srcRaw.resolve("gradlew")
-        if (gradlewBat.notExists() && gradlewSh.notExists()) {
-            throw ApiException(400, "no_gradle_wrapper", "gradlew (or gradlew.bat) not found in $srcRaw")
-        }
-        val settingsKts = srcRaw.resolve("settings.gradle.kts")
-        val settingsGroovy = srcRaw.resolve("settings.gradle")
-        if (settingsKts.notExists() && settingsGroovy.notExists()) {
-            throw ApiException(400, "no_settings_gradle", "settings.gradle(.kts) not found in $srcRaw")
-        }
-        val moduleDir = srcRaw.resolve(body.moduleName)
-        if (moduleDir.notExists()) {
-            throw ApiException(400, "module_not_found", "${body.moduleName}/ not found in $srcRaw")
+        val srcRoot = workspace.projectRoot(body.projectId)
+        if (srcRoot.notExists()) {
+            srcRoot.createDirectories()
+            log.info { "created empty project folder $srcRoot" }
         }
 
-        // Mirror the source path into workspace so all `.vibecoder/*` data lives there.
-        val mirror = workspace.projectRoot(body.projectId)
-        val sourceLink = mirror.resolve("source")
-        if (sourceLink.notExists()) {
-            // We don't actually copy; we record the absolute source path inside `.vibecoder/project.yml`.
-            sourceLink.createDirectories()
+        val claudeMd = srcRoot.resolve("CLAUDE.md")
+        if (claudeMd.notExists()) {
+            Files.writeString(claudeMd, ClaudeMdTemplate.CONTENT)
         }
 
         val vibeDir = workspace.vibecoderDir(body.projectId)
         val projectYml = vibeDir.resolve("project.yml")
         if (projectYml.notExists()) {
-            projectYml.writeText(buildProjectYml(body, srcRaw))
-        }
-
-        val claudeMd = srcRaw.resolve("CLAUDE.md")
-        if (claudeMd.notExists()) {
-            Files.writeString(claudeMd, ClaudeMdTemplate.CONTENT)
+            projectYml.writeText(buildProjectYml(body, srcRoot, keystoreSummary))
         }
 
         val row = repo.insert(
             id = body.projectId,
-            name = body.name,
+            name = body.appName,
             packageName = body.packageName,
-            sourcePath = srcRaw.toString(),
-            moduleName = body.moduleName,
-            debugTask = body.debugTask,
+            sourcePath = srcRoot.toString(),
+            moduleName = DEFAULT_MODULE,
+            debugTask = DEFAULT_DEBUG_TASK,
         )
         return row.toDto(hasGitChanges = false, lastBuildStatus = null)
     }
@@ -108,14 +105,19 @@ class ProjectService(
 
     fun delete(id: String): Boolean = repo.delete(id) > 0
 
-    private fun buildProjectYml(req: RegisterProjectRequestDto, absSource: Path): String = """
+    private fun buildProjectYml(
+        req: RegisterProjectRequestDto,
+        absSource: Path,
+        keystoreSummary: String?,
+    ): String = """
         |# Vibe Coder project metadata
         |id: ${req.projectId}
-        |name: ${req.name}
+        |appName: ${req.appName}
         |packageName: ${req.packageName}
         |sourcePath: $absSource
-        |moduleName: ${req.moduleName}
-        |debugTask: ${req.debugTask}
+        |moduleName: $DEFAULT_MODULE
+        |debugTask: $DEFAULT_DEBUG_TASK
+        |keystore: ${keystoreSummary ?: "none"}
     """.trimMargin()
 
     private fun ProjectRow.toDto(hasGitChanges: Boolean, lastBuildStatus: String?): ProjectDto =
@@ -125,4 +127,9 @@ class ProjectService(
             lastBuildStatus = lastBuildStatus, hasGitChanges = hasGitChanges,
             updatedAt = updatedAt,
         )
+
+    companion object {
+        const val DEFAULT_MODULE = "app"
+        const val DEFAULT_DEBUG_TASK = "assembleDebug"
+    }
 }

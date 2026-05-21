@@ -4,6 +4,9 @@ import com.siamakerlab.vibecoder.console.data.local.AppPreferences
 import com.siamakerlab.vibecoder.shared.ApiPath
 import com.siamakerlab.vibecoder.shared.dto.ArtifactDto
 import com.siamakerlab.vibecoder.shared.dto.BuildDto
+import com.siamakerlab.vibecoder.shared.dto.ActionInvokeRequestDto
+import com.siamakerlab.vibecoder.shared.dto.ActionTreeDto
+import com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto
 import com.siamakerlab.vibecoder.shared.dto.ClaudeTaskRequestDto
 import com.siamakerlab.vibecoder.shared.dto.EnvironmentCheckDto
 import com.siamakerlab.vibecoder.shared.dto.FileListDto
@@ -11,6 +14,8 @@ import com.siamakerlab.vibecoder.shared.dto.GitDiffDto
 import com.siamakerlab.vibecoder.shared.dto.GitLogDto
 import com.siamakerlab.vibecoder.shared.dto.GitStatusDto
 import com.siamakerlab.vibecoder.shared.dto.PairRequestDto
+import com.siamakerlab.vibecoder.shared.dto.PromptAcceptedDto
+import com.siamakerlab.vibecoder.shared.dto.PromptRequestDto
 import com.siamakerlab.vibecoder.shared.dto.PairResponseDto
 import com.siamakerlab.vibecoder.shared.dto.ProjectDto
 import com.siamakerlab.vibecoder.shared.dto.RegisterProjectRequestDto
@@ -58,6 +63,9 @@ class ApiService @Inject constructor(
             contentType(ContentType.Application.Json); setBody(body)
         }.body()
     suspend fun project(id: String): ProjectDto = client.get(u(ApiPath.project(id), base())).body()
+    suspend fun deleteProject(id: String) {
+        client.delete(u(ApiPath.project(id), base()))
+    }
 
     suspend fun submitClaudeTask(projectId: String, body: ClaudeTaskRequestDto): TaskDto =
         client.post(u(ApiPath.claudeTasks(projectId), base())) {
@@ -68,6 +76,26 @@ class ApiService @Inject constructor(
     }
     suspend fun listClaudeTasks(projectId: String): List<TaskDto> =
         client.get(u(ApiPath.claudeTasks(projectId), base())).body()
+
+    // Console (persistent Claude session)
+    suspend fun consolePrompt(projectId: String, text: String): PromptAcceptedDto =
+        client.post(u(ApiPath.claudeConsolePrompt(projectId), base())) {
+            contentType(ContentType.Application.Json); setBody(PromptRequestDto(text))
+        }.body()
+    suspend fun consoleNewSession(projectId: String) {
+        client.post(u(ApiPath.claudeConsoleNew(projectId), base()))
+    }
+    suspend fun claudeStatus(projectId: String): ClaudeStatusDto =
+        client.get(u(ApiPath.claudeStatus(projectId), base())).body()
+
+    // Project actions
+    suspend fun listActions(projectId: String): ActionTreeDto =
+        client.get(u(ApiPath.projectActions(projectId), base())).body()
+    suspend fun invokeAction(projectId: String, body: ActionInvokeRequestDto) {
+        client.post(u(ApiPath.projectActionsInvoke(projectId), base())) {
+            contentType(ContentType.Application.Json); setBody(body)
+        }
+    }
 
     suspend fun buildDebug(projectId: String): BuildDto =
         client.post(u(ApiPath.buildDebug(projectId), base())).body()
