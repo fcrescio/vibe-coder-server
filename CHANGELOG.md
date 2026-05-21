@@ -8,12 +8,37 @@ Version codes follow the global convention `yymmddrrr` (date + run counter).
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-21
+
+> v0.2.0 deferred 항목 중 빌드 산출물 housekeeping 2건 (F-1, F-2) 처리.
+> 사용자 가시 동작 변경 없음.
+
+### Added
+- **Server**: `ArtifactService.pruneOldArtifacts(projectId, keepCount)` —
+  프로젝트당 newest-first로 정렬해 `keepCount` 초과분을 자동 삭제. 각 항목별로
+  (1) artifact 디렉토리 통째 삭제 (APK + metadata.json,
+  `ensureUnderWorkspace` 검증 후), (2) `Builds.artifactId` 참조 null로
+  해제(build history는 보존), (3) `Artifacts` row delete. `keepCount <= 0`은
+  "정리 안 함"으로 처리. 항목별 실패는 KotlinLogging WARN으로 격리.
+- **Server**: `storeDebugApk` 직후 `pruneOldArtifacts(projectId,
+  config.workspace.artifactKeepCount)` 자동 호출 (기본 20개 보관).
+- **Repo**: `ArtifactRepository.listForProjectAll(projectId)` (limit 없음),
+  `ArtifactRepository.delete(artifactId): Int`,
+  `BuildRepository.detachArtifact(artifactId)` 신설.
+
 ### Changed
-- `gradle/wrapper/gradle-wrapper.jar`를 Gradle 9.5.1 정본 배포본에서 ship한
-  wrapper로 재생성하여 동기 (`./gradlew wrapper --gradle-version 9.5.1
-  --distribution-type bin`). jar 48966 → 48462 bytes. SHA-256 변경.
-  `gradle-wrapper.properties`에 9.5.1 기본값 `retries=0` /
+- **Build infra**: `gradle/wrapper/gradle-wrapper.jar`를 Gradle 9.5.1 정본
+  배포본에서 ship한 wrapper로 재생성 (`./gradlew wrapper
+  --gradle-version 9.5.1 --distribution-type bin`). jar 48966 → 48462 bytes.
+  SHA-256 변경. `gradle-wrapper.properties`에 9.5.1 기본값 `retries=0` /
   `retryBackOffMs=500` 자동 추가. 분석 보고서 F-1 항목 해소.
+- **Server**: `ArtifactService` 시그니처 확장 — 의존성에 `config: ServerConfig`,
+  `buildRepo: BuildRepository` 추가. `ServerMain` 와이어링 동기.
+
+### Versions
+- `versionName` `0.2.1` → `0.2.2` (PATCH: 자동 정리/빌드 인프라).
+- `versionCode` `260521002` → `260521003`.
+- `server.yml` `server.version` `0.2.1` → `0.2.2`.
 
 ## [0.2.1] - 2026-05-21
 

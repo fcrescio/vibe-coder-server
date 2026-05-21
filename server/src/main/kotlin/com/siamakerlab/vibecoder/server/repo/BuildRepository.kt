@@ -58,6 +58,11 @@ class BuildRepository(private val clock: Clock) {
         Builds.update({ Builds.id eq id }) { it[Builds.artifactId] = artifactId }
     }
 
+    /** Null out [Builds.artifactId] for every build that points at [artifactId]. */
+    fun detachArtifact(artifactId: String) = transaction {
+        Builds.update({ Builds.artifactId eq artifactId }) { it[Builds.artifactId] = null }
+    }
+
     fun get(id: String): BuildRow? = transaction {
         Builds.selectAll().where { Builds.id eq id }.map { it.toRow() }.singleOrNull()
     }

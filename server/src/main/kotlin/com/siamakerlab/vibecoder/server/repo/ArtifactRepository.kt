@@ -5,6 +5,8 @@ import com.siamakerlab.vibecoder.server.db.Artifacts
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -58,6 +60,18 @@ class ArtifactRepository(private val clock: Clock) {
             .orderBy(Artifacts.createdAt to SortOrder.DESC)
             .limit(limit)
             .map { it.toRow() }
+    }
+
+    /** All artifacts for [projectId] in newest-first order, unbounded. Used by prune logic. */
+    fun listForProjectAll(projectId: String): List<ArtifactRow> = transaction {
+        Artifacts.selectAll().where { Artifacts.projectId eq projectId }
+            .orderBy(Artifacts.createdAt to SortOrder.DESC)
+            .map { it.toRow() }
+    }
+
+    /** Delete a single artifact row. Returns the number of rows actually removed (0 or 1). */
+    fun delete(artifactId: String): Int = transaction {
+        Artifacts.deleteWhere { Artifacts.id eq artifactId }
     }
 
     private fun ResultRow.toRow() = ArtifactRow(

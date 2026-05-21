@@ -124,7 +124,7 @@ fun main(args: Array<String>) {
     val projects = ProjectService(workspace, projectRepo, buildRepo, keystoreGen)
     val sessionManager = ClaudeSessionManager(config, workspace, hub)
     val gradle = GradleBuilder(config)
-    val artifacts = ArtifactService(workspace, artifactRepo, clock)
+    val artifacts = ArtifactService(config, workspace, artifactRepo, buildRepo, clock)
     val build = BuildService(config, workspace, projects, buildRepo, queue, gradle, artifacts, clock)
     val git = GitReader()
     val uploads = UploadService(config, workspace, uploadedRepo, clock)
