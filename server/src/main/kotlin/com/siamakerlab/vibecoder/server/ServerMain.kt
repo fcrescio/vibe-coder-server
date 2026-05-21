@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server
 
+import com.siamakerlab.vibecoder.server.actions.CapabilityService
 import com.siamakerlab.vibecoder.server.actions.ProjectActionRegistry
 import com.siamakerlab.vibecoder.server.actions.ServerActionHandler
 import com.siamakerlab.vibecoder.server.artifacts.ArtifactService
@@ -132,6 +133,7 @@ fun main(args: Array<String>) {
     val status = StatusService(config, projectRepo, buildRepo, env)
     val actionRegistry = ProjectActionRegistry(workspace)
     val actionHandler = ServerActionHandler(projects, build, git, hub, sessionManager)
+    val capabilityService = CapabilityService(env, actionRegistry)
     val claudeStatusService = ClaudeStatusService(config, workspace, sessionManager)
 
     val ctx = ServerContext(
@@ -139,7 +141,7 @@ fun main(args: Array<String>) {
         uploadedRepo, clock, tokens, pairing, queue, hub, projects,
         sessionManager, gradle,
         artifacts, build, git, uploads, status, env,
-        actionRegistry, actionHandler, claudeStatusService,
+        actionRegistry, actionHandler, capabilityService, claudeStatusService,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {

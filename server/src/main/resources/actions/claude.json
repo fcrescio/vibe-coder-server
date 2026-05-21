@@ -24,6 +24,7 @@
           "id": "slash:status",
           "label": "/status",
           "icon": "Activity",
+          "requires": ["claude_session"],
           "command": "status"
         },
         {
@@ -31,6 +32,7 @@
           "id": "slash:cost",
           "label": "/cost",
           "icon": "DollarSign",
+          "requires": ["claude_session"],
           "command": "cost"
         },
         {
@@ -38,6 +40,7 @@
           "id": "slash:compact",
           "label": "/compact",
           "icon": "Minimize",
+          "requires": ["claude_session"],
           "command": "compact"
         }
       ]

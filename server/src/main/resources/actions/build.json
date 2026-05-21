@@ -10,6 +10,7 @@
           "id": "build:debug",
           "label": "Debug build",
           "icon": "Play",
+          "requires": ["build"],
           "serverAction": "build.debug"
         }
       ]

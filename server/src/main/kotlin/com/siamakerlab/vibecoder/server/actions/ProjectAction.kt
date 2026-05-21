@@ -18,6 +18,8 @@ sealed class ProjectAction {
     abstract val id: String
     abstract val label: String
     abstract val icon: String?
+    /** Capability keys that must be true for the chip to be enabled on the client. */
+    abstract val requires: List<String>
 
     @Serializable
     @SerialName("SendPromptAction")
@@ -25,6 +27,7 @@ sealed class ProjectAction {
         override val id: String,
         override val label: String,
         override val icon: String? = null,
+        override val requires: List<String> = emptyList(),
         val promptTemplate: String,
         val variables: List<String> = emptyList(),
     ) : ProjectAction()
@@ -35,6 +38,7 @@ sealed class ProjectAction {
         override val id: String,
         override val label: String,
         override val icon: String? = null,
+        override val requires: List<String> = emptyList(),
         val mcpServer: String,
         val toolName: String,
         val argsTemplate: JsonElement? = null,
@@ -46,6 +50,7 @@ sealed class ProjectAction {
         override val id: String,
         override val label: String,
         override val icon: String? = null,
+        override val requires: List<String> = emptyList(),
         val serverAction: String,
         val params: JsonElement? = null,
     ) : ProjectAction()
@@ -56,6 +61,7 @@ sealed class ProjectAction {
         override val id: String,
         override val label: String,
         override val icon: String? = null,
+        override val requires: List<String> = emptyList(),
         val paletteId: String,
     ) : ProjectAction()
 
@@ -65,6 +71,7 @@ sealed class ProjectAction {
         override val id: String,
         override val label: String,
         override val icon: String? = null,
+        override val requires: List<String> = emptyList(),
         val text: String,
     ) : ProjectAction()
 
@@ -74,6 +81,7 @@ sealed class ProjectAction {
         override val id: String,
         override val label: String,
         override val icon: String? = null,
+        override val requires: List<String> = emptyList(),
         val command: String,
     ) : ProjectAction()
 }
@@ -93,12 +101,24 @@ data class ActionManifest(
 
 /** Convert internal ProjectAction → wire DTO (today the mapping is 1:1). */
 fun ProjectAction.toDto(): ProjectActionDto = when (this) {
-    is ProjectAction.SendPrompt -> ProjectActionDto.SendPrompt(id, label, icon, promptTemplate, variables)
-    is ProjectAction.InvokeMcpTool -> ProjectActionDto.InvokeMcpTool(id, label, icon, mcpServer, toolName, argsTemplate)
-    is ProjectAction.RunServerAction -> ProjectActionDto.RunServerAction(id, label, icon, serverAction, params)
-    is ProjectAction.OpenPalette -> ProjectActionDto.OpenPalette(id, label, icon, paletteId)
-    is ProjectAction.SnippetInsert -> ProjectActionDto.SnippetInsert(id, label, icon, text)
-    is ProjectAction.InvokeClaudeSlashCommand -> ProjectActionDto.InvokeClaudeSlashCommand(id, label, icon, command)
+    is ProjectAction.SendPrompt -> ProjectActionDto.SendPrompt(
+        id, label, icon, requires, promptTemplate, variables,
+    )
+    is ProjectAction.InvokeMcpTool -> ProjectActionDto.InvokeMcpTool(
+        id, label, icon, requires, mcpServer, toolName, argsTemplate,
+    )
+    is ProjectAction.RunServerAction -> ProjectActionDto.RunServerAction(
+        id, label, icon, requires, serverAction, params,
+    )
+    is ProjectAction.OpenPalette -> ProjectActionDto.OpenPalette(
+        id, label, icon, requires, paletteId,
+    )
+    is ProjectAction.SnippetInsert -> ProjectActionDto.SnippetInsert(
+        id, label, icon, requires, text,
+    )
+    is ProjectAction.InvokeClaudeSlashCommand -> ProjectActionDto.InvokeClaudeSlashCommand(
+        id, label, icon, requires, command,
+    )
 }
 
 fun ActionCategory.toDto(): ActionCategoryDto =

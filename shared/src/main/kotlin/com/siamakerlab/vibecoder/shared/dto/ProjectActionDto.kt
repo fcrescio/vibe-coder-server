@@ -14,12 +14,22 @@ import kotlinx.serialization.json.JsonElement
  *
  * New chips can also be added without code changes via the manifest system
  * (JSON manifests under server resources `/actions/` plus the workspace user file).
+ *
+ * ## `requires`
+ *
+ * Each variant carries a `requires: List<String>` of capability keys. The
+ * server emits the current capability map alongside [ActionTreeDto.capabilities];
+ * the client renders a chip as enabled iff every key in its `requires` is
+ * marked true. See [CapabilityKey] for the recognized values.
  */
 @Serializable
 sealed class ProjectActionDto {
     abstract val id: String
     abstract val label: String
     abstract val icon: String?
+
+    /** Capability keys that must all be available for this chip to be enabled. */
+    abstract val requires: List<String>
 
     /** Insert a prompt template into the input box (optionally with variable substitution). */
     @Serializable
@@ -28,6 +38,7 @@ sealed class ProjectActionDto {
         override val id: String,
         override val label: String,
         override val icon: String? = null,
+        override val requires: List<String> = emptyList(),
         val promptTemplate: String,
         val variables: List<String> = emptyList(),
     ) : ProjectActionDto()
@@ -39,6 +50,7 @@ sealed class ProjectActionDto {
         override val id: String,
         override val label: String,
         override val icon: String? = null,
+        override val requires: List<String> = emptyList(),
         val mcpServer: String,
         val toolName: String,
         val argsTemplate: JsonElement? = null,
@@ -51,6 +63,7 @@ sealed class ProjectActionDto {
         override val id: String,
         override val label: String,
         override val icon: String? = null,
+        override val requires: List<String> = emptyList(),
         val serverAction: String,
         val params: JsonElement? = null,
     ) : ProjectActionDto()
@@ -62,6 +75,7 @@ sealed class ProjectActionDto {
         override val id: String,
         override val label: String,
         override val icon: String? = null,
+        override val requires: List<String> = emptyList(),
         val paletteId: String,
     ) : ProjectActionDto()
 
@@ -72,6 +86,7 @@ sealed class ProjectActionDto {
         override val id: String,
         override val label: String,
         override val icon: String? = null,
+        override val requires: List<String> = emptyList(),
         val text: String,
     ) : ProjectActionDto()
 
@@ -82,8 +97,26 @@ sealed class ProjectActionDto {
         override val id: String,
         override val label: String,
         override val icon: String? = null,
+        override val requires: List<String> = emptyList(),
         val command: String,
     ) : ProjectActionDto()
+}
+
+/**
+ * Capability key constants used by [ProjectActionDto.requires] and
+ * [ActionTreeDto.capabilities]. Keys are plain strings so manifest JSON can
+ * declare them without depending on this object.
+ */
+object CapabilityKey {
+    /** Gradle wrapper is invokable for the project. */
+    const val BUILD = "build"
+    /** `git` CLI is on PATH (server EnvDiagnostics reports OK). */
+    const val GIT = "git"
+    /** `claude` CLI is on PATH (server EnvDiagnostics reports OK). */
+    const val CLAUDE_SESSION = "claude_session"
+
+    /** Build the per-server MCP capability key. */
+    fun mcp(server: String): String = "mcp:$server"
 }
 
 /** One row in the chip strip — a labeled bucket of related actions. */
@@ -95,10 +128,17 @@ data class ActionCategoryDto(
     val actions: List<ProjectActionDto>,
 )
 
-/** Tree of categories returned by GET /api/projects/{id}/actions. */
+/**
+ * Tree of categories returned by `GET /api/projects/{id}/actions`.
+ *
+ * @property capabilities Live map of [CapabilityKey] → availability. The client
+ * uses this together with each action's `requires` to render enabled/disabled
+ * chips. Missing keys are treated as `false`.
+ */
 @Serializable
 data class ActionTreeDto(
     val categories: List<ActionCategoryDto>,
+    val capabilities: Map<String, Boolean> = emptyMap(),
 )
 
 /** Body for POST /api/projects/{id}/actions/invoke (and the corresponding WS frame). */

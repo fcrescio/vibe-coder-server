@@ -143,4 +143,11 @@
     <string name="common_ok">OK</string>
     <string name="common_cancel">Cancel</string>
     <string name="common_retry">Retry</string>
+
+    <!-- Capability gate (chip disabled reasons) -->
+    <string name="cap_unavailable_generic">Unavailable</string>
+    <string name="cap_unavailable_build">Build is unavailable. Check the project\'s Gradle wrapper.</string>
+    <string name="cap_unavailable_git">Git CLI is unavailable on the server host.</string>
+    <string name="cap_unavailable_claude_session">Claude CLI is unavailable on the server host.</string>
+    <string name="cap_unavailable_mcp">MCP server \"%1$s\" is not configured in the project\'s .mcp.json.</string>
 </resources>

@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server
 
+import com.siamakerlab.vibecoder.server.actions.CapabilityService
 import com.siamakerlab.vibecoder.server.actions.ProjectActionRegistry
 import com.siamakerlab.vibecoder.server.actions.ServerActionHandler
 import com.siamakerlab.vibecoder.server.actions.projectActionRoutes
@@ -74,6 +75,7 @@ data class ServerContext(
     val env: EnvDiagnostics,
     val actionRegistry: ProjectActionRegistry,
     val actionHandler: ServerActionHandler,
+    val capabilityService: CapabilityService,
     val claudeStatusService: ClaudeStatusService,
 )
 
@@ -113,7 +115,7 @@ fun Application.module(ctx: ServerContext) {
         envRoutes(ctx.status, ctx.env)
         projectRoutes(ctx.projects)
         consoleRoutes(ctx.projects, ctx.sessionManager, ctx.hub, ctx.claudeStatusService)
-        projectActionRoutes(ctx.projects, ctx.actionRegistry, ctx.actionHandler)
+        projectActionRoutes(ctx.projects, ctx.actionRegistry, ctx.actionHandler, ctx.capabilityService)
         buildRoutes(ctx.build, ctx.hub)
         artifactRoutes(ctx.artifactRepo, ctx.workspace, ctx.artifacts)
         gitRoutes(ctx.projects, ctx.git)

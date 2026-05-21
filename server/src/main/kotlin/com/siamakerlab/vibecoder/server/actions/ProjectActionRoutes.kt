@@ -28,13 +28,14 @@ fun Routing.projectActionRoutes(
     projects: ProjectService,
     registry: ProjectActionRegistry,
     handler: ServerActionHandler,
+    capabilities: CapabilityService,
 ) {
     authenticate(AUTH_BEARER) {
         get("/api/projects/{projectId}/actions") {
             val projectId = call.parameters["projectId"]
                 ?: throw ApiException(400, "bad_request", "projectId is required")
             projects.rowOrThrow(projectId)
-            call.respond(registry.listForProject(projectId))
+            call.respond(registry.listForProject(projectId, capabilities.forProject(projectId)))
         }
 
         post("/api/projects/{projectId}/actions/invoke") {

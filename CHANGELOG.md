@@ -8,6 +8,57 @@ Version codes follow the global convention `yymmddrrr` (date + run counter).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-21
+
+> v0.2.0의 마지막 deferred 2건 처리: 액션 권한 게이트(FR-11-b) + MCP
+> per-tool enumeration. 채팅 콘솔이 host capability 상태를 보고 비가용
+> 액션을 자동 비활성화하고, MCP 도구는 `.mcp.json`에 직접 적은 만큼 즉시
+> chip으로 노출된다.
+
+### Added — capability gate (FR-11-b)
+- **Shared**: `ProjectActionDto`의 모든 sealed 변형에 `requires: List<String>`
+  필드 추가. `ActionTreeDto.capabilities: Map<String, Boolean>` 신설.
+  `CapabilityKey` 상수 객체 — `BUILD`, `GIT`, `CLAUDE_SESSION`,
+  `mcp(server)`.
+- **Server**: `actions/CapabilityService` 신설. EnvDiagnostics를 30초 TTL로
+  캐시하여 `git` / `claude_session` 상태 계산, `.mcp.json`의 서버 목록을
+  `mcp:<name>=true`로 매핑. `build`는 등록된 프로젝트라면 true.
+- **Server**: `ProjectActionRoutes.GET /actions`가 응답에 capabilities
+  포함. `ProjectActionRegistry.listForProject(projectId, capabilities)`로
+  시그니처 확장.
+- **Server manifests**: 기본 4개 manifest 갱신 — `build:debug` →
+  `requires:["build"]`, `git:*` → `requires:["git"]`, `slash:*` →
+  `requires:["claude_session"]`. 정적 텍스트만 다루는 prompt/snippet은
+  `requires:[]` 유지.
+- **Android**: `QuickActionChips`가 `tree.capabilities` × `action.requires`를
+  보고 비가용 chip을 disabled로 렌더. 비활성 chip을 탭/롱탭하면 토스트로
+  사유 표시(`cap_unavailable_*` 문자열 키). `strings.xml`에 5개 capability
+  사유 메시지 추가.
+
+### Added — MCP per-tool enumeration
+- **Server**: `.mcp.json`의 서버 entry에 `tools` 배열을 선언하면 per-tool
+  chip 생성. 형식:
+  ```json
+  {"mcpServers":{"bkit":{
+    "command":"...","args":[...],
+    "tools":[
+      {"name":"bkit_pdca_status","label":"PDCA Status","icon":"Activity"},
+      {"name":"bkit_pdca_history"}
+    ]}}}
+  ```
+  `label`/`icon` 생략 시 `name`/"Plug"로 기본화. `argsTemplate`는 JSON
+  그대로 통과. `tools`가 없으면 기존 per-server fallback chip 유지.
+- **Server**: 자동 생성된 InvokeMcpTool은 `requires:["mcp:<server>"]`를 갖고,
+  capability map에서 해당 키가 true일 때만 enabled.
+- **Server**: `ProjectActionRegistry.mcpServerNames(projectId)`를 외부에
+  노출하여 CapabilityService가 활용.
+
+### Versions
+- `versionName` `0.2.2` → `0.3.0` (MINOR: 액션 시스템 신규 기능 — 권한
+  게이트 + per-tool 매니페스트 확장).
+- `versionCode` `260521003` → `260521004`.
+- `server.yml` `server.version` `0.2.2` → `0.3.0`.
+
 ## [0.2.2] - 2026-05-21
 
 > v0.2.0 deferred 항목 중 빌드 산출물 housekeeping 2건 (F-1, F-2) 처리.
