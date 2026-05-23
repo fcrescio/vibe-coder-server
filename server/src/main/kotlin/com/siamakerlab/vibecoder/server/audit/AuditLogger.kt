@@ -1,0 +1,215 @@
+package com.siamakerlab.vibecoder.server.audit
+
+import com.siamakerlab.vibecoder.server.repo.AuditLogRepository
+import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
+private val log = KotlinLogging.logger {}
+
+/**
+ * v0.15.0 — Audit 이벤트 기록 헬퍼.
+ *
+ * 각 route 가 직접 [AuditLogRepository.insert] 를 호출하는 대신, 본 facade 의
+ * action-별 메서드를 호출. 일관된 action 이름 + 필수 필드 안전.
+ *
+ * Failure 정책: audit log 자체의 쓰기 실패는 **요청 흐름을 망가뜨리지 않는다**.
+ * 모든 호출은 try/catch 로 감싸고 실패 시 server log 만 남김. audit 누락은
+ * 보안 분석 단계의 손실이지 사용자 행위의 차단 사유가 아님.
+ */
+class AuditLogger(
+    private val repo: AuditLogRepository,
+) {
+
+    private fun safe(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Throwable) {
+            log.warn(e) { "audit log write failed: ${e.message}" }
+        }
+    }
+
+    /** kotlinx.serialization 기반 JSON 직렬화 — 인용부 / 백슬래시 안전. */
+    private fun jsonDetail(builder: (kotlinx.serialization.json.JsonObjectBuilder.() -> Unit)): String =
+        Json.encodeToString(JsonObject.serializer(), buildJsonObject(builder))
+
+    // ── Auth ─────────────────────────────────────────────────────────
+
+    fun loginSuccess(username: String, userId: String, deviceId: String, ip: String?, channel: String) = safe {
+        repo.insert(
+            action = Actions.AUTH_LOGIN, result = Results.OK,
+            userId = userId, deviceId = deviceId, ip = ip,
+            resourceType = "user", resourceId = username,
+            detail = jsonDetail { put("channel", channel) },
+        )
+    }
+
+    fun loginFailure(username: String, ip: String?, reason: String) = safe {
+        repo.insert(
+            action = Actions.AUTH_LOGIN, result = Results.FAIL,
+            ip = ip,
+            resourceType = "user", resourceId = username,
+            detail = jsonDetail { put("reason", reason) },
+        )
+    }
+
+    fun setupAdmin(username: String, userId: String, ip: String?) = safe {
+        repo.insert(
+            action = Actions.AUTH_SETUP, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "user", resourceId = username,
+        )
+    }
+
+    fun logout(userId: String?, deviceId: String?, ip: String?) = safe {
+        repo.insert(
+            action = Actions.AUTH_LOGOUT, result = Results.OK,
+            userId = userId, deviceId = deviceId, ip = ip,
+        )
+    }
+
+    fun passwordChange(userId: String, ip: String?, ok: Boolean) = safe {
+        repo.insert(
+            action = Actions.AUTH_PASSWORD_CHANGE,
+            result = if (ok) Results.OK else Results.FAIL,
+            userId = userId, ip = ip,
+            resourceType = "user", resourceId = userId,
+        )
+    }
+
+    fun deviceRevoke(actorUserId: String, targetDeviceId: String, ip: String?) = safe {
+        repo.insert(
+            action = Actions.DEVICE_REVOKE, result = Results.OK,
+            userId = actorUserId, ip = ip,
+            resourceType = "device", resourceId = targetDeviceId,
+        )
+    }
+
+    // ── Project ──────────────────────────────────────────────────────
+
+    fun projectCreate(userId: String?, projectId: String, sourceType: String, ip: String?) = safe {
+        repo.insert(
+            action = Actions.PROJECT_CREATE, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "project", resourceId = projectId,
+            detail = jsonDetail { put("sourceType", sourceType) },
+        )
+    }
+
+    fun projectDelete(userId: String?, projectId: String, ip: String?, removed: Boolean) = safe {
+        repo.insert(
+            action = Actions.PROJECT_DELETE,
+            result = if (removed) Results.OK else Results.FAIL,
+            userId = userId, ip = ip,
+            resourceType = "project", resourceId = projectId,
+        )
+    }
+
+    // ── Build ────────────────────────────────────────────────────────
+
+    fun buildEnqueue(userId: String?, projectId: String, buildId: String, ip: String?) = safe {
+        repo.insert(
+            action = Actions.BUILD_ENQUEUE, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "build", resourceId = "$projectId/$buildId",
+        )
+    }
+
+    fun buildCancel(userId: String?, projectId: String, buildId: String, ip: String?) = safe {
+        repo.insert(
+            action = Actions.BUILD_CANCEL, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "build", resourceId = "$projectId/$buildId",
+        )
+    }
+
+    // ── Claude console ───────────────────────────────────────────────
+
+    fun consoleNew(userId: String?, projectId: String, ip: String?) = safe {
+        repo.insert(
+            action = Actions.CONSOLE_NEW, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "project", resourceId = projectId,
+        )
+    }
+
+    fun consoleCancel(userId: String?, projectId: String, ip: String?) = safe {
+        repo.insert(
+            action = Actions.CONSOLE_CANCEL, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "project", resourceId = projectId,
+        )
+    }
+
+    // ── MCP / Git / Settings ─────────────────────────────────────────
+
+    fun mcpInstall(userId: String?, taskId: String, selectedIds: List<String>, ip: String?) = safe {
+        repo.insert(
+            action = Actions.MCP_INSTALL, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "mcp.task", resourceId = taskId,
+            detail = jsonDetail { put("selected", selectedIds.joinToString(",")) },
+        )
+    }
+
+    fun mcpUnregister(userId: String?, ids: List<String>, ip: String?) = safe {
+        repo.insert(
+            action = Actions.MCP_UNREGISTER, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "mcp", resourceId = ids.joinToString(","),
+        )
+    }
+
+    fun settingsUpdate(userId: String?, ip: String?, ok: Boolean, error: String? = null) = safe {
+        repo.insert(
+            action = Actions.SETTINGS_UPDATE,
+            result = if (ok) Results.OK else Results.FAIL,
+            userId = userId, ip = ip,
+            detail = error?.let { e -> jsonDetail { put("error", e.take(500)) } },
+        )
+    }
+
+    fun gitTokenRegister(userId: String?, host: String, ip: String?) = safe {
+        repo.insert(
+            action = Actions.GIT_TOKEN_REGISTER, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "git.host", resourceId = host,
+        )
+    }
+
+    fun gitTokenDelete(userId: String?, host: String, removed: Boolean, ip: String?) = safe {
+        repo.insert(
+            action = Actions.GIT_TOKEN_DELETE,
+            result = if (removed) Results.OK else Results.FAIL,
+            userId = userId, ip = ip,
+            resourceType = "git.host", resourceId = host,
+        )
+    }
+
+    object Actions {
+        const val AUTH_LOGIN = "auth.login"
+        const val AUTH_LOGOUT = "auth.logout"
+        const val AUTH_SETUP = "auth.setup"
+        const val AUTH_PASSWORD_CHANGE = "auth.password.change"
+        const val DEVICE_REVOKE = "device.revoke"
+        const val PROJECT_CREATE = "project.create"
+        const val PROJECT_DELETE = "project.delete"
+        const val BUILD_ENQUEUE = "build.enqueue"
+        const val BUILD_CANCEL = "build.cancel"
+        const val CONSOLE_NEW = "console.new"
+        const val CONSOLE_CANCEL = "console.cancel"
+        const val MCP_INSTALL = "mcp.install"
+        const val MCP_UNREGISTER = "mcp.unregister"
+        const val SETTINGS_UPDATE = "settings.update"
+        const val GIT_TOKEN_REGISTER = "git.token.register"
+        const val GIT_TOKEN_DELETE = "git.token.delete"
+    }
+
+    object Results {
+        const val OK = "OK"
+        const val FAIL = "FAIL"
+        const val DENIED = "DENIED"
+    }
+}

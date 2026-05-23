@@ -63,6 +63,7 @@ fun Routing.gitIntegrationsRoutes(
             return@post
         }
         log.info { "git token registered by ${sess.username}: ${form["host"]}" }
+        authDeps.audit.gitTokenRegister(sess.userId, form["host"].orEmpty(), call.request.local.remoteHost)
         call.respondRedirect("/settings/git-integrations?flash=registered")
     }
 
@@ -72,6 +73,7 @@ fun Routing.gitIntegrationsRoutes(
         val host = form["host"].orEmpty()
         val removed = credentials.delete(host)
         log.info { "git token delete by ${sess.username}: $host (removed=$removed)" }
+        authDeps.audit.gitTokenDelete(sess.userId, host, removed, call.request.local.remoteHost)
         call.respondRedirect("/settings/git-integrations?flash=${if (removed) "deleted" else "not-found"}")
     }
 

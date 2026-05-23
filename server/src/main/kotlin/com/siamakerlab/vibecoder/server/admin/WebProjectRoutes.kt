@@ -131,6 +131,7 @@ fun Routing.webProjectRoutes(
         }
 
         log.info { "project registered: ${created.id} by ${sess.username}" }
+        authDeps.audit.projectCreate(sess.userId, created.id, sourceType, call.request.local.remoteHost)
         call.respondRedirect("/projects/${created.id}")
     }
 
@@ -165,6 +166,7 @@ fun Routing.webProjectRoutes(
         val id = call.parameters["id"]!!
         val removed = projects.delete(id)
         log.info { "project delete: id=$id removed=$removed by ${sess.username}" }
+        authDeps.audit.projectDelete(sess.userId, id, call.request.local.remoteHost, removed)
         val ok = if (removed) "프로젝트가 삭제되었습니다." else "프로젝트가 존재하지 않습니다."
         call.respondRedirect("/projects?ok=${ok.encodeUrl()}")
     }
@@ -199,6 +201,7 @@ fun Routing.webProjectRoutes(
         runCatching { sessionManager.startNew(id) }
             .onFailure { log.warn(it) { "console reset failed for $id" } }
         log.info { "console reset: $id by ${sess.username}" }
+        authDeps.audit.consoleNew(sess.userId, id, call.request.local.remoteHost)
         // v0.13.0 — scratch 는 /chat 으로 redirect (전용 페이지 유지).
         val target = if (id == ProjectService.SCRATCH_ID) "/chat" else "/projects/$id/console"
         call.respondRedirect(target)
@@ -243,6 +246,7 @@ fun Routing.webProjectRoutes(
             return@post
         }
         log.info { "build enqueued: ${row.id} project=$id by ${sess.username}" }
+        authDeps.audit.buildEnqueue(sess.userId, id, row.id, call.request.local.remoteHost)
         // 새 빌드는 곧바로 상세 페이지로 — 실시간 로그를 바로 본다.
         call.respondRedirect("/projects/$id/builds/${row.id}")
     }
@@ -288,6 +292,7 @@ fun Routing.webProjectRoutes(
             log.warn(e) { "build cancel failed: $buildId" }
         }
         log.info { "build cancel: $buildId project=$id by ${sess.username}" }
+        authDeps.audit.buildCancel(sess.userId, id, buildId, call.request.local.remoteHost)
         call.respondRedirect("/projects/$id/builds/$buildId")
     }
 

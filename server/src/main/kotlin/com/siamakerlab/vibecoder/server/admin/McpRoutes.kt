@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.audit.AuditLogger
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import com.siamakerlab.vibecoder.server.env.McpCatalog
@@ -71,6 +72,7 @@ fun Routing.mcpRoutes(
             return@post
         }
         log.info { "MCP install batch by ${sess.username}: ${selectedIds.joinToString(",")}" }
+        authDeps.audit.mcpInstall(sess.userId, taskId, selectedIds, call.request.local.remoteHost)
         call.respondRedirect("/env-setup/tasks/$taskId")
     }
 
@@ -84,6 +86,7 @@ fun Routing.mcpRoutes(
         }
         mcp.unregister(ids)
         log.info { "MCP unregister by ${sess.username}: ${ids.joinToString(",")}" }
+        authDeps.audit.mcpUnregister(sess.userId, ids, call.request.local.remoteHost)
         call.respondRedirect("/env-setup/mcp?flash=unregistered")
     }
 

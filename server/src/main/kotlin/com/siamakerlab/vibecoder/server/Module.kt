@@ -52,7 +52,10 @@ import com.siamakerlab.vibecoder.server.repo.DeviceRepository
 import com.siamakerlab.vibecoder.server.repo.ProjectRepository
 import com.siamakerlab.vibecoder.server.repo.UploadedFileRepository
 import com.siamakerlab.vibecoder.server.tasks.TaskQueue
+import com.siamakerlab.vibecoder.server.audit.AuditLogger
+import com.siamakerlab.vibecoder.server.audit.auditRoutes
 import com.siamakerlab.vibecoder.server.prompts.promptRoutes
+import com.siamakerlab.vibecoder.server.repo.AuditLogRepository
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.server.ws.wsRoutes
 import com.siamakerlab.vibecoder.shared.ApiPath
@@ -97,6 +100,8 @@ data class ServerContext(
     val uploads: UploadService,
     val fileBrowser: com.siamakerlab.vibecoder.server.files.ProjectFileBrowser,
     val promptStore: com.siamakerlab.vibecoder.server.prompts.PromptTemplateStore,
+    val auditRepo: AuditLogRepository,
+    val auditLogger: AuditLogger,
     val status: StatusService,
     val env: EnvDiagnostics,
     val envSetup: EnvSetupService,
@@ -174,6 +179,7 @@ fun Application.module(ctx: ServerContext) {
             deviceRepo = ctx.deviceRepo,
             userRepo = ctx.adminUserRepo,
             authService = ctx.authService,
+            audit = ctx.auditLogger,
         )
         val adminDeps = AdminRoutesDeps(
             config = ctx.config,
@@ -185,6 +191,7 @@ fun Application.module(ctx: ServerContext) {
             deviceRepo = ctx.deviceRepo,
             statusService = ctx.status,
             envDiagnostics = ctx.env,
+            audit = ctx.auditLogger,
         )
         adminRoutes(adminDeps)
         envSetupRoutes(adminDeps, ctx.envSetup, ctx.claudeAuth, ctx.claudeLogin)
@@ -216,13 +223,14 @@ fun Application.module(ctx: ServerContext) {
         )
         envRoutes(ctx.status, ctx.env)
         projectRoutes(ctx.projects)
-        consoleRoutes(ctx.projects, ctx.sessionManager, ctx.hub, ctx.claudeStatusService, ctx.env)
+        consoleRoutes(ctx.projects, ctx.sessionManager, ctx.hub, ctx.claudeStatusService, ctx.env, ctx.auditLogger)
         projectActionRoutes(ctx.projects, ctx.actionRegistry, ctx.actionHandler, ctx.capabilityService)
         buildRoutes(ctx.build, ctx.hub)
         artifactRoutes(ctx.artifactRepo, ctx.workspace, ctx.artifacts)
         gitRoutes(ctx.projects, ctx.git)
         fileRoutes(ctx.uploads)
         promptRoutes(adminDeps, ctx.promptStore)
+        auditRoutes(adminDeps, ctx.auditRepo)
         wsRoutes(ctx.hub, ctx.deviceRepo, ctx.tokens, ctx.sessionManager,
             ctx.actionRegistry, ctx.actionHandler)
     }

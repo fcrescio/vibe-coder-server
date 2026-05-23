@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server.auth
 
+import com.siamakerlab.vibecoder.server.audit.AuditLogger
 import com.siamakerlab.vibecoder.server.core.Ids
 import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.repo.AdminUserRepository
@@ -29,6 +30,7 @@ fun Routing.authRoutes(
     deviceRepo: DeviceRepository,
     userRepo: AdminUserRepository,
     authService: AuthService,
+    audit: AuditLogger,
 ) {
     // ── 신규 통합 인증 (v0.4.0+) ──────────────────────────────────────────
 
@@ -40,12 +42,14 @@ fun Routing.authRoutes(
     // 첫 admin 생성 (admin 없을 때만)
     post(ApiPath.AUTH_SETUP) {
         val body = call.receive<SetupRequestDto>()
+        val ip = call.request.local.remoteHost
         val outcome = authService.setup(
             username = body.username,
             password = body.password,
             deviceName = body.deviceName ?: "setup-client",
             channel = "app",
         )
+        audit.setupAdmin(body.username, outcome.user.id, ip)
         call.respond(
             HttpStatusCode.Created,
             LoginResponseDto(
@@ -60,13 +64,20 @@ fun Routing.authRoutes(
     // 로그인 (페어링 대체)
     post(ApiPath.AUTH_LOGIN) {
         val body = call.receive<LoginRequestDto>()
-        val outcome = authService.login(
-            username = body.username,
-            password = body.password,
-            deviceName = body.deviceName ?: "unknown",
-            channel = "app",
-            remoteIp = call.request.local.remoteHost,
-        )
+        val ip = call.request.local.remoteHost
+        val outcome = try {
+            authService.login(
+                username = body.username,
+                password = body.password,
+                deviceName = body.deviceName ?: "unknown",
+                channel = "app",
+                remoteIp = ip,
+            )
+        } catch (e: ApiException) {
+            audit.loginFailure(body.username, ip, e.code)
+            throw e
+        }
+        audit.loginSuccess(outcome.user.username, outcome.user.id, outcome.device.id, ip, "app")
         call.respond(
             HttpStatusCode.OK,
             LoginResponseDto(

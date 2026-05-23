@@ -152,6 +152,8 @@ fun main(args: Array<String>) {
     val uploads = UploadService(config, workspace, uploadedRepo, clock)
     val fileBrowser = com.siamakerlab.vibecoder.server.files.ProjectFileBrowser(workspace)
     val promptStore = com.siamakerlab.vibecoder.server.prompts.PromptTemplateStore(workspace, clock)
+    val auditRepo = com.siamakerlab.vibecoder.server.repo.AuditLogRepository(clock)
+    val auditLogger = com.siamakerlab.vibecoder.server.audit.AuditLogger(auditRepo)
     val env = EnvDiagnostics(config)
     val envSetup = EnvSetupService(config, queue, hub, clock)
     val claudeAuth = ClaudeAuthService(clock)
@@ -187,6 +189,8 @@ fun main(args: Array<String>) {
         uploads = uploads,
         fileBrowser = fileBrowser,
         promptStore = promptStore,
+        auditRepo = auditRepo,
+        auditLogger = auditLogger,
         status = status,
         env = env,
         envSetup = envSetup,

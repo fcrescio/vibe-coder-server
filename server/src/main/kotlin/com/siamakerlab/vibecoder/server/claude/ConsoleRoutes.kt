@@ -1,6 +1,8 @@
 package com.siamakerlab.vibecoder.server.claude
 
+import com.siamakerlab.vibecoder.server.audit.AuditLogger
 import com.siamakerlab.vibecoder.server.auth.AUTH_BEARER
+import com.siamakerlab.vibecoder.server.auth.requireDevice
 import com.siamakerlab.vibecoder.server.env.EnvDiagnostics
 import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.projects.ProjectService
@@ -38,6 +40,7 @@ fun Routing.consoleRoutes(
     hub: LogHub,
     statusService: ClaudeStatusService,
     envDiagnostics: EnvDiagnostics,
+    audit: AuditLogger,
 ) {
     authenticate(AUTH_BEARER) {
         post("/api/projects/{projectId}/claude/console/prompt") {
@@ -94,6 +97,8 @@ fun Routing.consoleRoutes(
                 ?: throw ApiException(400, "bad_request", "projectId is required")
             projects.rowOrThrow(projectId)
             sessionManager.cancelTurn(projectId)
+            val device = call.requireDevice().device
+            audit.consoleCancel(device.userId, projectId, call.request.local.remoteHost)
             call.respond(HttpStatusCode.Accepted)
         }
 

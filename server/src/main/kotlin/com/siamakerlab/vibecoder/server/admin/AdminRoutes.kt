@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.audit.AuditLogger
 import com.siamakerlab.vibecoder.server.auth.AuthService
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
@@ -40,6 +41,7 @@ data class AdminRoutesDeps(
     val deviceRepo: DeviceRepository,
     val statusService: StatusService,
     val envDiagnostics: EnvDiagnostics,
+    val audit: AuditLogger,
 )
 
 /**
@@ -105,6 +107,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             )
             return@post
         }
+        val ip = call.request.local.remoteHost
         val outcome = runCatching {
             deps.authService.setup(
                 username = username,
@@ -121,6 +124,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             )
             return@post
         }
+        deps.audit.setupAdmin(username, outcome.user.id, ip)
         setSessionCookie(call, outcome.token)
         call.respondRedirect("/")
     }
@@ -146,16 +150,19 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
         // open-redirect 방지: 외부 도메인이나 `//` 로 시작하는 schemeless URL 차단
         val next = params["next"]?.takeIf { it.startsWith("/") && !it.startsWith("//") } ?: "/"
 
+        val ip = call.request.local.remoteHost
         val outcome = runCatching {
             deps.authService.login(
                 username = username,
                 password = password,
                 deviceName = browserDeviceName(call),
                 channel = "web",
-                remoteIp = call.request.local.remoteHost,
+                remoteIp = ip,
             )
         }.getOrElse { e ->
             val msg = (e as? ApiException)?.message ?: "로그인 실패"
+            val reasonCode = (e as? ApiException)?.code ?: "unknown"
+            deps.audit.loginFailure(username, ip, reasonCode)
             call.respondText(
                 AdminTemplates.loginPage(error = msg, next = next),
                 ContentType.Text.Html,
@@ -163,6 +170,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             )
             return@post
         }
+        deps.audit.loginSuccess(outcome.user.username, outcome.user.id, outcome.device.id, ip, "web")
         setSessionCookie(call, outcome.token)
         call.respondRedirect(next)
     }
@@ -177,10 +185,18 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             requireCsrf()
         }
         val token = call.bearerTokenOrNull()
+        val ip = call.request.local.remoteHost
+        var userId: String? = null
+        var deviceId: String? = null
         if (token != null) {
             val hash = com.siamakerlab.vibecoder.server.core.Sha256.hashString(token)
-            deps.deviceRepo.findByTokenHash(hash)?.let { deps.deviceRepo.deleteById(it.id) }
+            deps.deviceRepo.findByTokenHash(hash)?.let { d ->
+                userId = d.userId
+                deviceId = d.id
+                deps.deviceRepo.deleteById(d.id)
+            }
         }
+        deps.audit.logout(userId, deviceId, ip)
         clearSessionCookie(call)
         call.respondRedirect("/login")
     }
@@ -293,10 +309,12 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             )
             return@post
         }
+        val ip = call.request.local.remoteHost
         val result = runCatching {
             deps.authService.changePassword(sess.userId, current, new)
         }
         if (result.isFailure) {
+            deps.audit.passwordChange(sess.userId, ip, ok = false)
             val msg = (result.exceptionOrNull() as? ApiException)?.message
                 ?: "비밀번호 변경 실패"
             call.respondText(
@@ -306,6 +324,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             )
             return@post
         }
+        deps.audit.passwordChange(sess.userId, ip, ok = true)
         call.respondText(
             AdminTemplates.passwordPage(
                 sess.username, csrf = sess.csrf,
@@ -341,6 +360,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             return@post
         }
         deps.deviceRepo.deleteById(id)
+        deps.audit.deviceRevoke(sess.userId, id, call.request.local.remoteHost)
         call.respondRedirect("/devices?ok=1")
     }
 

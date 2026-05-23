@@ -1220,17 +1220,28 @@ $errHtml
             errHtml.ifEmpty { """<p class="dim">파일을 열 수 없습니다.</p>""" }
         } else {
             val sizeKb = (view.sizeBytes + 512L) / 1024L
+            val hlLang = mapMimeToHljs(view.mimeGuess)
+            val hlSkip = view.content.length > MAX_HL_CHARS
             """
 <div class="card" style="margin-bottom:12px">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
     <div><strong><code>${esc(view.relPath)}</code></strong>
       <span class="dim" style="font-size:12px;margin-left:8px">${sizeKb}KB · ${esc(view.mimeGuess)}</span>
     </div>
-    <a href="/projects/${esc(p.id)}/tree?path=${parentOf(relPath).encodeUrl()}" class="chip chip-link">← 상위 폴더</a>
+    <div style="display:flex;gap:6px">
+      <button type="button" id="toggle-mode" class="chip chip-link" style="font-size:12px;padding:4px 10px">View 모드 ↔ Edit 모드</button>
+      <a href="/projects/${esc(p.id)}/tree?path=${parentOf(relPath).encodeUrl()}" class="chip chip-link">← 상위 폴더</a>
+    </div>
   </div>
 </div>
 
-<form method="post" action="/projects/${esc(p.id)}/edit" id="file-form">
+<!-- View 모드 (신택스 하이라이트, read-only) — 기본. -->
+<div id="file-view-pane" class="card" style="padding:0;overflow:hidden">
+  <pre style="margin:0"><code id="file-view-code" class="${if (hlSkip) "" else "language-${esc(hlLang)}"}" style="display:block;padding:12px;font-size:13px;line-height:1.5;tab-size:2;white-space:pre;overflow-x:auto">${esc(view.content)}</code></pre>
+</div>
+
+<!-- Edit 모드 (textarea) — toggle 로 전환. -->
+<form method="post" action="/projects/${esc(p.id)}/edit" id="file-form" style="display:none">
   ${CsrfTokens.hiddenInput(csrf)}
   <input type="hidden" name="path" value="${esc(view.relPath)}">
   <textarea name="content" id="file-content" rows="28" spellcheck="false"
@@ -1245,10 +1256,36 @@ $errHtml
   </div>
 </form>
 
+<link rel="stylesheet" href="/static/highlight-github-dark.min.css">
+<script src="/static/highlight.min.js"></script>
 <script>
 (function() {
+  var skip = ${hlSkip};
+  if (!skip && window.hljs) {
+    try { hljs.highlightElement(document.getElementById('file-view-code')); }
+    catch (e) { console.warn('hljs failed:', e); }
+  }
+
   var ta = document.getElementById('file-content');
   var form = document.getElementById('file-form');
+  var viewPane = document.getElementById('file-view-pane');
+  var toggleBtn = document.getElementById('toggle-mode');
+  var mode = 'view';
+  function applyMode() {
+    if (mode === 'view') {
+      viewPane.style.display = '';
+      form.style.display = 'none';
+    } else {
+      viewPane.style.display = 'none';
+      form.style.display = '';
+      ta.focus();
+    }
+  }
+  toggleBtn.addEventListener('click', function() {
+    mode = mode === 'view' ? 'edit' : 'view';
+    applyMode();
+  });
+
   if (!ta || !form) return;
   ta.addEventListener('keydown', function(ev) {
     if ((ev.ctrlKey || ev.metaKey) && ev.key === 's') {
@@ -1314,5 +1351,24 @@ $bodyHtml
 
     private fun String.encodeUrl(): String =
         java.net.URLEncoder.encode(this, Charsets.UTF_8).replace("+", "%20")
+
+    /**
+     * v0.15.0 — ProjectFileBrowser 의 mime guess 를 highlight.js 의 language 이름으로 매핑.
+     * 미매칭은 plaintext (highlight 없이 그대로 표시).
+     */
+    private fun mapMimeToHljs(mime: String): String = when (mime) {
+        "text/x-kotlin", "text/x-gradle" -> "kotlin"
+        "text/x-java" -> "java"
+        "text/xml" -> "xml"
+        "application/json" -> "json"
+        "text/yaml" -> "yaml"
+        "text/markdown" -> "markdown"
+        "text/x-properties" -> "properties"
+        "text/x-shellscript" -> "bash"
+        else -> "plaintext"
+    }
+
+    /** highlight.js 적용 최대 길이 — 그 이상이면 적용 skip (브라우저 freeze 방지). */
+    private const val MAX_HL_CHARS = 200_000
 }
 
