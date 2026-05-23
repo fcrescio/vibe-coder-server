@@ -140,11 +140,16 @@ fun main(args: Array<String>) {
     val keystoreGen = KeystoreGenerator(workspace)
     val gitCredentials = GitCredentialStore()
     val gitClone = GitCloneService(gitCredentials)
+    val auditRepo = com.siamakerlab.vibecoder.server.repo.AuditLogRepository(clock)
+    val auditLogger = com.siamakerlab.vibecoder.server.audit.AuditLogger(auditRepo)
+    val conversationRepo = com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository(clock)
+    val conversationHistory = com.siamakerlab.vibecoder.server.claude.ConversationHistoryService(conversationRepo)
     val projects = ProjectService(
         workspace, projectRepo, buildRepo, keystoreGen, gitClone,
         artifactRepo = artifactRepo, uploadedFileRepo = uploadedRepo,
+        conversationRepo = conversationRepo,
     )
-    val sessionManager = ClaudeSessionManager(config, workspace, hub)
+    val sessionManager = ClaudeSessionManager(config, workspace, hub, history = conversationHistory)
     val gradle = GradleBuilder(config)
     val artifacts = ArtifactService(config, workspace, artifactRepo, buildRepo, clock)
     val build = BuildService(config, workspace, projects, buildRepo, queue, gradle, artifacts, clock)
@@ -152,8 +157,6 @@ fun main(args: Array<String>) {
     val uploads = UploadService(config, workspace, uploadedRepo, clock)
     val fileBrowser = com.siamakerlab.vibecoder.server.files.ProjectFileBrowser(workspace)
     val promptStore = com.siamakerlab.vibecoder.server.prompts.PromptTemplateStore(workspace, clock)
-    val auditRepo = com.siamakerlab.vibecoder.server.repo.AuditLogRepository(clock)
-    val auditLogger = com.siamakerlab.vibecoder.server.audit.AuditLogger(auditRepo)
     val env = EnvDiagnostics(config)
     val envSetup = EnvSetupService(config, queue, hub, clock)
     val claudeAuth = ClaudeAuthService(clock)
@@ -191,6 +194,7 @@ fun main(args: Array<String>) {
         promptStore = promptStore,
         auditRepo = auditRepo,
         auditLogger = auditLogger,
+        conversationRepo = conversationRepo,
         status = status,
         env = env,
         envSetup = envSetup,

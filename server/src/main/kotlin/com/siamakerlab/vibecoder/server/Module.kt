@@ -26,6 +26,7 @@ import com.siamakerlab.vibecoder.server.build.buildRoutes
 import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
 import com.siamakerlab.vibecoder.server.claude.ClaudeStatusService
 import com.siamakerlab.vibecoder.server.claude.consoleRoutes
+import com.siamakerlab.vibecoder.server.claude.historyRoutes
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.Clock
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
@@ -102,6 +103,7 @@ data class ServerContext(
     val promptStore: com.siamakerlab.vibecoder.server.prompts.PromptTemplateStore,
     val auditRepo: AuditLogRepository,
     val auditLogger: AuditLogger,
+    val conversationRepo: com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository,
     val status: StatusService,
     val env: EnvDiagnostics,
     val envSetup: EnvSetupService,
@@ -231,6 +233,7 @@ fun Application.module(ctx: ServerContext) {
         fileRoutes(ctx.uploads)
         promptRoutes(adminDeps, ctx.promptStore)
         auditRoutes(adminDeps, ctx.auditRepo)
+        historyRoutes(adminDeps, ctx.projects, ctx.conversationRepo)
         wsRoutes(ctx.hub, ctx.deviceRepo, ctx.tokens, ctx.sessionManager,
             ctx.actionRegistry, ctx.actionHandler)
     }

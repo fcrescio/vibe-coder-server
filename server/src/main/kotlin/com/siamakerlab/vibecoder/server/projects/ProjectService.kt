@@ -34,6 +34,8 @@ class ProjectService(
      */
     private val artifactRepo: ArtifactRepository? = null,
     private val uploadedFileRepo: UploadedFileRepository? = null,
+    /** v0.16.0 — conversation_turns cascade. null 이면 history persistence 비활성. */
+    private val conversationRepo: com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository? = null,
 ) {
 
     /**
@@ -190,17 +192,15 @@ class ProjectService(
     /**
      * 프로젝트 + 의존 row 모두 삭제. 디스크 파일은 보존 (UI 약속).
      *
-     * v0.12.4 — SQLite foreign_keys 활성 후 cascade 정리 필수. 순서:
-     *   1. uploaded_files (Projects.id 참조)
-     *   2. artifacts      (Projects.id 참조)
-     *   3. builds         (Projects.id 참조)
-     *   4. projects       (root)
+     * v0.12.4 — PostgreSQL foreign_keys 가 cascade 정리 필수.
+     * v0.16.0 — conversation_turns 도 같이 정리.
      */
     fun delete(id: String): Boolean {
         // v0.13.0 — scratch ghost 프로젝트는 삭제 거부.
         if (id == SCRATCH_ID) {
             throw ApiException(403, "scratch_protected", "General Chat 워크스페이스는 삭제할 수 없습니다.")
         }
+        conversationRepo?.deleteForProject(id)
         uploadedFileRepo?.deleteForProject(id)
         artifactRepo?.deleteForProject(id)
         buildRepo.deleteForProject(id)

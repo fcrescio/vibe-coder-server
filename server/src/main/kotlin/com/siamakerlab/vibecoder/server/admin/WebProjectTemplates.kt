@@ -304,6 +304,7 @@ $errHtml
     <h2>작업</h2>
     <p><a href="/projects/${esc(p.id)}/console" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px">콘솔 / Claude 프롬프트 →</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/builds" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px">빌드 / APK →</a></p>
+    <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/history" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)">대화 히스토리 →</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/tree" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)">파일 트리 / 편집 →</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/files" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)">파일 업로드 / 다운로드 →</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/git" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)">git status / diff / log →</a></p>
@@ -372,9 +373,12 @@ $errHtml
 
         val navPath = if (isChat) "/chat" else "/projects"
         val titleSuffix = if (isChat) "General Chat" else "콘솔"
-        val sideLinks = if (isChat) "" else """
+        val sideLinks = if (isChat) """
+      <a href="/chat/history" class="chip chip-link">히스토리 →</a>"""
+        else """
       <a href="/projects/${esc(p.id)}" class="chip chip-link">← 프로젝트</a>
       <a href="/projects/${esc(p.id)}/builds" class="chip chip-link">빌드 / APK →</a>
+      <a href="/projects/${esc(p.id)}/history" class="chip chip-link">히스토리 →</a>
       <a href="/projects/${esc(p.id)}/files" class="chip chip-link">파일 →</a>
       <a href="/projects/${esc(p.id)}/git" class="chip chip-link">git →</a>"""
 

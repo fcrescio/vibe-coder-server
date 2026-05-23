@@ -57,6 +57,8 @@ class ClaudeSessionManager(
     private val parser: ClaudeStreamParser = ClaudeStreamParser(),
     /** Idle SIGTERM after this duration. session-id file is preserved. */
     private val idleTimeout: Duration = Duration.ofMinutes(30),
+    /** v0.16.0 — turn 영구 적재. null 이면 history persistence 비활성 (테스트). */
+    private val history: ConversationHistoryService? = null,
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -87,6 +89,8 @@ class ClaudeSessionManager(
         }
 
         val session = ensureSession(projectId)
+        // v0.16.0 — user prompt 영구 적재 (sendPrompt 시점의 sessionId 사용).
+        history?.userPrompt(projectId, session.sessionId, text)
         val envelope = buildJsonObject {
             put("type", "user")
             put("message", buildJsonObject {
@@ -295,6 +299,13 @@ class ClaudeSessionManager(
                     .onFailure { log.warn(it) { "[$projectId] failed to persist session-id" } }
             }
             hub.emitConsole(topic(projectId)) { seq -> toWsFrame(event, seq) }
+            // v0.16.0 — turn 영구 적재. SessionStarted 는 자체 sessionId 사용 (위에서
+            // session.sessionId 가 갱신되기 전이라). 그 외엔 현재 session 의 id.
+            val sidForRow = when (event) {
+                is ClaudeEvent.SessionStarted -> event.sessionId
+                else -> sessions[projectId]?.sessionId
+            }
+            history?.event(projectId, sidForRow, event)
         }
     }
 
@@ -380,6 +391,8 @@ class ClaudeSessionManager(
         hub.emitConsole(topic(projectId)) { seq ->
             WsFrame.ConsoleSystem(code = code, message = message, seq = seq)
         }
+        // v0.16.0 — system notice 도 history 에 적재 (process_crashed / turn_cancelled 등).
+        history?.systemNotice(projectId, sessions[projectId]?.sessionId, code, message)
     }
 
     private fun topic(projectId: String) = LogHub.consoleTopic(projectId)

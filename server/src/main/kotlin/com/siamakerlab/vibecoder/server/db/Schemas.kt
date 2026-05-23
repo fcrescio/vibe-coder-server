@@ -108,4 +108,51 @@ object AuditLog : Table("audit_log") {
     }
 }
 
-val AllTables = arrayOf(AdminUsers, Devices, Projects, Builds, Artifacts, UploadedFiles, AuditLog)
+/**
+ * v0.16.0 — Conversation turn 영구 히스토리.
+ *
+ * Claude 콘솔의 모든 turn (user prompt / assistant message / tool_use / tool_result /
+ * system / error) 을 DB 에 영구 적재. 콘솔 LogHub ring 은 200 프레임 휘발성이라
+ * 콘솔 화면 새로고침/재접속 시 옛 대화를 못 봤다. 본 테이블이 그 휘발성 해결 +
+ * 전체 history 검색/열람 기반.
+ *
+ * 적재 정책:
+ *  - User prompt: ClaudeSessionManager.sendPrompt 가 호출 직후 한 row.
+ *  - Assistant / tool_use / tool_result / system / error: ClaudeStreamParser 가
+ *    파싱한 ClaudeEvent 마다 한 row. ConversationHistoryService 가 hub.emitConsole
+ *    과 동시에 INSERT.
+ *
+ * 관련 데이터:
+ *  - projectId — `__scratch__` 도 그대로 저장 (General Chat).
+ *  - sessionId — Claude 자식 프로세스의 system/init 에서 받은 id. null 가능
+ *    (사용자 prompt 가 spawn 직전 도착).
+ *  - turnIdx — projectId+sessionId 내 단조 증가 (LogHub seq 와 별개; replay 와 다른 정렬).
+ *  - role — `user|assistant|tool_use|tool_result|system|error|unknown`.
+ *  - content — text/JSON 본문. tool_use 는 input JSON, tool_result 는 output JSON.
+ *  - toolName / toolUseId — tool_use/tool_result 매칭용.
+ *  - tokensIn/Out — Anthropic API 가 메시지에 포함 시 (없으면 null).
+ *  - raw — 원본 stream-json line (forensic / replay). 큰 turn 일 수 있어 nullable.
+ */
+object ConversationTurns : Table("conversation_turns") {
+    val id = varchar("id", 64)
+    val projectId = varchar("project_id", 64)
+    val sessionId = varchar("session_id", 64).nullable()
+    val turnIdx = integer("turn_idx")
+    val ts = varchar("ts", 64)
+    val role = varchar("role", 16)
+    val content = text("content")
+    val toolName = varchar("tool_name", 64).nullable()
+    val toolUseId = varchar("tool_use_id", 128).nullable()
+    val tokensIn = integer("tokens_in").nullable()
+    val tokensOut = integer("tokens_out").nullable()
+    val raw = text("raw").nullable()
+    override val primaryKey = PrimaryKey(id)
+
+    init {
+        index(isUnique = false, columns = arrayOf(projectId, ts))
+        index(isUnique = false, columns = arrayOf(projectId, sessionId, turnIdx))
+        index(isUnique = false, columns = arrayOf(toolUseId))
+    }
+}
+
+val AllTables = arrayOf(AdminUsers, Devices, Projects, Builds, Artifacts, UploadedFiles, AuditLog, ConversationTurns)
