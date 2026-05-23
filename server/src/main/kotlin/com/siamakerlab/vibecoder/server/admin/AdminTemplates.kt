@@ -29,6 +29,7 @@ object AdminTemplates {
         showNav: Boolean = true,
     ): String {
         val nav = if (showNav) navHtml(currentPath, username) else ""
+        val layoutCls = if (showNav) "layout" else "layout no-nav"
         return """<!doctype html>
 <html lang="ko">
 <head>
@@ -38,7 +39,7 @@ object AdminTemplates {
   <link rel="stylesheet" href="/admin/static/admin.css">
 </head>
 <body>
-  <div class="layout">
+  <div class="$layoutCls">
     $nav
     <main class="content">
       $body

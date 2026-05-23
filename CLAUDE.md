@@ -7,7 +7,7 @@
 
 - **단일 사용자, LAN 페어링 모드의 서버 컴포넌트.**
   본인 PC에서 도커 컨테이너로 실행되며, 같은 LAN 안의 본인 Android 단말
-  1대가 `vibe-coder-android` (별도 리포) 로 접속한다.
+  1대가 `vibe-coder-android` (별도 리포 — §2 참고) 로 접속한다.
 - **다중 사용자 / 공개 배포 / 스토어 출시 대상이 아님.**
 - 모듈 구성:
   - `:server` — Ktor 백엔드. Claude Code / Gradle / Git 자식 프로세스 관리,
@@ -18,7 +18,9 @@
 
 ## 2. 짝 리포 관계
 
-- Android 리포: `vibe-coder-android` (`D:\dev\vibe-coder-android`)
+- Android 리포: `vibe-coder-android`
+  - 원격: `ssh://git@gitea.wody.kr:2929/wody/vibe-coder-android.git`
+  - 로컬 체크아웃 (참조용): `D:\dev\vibe-coder-android`
 - 두 리포는 `:shared` 모듈을 통해 wire-level 호환을 유지한다.
   `ApiPath` 상수 / DTO 직렬화 / `WsFrame` 변경 시 양쪽 모두 같은 값으로
   업데이트해야 한다. 호환 깨짐을 발견하면 CHANGELOG 에 "**Wire change**"
@@ -42,8 +44,8 @@
   **독립 버전**).
 - Docker 이미지 태그는 `server.version` 과 같은 값을 사용한다.
   `docker/Dockerfile`, `docker/compose.yml`, `docker/.env.example`,
-  `docker/README.md` 의 `siamakerlab/vibe-coder:<version>` 을 동기.
-- 키스토어는 본 리포 외부에서 관리 (서버는 keystore 사용 안 함).
+  `docker/README.md`, `docker/HUB_README.md` 의
+  `siamakerlab/vibe-coder-server:<version>` 을 동기.
 
 ## 5. 문서 / PDCA
 
@@ -58,17 +60,30 @@
 - 워크스페이스 기본값: `./workspace` (CLI `--workspace <path>` 로 override).
 - 도커 실행 시 `VIBECODER_WORKSPACE_ROOT=/workspace` 가 자동 적용.
 
-## 7. 알려진 베이스라인 결함
+## 7. 베이스라인 결함 회수 이력 (v0.4.1)
 
-분리 시점(v0.4.0 main)에 **다음이 깨진 상태로 확인됨**. 본 리포의
-첫 작업으로 정리 필요:
+분리 시점(v0.4.0 main)에 보고됐던 빌드 결함 + 보조 결함은 v0.4.1 에서
+일괄 회수. 자세한 회수 내역은 `CHANGELOG.md` 의 v0.4.1 섹션을 참고.
 
-- `ApkFinder.kt:7` 의 `import kotlin.streams.toList` — Kotlin 2.2 에서
-  제거된 API. `Stream.toList()` (JDK 16+) 또는 `Collectors.toList()` 로
-  대체 필요. 이 import 가 깨지면서 ApkFinder 파일 전체 파싱이 어긋나고,
-  `findLatestDebug` 참조도 끊겨 `BuildService` 도 연쇄 실패.
-- `ServerActionHandler.kt:55` 의 `submitDebug` 미해결 참조.
-- `BuildService.kt:109` 의 타입 추론 실패 (위 두 원인의 파급).
+회수된 결함 요약:
 
-v0.4.0 commit 메시지에는 `:server:installDist` 통과로 적혀 있으나
-현재 main 체크아웃에선 재현되지 않는다 — 별도 PR 로 회수 예정.
+- `ApkFinder.kt` — Kotlin 2.2 에서 제거된 `kotlin.streams.toList` import.
+  추가로 KDoc 본문의 `build/outputs/apk/debug/*.apk` 표현 안에 `/*`
+  시퀀스가 nested comment 시작으로 해석되어 `Unclosed comment` 신택스
+  에러를 일으키던 문제도 같은 PR 에서 KDoc 재작성으로 회피.
+  처음에는 import 결함이 가려져 있어 KDoc 결함이 드러나지 않았다.
+- `ServerActionHandler.kt:55` — 존재하지 않는 `builds.submitDebug` 호출을
+  실제 메소드 `builds.enqueueDebug` 로 정정.
+- `BuildService.kt` — 위 두 원인의 파급. root cause 해결과 동시에 해소.
+- `auth/AuthPlugin.kt` — Ktor 3.x `Principal` interface deprecated 경고.
+  `DevicePrincipal` 상위 인터페이스 제거.
+- `files/FileRoutes.kt` — `PartData.FileItem.streamProvider` deprecated.
+  `provider().toInputStream()` 로 마이그.
+- **`.gitignore` 패턴 결함** — `build/` 가 너무 광범위해서 source 패키지
+  디렉토리 `server/src/main/kotlin/.../server/build/` 까지 무시되고
+  있었다 (4개 핵심 파일 untracked). `**/build/` + `!**/src/**/build/**`
+  로 패턴을 좁히고 누락 파일을 정상 등록.
+
+v0.4.0 commit 메시지에 `:server:installDist` 통과로 적혀 있던 것은 Gradle
+daemon 캐시 효과로 보이며, `./gradlew clean` 후엔 모두 재현됐다. 향후
+"통과 확인" 은 반드시 clean 빌드로 한다.

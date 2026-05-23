@@ -52,7 +52,7 @@ class ServerActionHandler(
         val row = projects.rowOrThrow(projectId)
         when (key) {
             "build.debug" -> {
-                val build = builds.submitDebug(projectId, hub)
+                val build = builds.enqueueDebug(projectId, hub)
                 emitSystem(projectId, "build_started", "Build queued: ${build.id}")
             }
             "git.status" -> {

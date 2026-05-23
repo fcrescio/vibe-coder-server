@@ -36,6 +36,8 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
     grid-template-columns: 220px 1fr;
     min-height: 100vh;
 }
+/* 사이드바 없는 화면(로그인/셋업/에러)은 단일 컬럼 + 콘텐츠 가운데 정렬. */
+.layout.no-nav { grid-template-columns: 1fr; }
 
 .sidebar {
     background: var(--bg-elev);
@@ -87,6 +89,8 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
 .content {
     padding: 32px;
     max-width: 1200px;
+    width: 100%;
+    justify-self: center;
 }
 
 header h1 {

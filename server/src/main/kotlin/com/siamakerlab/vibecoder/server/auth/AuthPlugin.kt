@@ -5,7 +5,6 @@ import com.siamakerlab.vibecoder.server.repo.DeviceRow
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
-import io.ktor.server.auth.Principal
 import io.ktor.server.auth.bearer
 import io.ktor.server.auth.principal
 import io.ktor.server.application.ApplicationCall
@@ -16,7 +15,7 @@ const val AUTH_BEARER = "bearer"
 /** 웹 세션 쿠키 이름. Bearer 토큰과 동일한 문자열을 담는다. */
 const val SESSION_COOKIE = "vibe_session"
 
-data class DevicePrincipal(val device: DeviceRow) : Principal
+data class DevicePrincipal(val device: DeviceRow)
 
 fun Application.installAuth(deviceRepo: DeviceRepository, tokens: TokenService) {
     install(Authentication) {

@@ -3,7 +3,11 @@
 
 # Gradle
 .gradle/
-build/
+# 모듈별 build output 무시 — 단, src 트리 안의 build 패키지(예:
+# server/src/main/kotlin/.../server/build/ApkFinder.kt)는 무시하지 않는다.
+**/build/
+!**/src/**/build/
+!**/src/**/build/**
 !gradle/wrapper/gradle-wrapper.jar
 local.properties
 

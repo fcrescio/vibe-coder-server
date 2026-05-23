@@ -20,8 +20,10 @@ vibe-coder-server/
 └─ docker/              # 슬림 Docker 이미지 + compose + vibe-doctor
 ```
 
-**짝 리포**: `vibe-coder-android` (별도 git 저장소). 두 리포는 `:shared`
-모듈의 동일 사본을 통해 wire-level 호환을 유지합니다.
+**짝 리포**: `vibe-coder-android` (별도 git 저장소).
+주소: `ssh://git@gitea.wody.kr:2929/wody/vibe-coder-android.git`
+두 리포는 `:shared` 모듈의 동일 사본을 통해 wire-level 호환을 유지합니다
+(`ApiPath` / DTO / `WsFrame` 변경 시 양쪽 함께 갱신).
 
 ## 빌드 매트릭스
 
@@ -57,7 +59,7 @@ vibe-coder-server/
 ### Docker 실행
 
 ```bash
-docker pull siamakerlab/vibe-coder:0.4.0
+docker pull siamakerlab/vibe-coder-server:0.4.1
 cd ~/vibe-coder && cp docker/compose.yml . && cp docker/.env.example .env
 # .env 편집 후
 docker compose up -d
@@ -86,12 +88,18 @@ docker exec -it vibe-coder vibe-doctor   # Android SDK + Claude 설치
 - raw-shell UI 없음. `git push` / `git reset --hard` / release 서명 없음.
 - 모든 외부 명령은 하드 타임아웃 + 취소 시 `destroyForcibly`.
 
-## 알려진 베이스라인 결함
+## 베이스라인 결함 회수 이력
 
-분리 시점(v0.4.0 main) 에 다음 컴파일 결함이 있어 첫 후속 작업으로
-회수해야 합니다 (자세한 내용은 `CLAUDE.md` §7):
+분리 시점(v0.4.0 main) 에 보고됐던 컴파일 결함 3건 + 비차단
+deprecation 2건 + `.gitignore` 패턴 결함 1건은 모두 v0.4.1 에서 회수.
+상세 내용은 `CHANGELOG.md` 의 v0.4.1 섹션 참고.
 
-- `ApkFinder.kt` 의 `import kotlin.streams.toList` 가 Kotlin 2.2 에서
-  제거되어 컴파일 실패. → `Stream.toList()` 로 대체.
-- `ServerActionHandler.submitDebug` 미해결 참조.
-- `BuildService.kt` 의 위 두 원인 파급 (`findLatestDebug` 등).
+- `ApkFinder.kt` — Kotlin 2.2 에서 제거된 `kotlin.streams.toList` import +
+  KDoc 안의 `/*` 시퀀스가 nested comment 로 해석되는 신택스 에러.
+- `ServerActionHandler.kt` — 존재하지 않는 `builds.submitDebug` 호출을
+  실제 메소드 `builds.enqueueDebug` 로 정정.
+- `auth/AuthPlugin.kt` — Ktor 3.x deprecated `Principal` 인터페이스 제거.
+- `files/FileRoutes.kt` — `PartData.streamProvider` → `provider()` 마이그.
+- `.gitignore` — `build/` 패턴이 `server/src/.../server/build/` 패키지까지
+  무시하여 4 개 핵심 소스 파일이 untracked 상태였음. 패턴을 좁히고 누락
+  파일을 정상 등록.

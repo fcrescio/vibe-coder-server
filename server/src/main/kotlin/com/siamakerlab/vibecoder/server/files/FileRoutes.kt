@@ -8,7 +8,7 @@ import io.ktor.http.ContentDisposition
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.PartData
-import io.ktor.http.content.streamProvider
+import io.ktor.utils.io.jvm.javaio.toInputStream
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
 import io.ktor.server.request.receiveMultipart
@@ -37,7 +37,7 @@ fun Routing.fileRoutes(service: UploadService) {
                     if (part is PartData.FileItem) {
                         val name = part.originalFileName ?: "upload"
                         val mime = part.contentType?.toString()
-                        val row = part.streamProvider().use { stream ->
+                        val row = part.provider().toInputStream().use { stream ->
                             service.upload(projectId, name, mime, stream, sizeHint = null)
                         }
                         saved = FileEntryDto(
