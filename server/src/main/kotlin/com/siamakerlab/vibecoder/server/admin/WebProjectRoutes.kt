@@ -207,7 +207,43 @@ fun Routing.webProjectRoutes(
             return@post
         }
         log.info { "build enqueued: ${row.id} project=$id by ${sess.username}" }
-        call.respondRedirect("/projects/$id/builds?ok=${("빌드 ${row.id.take(12)} 큐 등록 완료.").encodeUrl()}")
+        // 새 빌드는 곧바로 상세 페이지로 — 실시간 로그를 바로 본다.
+        call.respondRedirect("/projects/$id/builds/${row.id}")
+    }
+
+    get("/projects/{id}/builds/{buildId}") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@get
+        val id = call.parameters["id"]!!
+        val buildId = call.parameters["buildId"]!!
+        val p = runCatching { projects.get(id) }.getOrElse {
+            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            return@get
+        }
+        val row = buildRepo.get(buildId)
+        if (row == null || row.projectId != id) {
+            call.respondRedirect("/projects/$id/builds?err=${"빌드 '$buildId' 를 찾을 수 없습니다.".encodeUrl()}")
+            return@get
+        }
+        val dto = BuildDto(
+            id = row.id, projectId = row.projectId, variant = row.variant, status = row.status,
+            startedAt = row.startedAt ?: row.createdAt, finishedAt = row.finishedAt,
+            artifactId = row.artifactId, errorMessage = row.errorMessage,
+        )
+        val artifact = row.artifactId?.let { artifactRepo.get(id, it) }
+        call.respondText(
+            WebProjectTemplates.buildDetailPage(sess.username, p, dto, artifact),
+            ContentType.Text.Html,
+        )
+    }
+
+    post("/projects/{id}/builds/{buildId}/cancel") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        val id = call.parameters["id"]!!
+        val buildId = call.parameters["buildId"]!!
+        runCatching { builds.cancel(buildId) }
+            .onFailure { log.warn(it) { "build cancel failed: $buildId" } }
+        log.info { "build cancel: $buildId project=$id by ${sess.username}" }
+        call.respondRedirect("/projects/$id/builds/$buildId")
     }
 
     // ── 파일 ──────────────────────────────────────────────────────────

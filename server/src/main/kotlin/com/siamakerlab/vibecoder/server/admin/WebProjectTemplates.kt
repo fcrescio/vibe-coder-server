@@ -136,7 +136,7 @@ $errHtml
         } else {
             recentBuilds.joinToString("\n") { b ->
                 """<tr>
-                    <td><code>${esc(b.id.take(12))}</code></td>
+                    <td><a href="/projects/${esc(p.id)}/builds/${esc(b.id)}"><code>${esc(b.id.take(12))}</code></a></td>
                     <td>${esc(b.status.name)}</td>
                     <td>${esc(b.startedAt)}</td>
                   </tr>"""
@@ -421,7 +421,7 @@ $errHtml
                     else -> "dim"
                 }
                 """<tr>
-                    <td><code>${esc(b.id.take(12))}</code></td>
+                    <td><a href="/projects/${esc(p.id)}/builds/${esc(b.id)}"><code>${esc(b.id.take(12))}</code></a></td>
                     <td><span class="$statusCls">${esc(b.status.name)}</span></td>
                     <td>${esc(b.startedAt)}</td>
                     <td>${esc(b.finishedAt ?: "-")}</td>
@@ -464,6 +464,159 @@ $errHtml
   </thead>
   <tbody>$rowsHtml</tbody>
 </table>
+"""
+        )
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // /projects/{id}/builds/{buildId} — 빌드 상세 + 실시간 로그
+    // ────────────────────────────────────────────────────────────────────
+
+    fun buildDetailPage(
+        username: String,
+        p: ProjectDto,
+        b: BuildDto,
+        artifact: ArtifactRow?,
+    ): String {
+        val statusCls = when (b.status.name) {
+            "SUCCESS" -> "ok"
+            "FAILED", "TIMEOUT" -> "warn"
+            "RUNNING", "PENDING" -> ""
+            else -> "dim"
+        }
+        val downloadHtml = if (artifact != null) {
+            val sizeKb = (artifact.sizeBytes + 512L) / 1024L
+            """<a href="/api/projects/${esc(p.id)}/artifacts/${esc(artifact.id)}/download" class="primary-link"
+                  style="width:auto;display:inline-block;padding:8px 16px">APK 다운로드 (${sizeKb}KB)</a>
+               <p class="hint">sha256: <code>${esc(artifact.sha256.take(16))}…</code> · ${esc(artifact.fileName)}</p>"""
+        } else if (b.status.name == "SUCCESS") {
+            """<p class="dim">APK 가 attach 되어 있지 않습니다. ArtifactService 로그를 확인하세요.</p>"""
+        } else {
+            """<p class="dim">빌드 완료 후 APK 다운로드 링크가 여기에 나타납니다.</p>"""
+        }
+        val errorHtml = if (b.errorMessage != null) {
+            """<div class="error">${esc(b.errorMessage)}</div>"""
+        } else ""
+
+        val isTerminal = b.status.name in setOf("SUCCESS", "FAILED", "CANCELED", "TIMEOUT")
+        val cancelHtml = if (!isTerminal) {
+            """<form method="post" action="/projects/${esc(p.id)}/builds/${esc(b.id)}/cancel" style="display:inline"
+                    onsubmit="return confirm('이 빌드를 취소할까요? 진행 중인 Gradle 작업이 즉시 종료됩니다.')">
+               <button type="submit" class="chip chip-danger">빌드 취소</button>
+               </form>"""
+        } else ""
+
+        val projectIdJs = esc(p.id)
+        val buildIdJs = esc(b.id)
+        // 종료 상태이면 JS가 connect 안 함 (로그는 이미 stdout 으로 흘러갔고 ring 에서 evicted).
+        // PENDING/RUNNING 이면 WS 연결.
+        val attachWs = !isTerminal
+
+        return AdminTemplates.shell(
+            title = "${esc(p.name)} · 빌드 ${esc(b.id.take(8))}",
+            username = username,
+            currentPath = "/projects",
+            body = """
+<header>
+  <h1>빌드 <code style="font-size:0.7em">${esc(b.id.take(12))}</code>
+    <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
+  </h1>
+</header>
+
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <div>
+      <strong>상태:</strong> <span class="$statusCls">${esc(b.status.name)}</span>
+      · <span class="dim">${esc(b.variant)}</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="/projects/${esc(p.id)}/builds" class="chip chip-link">← 빌드 목록</a>
+      <a href="/projects/${esc(p.id)}/console" class="chip chip-link">콘솔로</a>
+      $cancelHtml
+    </div>
+  </div>
+  <dl style="margin-top:12px;display:grid;grid-template-columns:max-content 1fr;gap:6px 12px">
+    <dt class="dim">시작</dt><dd>${esc(b.startedAt)}</dd>
+    <dt class="dim">종료</dt><dd>${esc(b.finishedAt ?: "-")}</dd>
+  </dl>
+  $errorHtml
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>APK</h2>
+  $downloadHtml
+</div>
+
+<div class="card">
+  <h2>로그 ${if (attachWs) """<small class="dim" style="font-size:11px;text-transform:none;letter-spacing:0">실시간</small>""" else ""}</h2>
+  <div id="build-log" class="console-log" aria-live="polite"></div>
+  ${if (!attachWs) """<p class="hint">빌드가 종료된 상태입니다. 실시간 로그 ring 은 메모리 상주라 이미 폐기되었을 수 있습니다.
+    파일 로그는 워크스페이스의 <code>.vibecoder/&lt;projectId&gt;/logs/&lt;buildId&gt;.log</code> 에서 확인하세요.</p>""" else ""}
+</div>
+
+${if (attachWs) """
+<script>
+(function() {
+  var projectId = "$projectIdJs";
+  var buildId = "$buildIdJs";
+  var logEl = document.getElementById('build-log');
+
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function append(cls, label, body) {
+    var atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 10;
+    var row = document.createElement('div');
+    row.className = 'log-line ' + cls;
+    row.innerHTML = '<span class="log-label">' + escHtml(label) + '</span><span class="log-body">' + escHtml(body) + '</span>';
+    logEl.appendChild(row);
+    if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function classOfLevel(level) {
+    if (level === 'ERROR' || level === 'STDERR') return 'err';
+    if (level === 'WARN') return 'tool';
+    if (level === 'STDOUT') return 'assistant';
+    return 'sys';
+  }
+
+  function renderFrame(f) {
+    if (f.type === 'log') {
+      append(classOfLevel(f.level), f.level, f.message);
+    } else if (f.type === 'done') {
+      append(f.status === 'SUCCESS' ? 'sys' : 'err',
+             'done', f.status + (f.errorMessage ? ' · ' + f.errorMessage : ''));
+      // 5초 후 페이지를 새로고침해 최종 상태 + APK 링크를 갱신.
+      setTimeout(function() { location.reload(); }, 5000);
+    } else if (f.type === 'error') {
+      append('err', 'ws', (f.code || '') + ': ' + (f.message || ''));
+    }
+  }
+
+  function connect() {
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var ws = new WebSocket(proto + '//' + location.host + '/ws/projects/' + projectId + '/builds/' + buildId + '/logs');
+    ws.onopen = function() {
+      var token = (document.cookie.match(/(?:^| )vibe_session=([^;]+)/) || [])[1] || '';
+      ws.send(JSON.stringify({type: 'auth', token: token}));
+      append('sys', 'ws', 'connected');
+    };
+    ws.onmessage = function(ev) {
+      try { renderFrame(JSON.parse(ev.data)); }
+      catch (e) { append('err', 'parse', String(e)); }
+    };
+    ws.onclose = function(ev) {
+      append('sys', 'ws', 'closed (code ' + ev.code + ')');
+    };
+    ws.onerror = function() { append('err', 'ws', 'error'); };
+  }
+
+  connect();
+})();
+</script>
+""" else ""}
 """
         )
     }
