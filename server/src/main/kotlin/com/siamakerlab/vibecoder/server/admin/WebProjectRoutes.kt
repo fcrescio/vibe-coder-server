@@ -3,23 +3,32 @@ package com.siamakerlab.vibecoder.server.admin
 import com.siamakerlab.vibecoder.server.build.BuildService
 import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
 import com.siamakerlab.vibecoder.server.error.ApiException
+import com.siamakerlab.vibecoder.server.files.UploadService
+import com.siamakerlab.vibecoder.server.git.GitReader
 import com.siamakerlab.vibecoder.server.projects.ProjectService
 import com.siamakerlab.vibecoder.server.repo.ArtifactRepository
 import com.siamakerlab.vibecoder.server.repo.BuildRepository
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.dto.BuildDto
 import com.siamakerlab.vibecoder.shared.dto.RegisterProjectRequestDto
-import com.siamakerlab.vibecoder.shared.dto.TaskStatus
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.PartData
 import io.ktor.server.application.call
+import io.ktor.server.request.receiveMultipart
 import io.ktor.server.request.receiveParameters
+import io.ktor.server.response.header
+import io.ktor.server.response.respondFile
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.utils.io.jvm.javaio.toInputStream
+import java.nio.file.Path
 
 private val log = KotlinLogging.logger {}
 
@@ -37,6 +46,8 @@ fun Routing.webProjectRoutes(
     artifactRepo: ArtifactRepository,
     sessionManager: ClaudeSessionManager,
     hub: LogHub,
+    uploads: UploadService,
+    gitReader: GitReader,
 ) {
 
     // ── 목록 + 등록 폼 ────────────────────────────────────────────────
@@ -198,7 +209,146 @@ fun Routing.webProjectRoutes(
         log.info { "build enqueued: ${row.id} project=$id by ${sess.username}" }
         call.respondRedirect("/projects/$id/builds?ok=${("빌드 ${row.id.take(12)} 큐 등록 완료.").encodeUrl()}")
     }
+
+    // ── 파일 ──────────────────────────────────────────────────────────
+    get("/projects/{id}/files") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@get
+        val id = call.parameters["id"]!!
+        val p = runCatching { projects.get(id) }.getOrElse {
+            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            return@get
+        }
+        val files = uploads.list(id)
+        val err = call.request.queryParameters["err"]
+        val ok = call.request.queryParameters["ok"]
+        call.respondText(
+            WebProjectTemplates.filesPage(sess.username, p, files, flashErr = err, flashOk = ok),
+            ContentType.Text.Html,
+        )
+    }
+
+    post("/projects/{id}/files/upload") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        val id = call.parameters["id"]!!
+        val multipart = call.receiveMultipart()
+        var saved: String? = null
+        var fail: String? = null
+
+        while (true) {
+            val part = multipart.readPart() ?: break
+            try {
+                if (part is PartData.FileItem) {
+                    val name = part.originalFileName ?: "upload"
+                    val mime = part.contentType?.toString()
+                    val row = runCatching {
+                        part.provider().toInputStream().use { stream ->
+                            uploads.upload(id, name, mime, stream, sizeHint = null)
+                        }
+                    }
+                    if (row.isFailure) {
+                        val e = row.exceptionOrNull()!!
+                        fail = (e as? ApiException)?.message ?: e.message ?: "업로드 실패"
+                        log.warn(e) { "upload failed: project=$id file=$name" }
+                    } else {
+                        saved = row.getOrNull()?.originalName
+                    }
+                }
+            } finally {
+                part.dispose()
+            }
+        }
+
+        if (fail != null) {
+            call.respondRedirect("/projects/$id/files?err=${fail.encodeUrl()}")
+            return@post
+        }
+        if (saved == null) {
+            call.respondRedirect("/projects/$id/files?err=${"파일이 선택되지 않았습니다.".encodeUrl()}")
+            return@post
+        }
+        log.info { "upload ok: project=$id file=$saved by ${sess.username}" }
+        call.respondRedirect("/projects/$id/files?ok=${"'${saved}' 업로드 완료.".encodeUrl()}")
+    }
+
+    get("/projects/{id}/files/{fileId}/download") {
+        // 세션 확인은 하지만 redirect 가 아닌 401 로 응답해야 다운로드 도중 페이지 점프가 안 일어남.
+        requireSessionOrRedirect(authDeps) ?: return@get
+        val id = call.parameters["id"]!!
+        val fileId = call.parameters["fileId"]!!
+        val row = runCatching { uploads.resolveForDownload(id, fileId) }.getOrElse {
+            call.respondText("file not found", ContentType.Text.Plain, HttpStatusCode.NotFound)
+            return@get
+        }
+        call.response.header(
+            HttpHeaders.ContentDisposition,
+            ContentDisposition.Attachment.withParameter(
+                ContentDisposition.Parameters.FileName, row.originalName,
+            ).toString(),
+        )
+        call.respondFile(Path.of(row.filePath).toFile())
+    }
+
+    post("/projects/{id}/files/{fileId}/delete") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        val id = call.parameters["id"]!!
+        val fileId = call.parameters["fileId"]!!
+        val result = runCatching { uploads.delete(id, fileId) }
+        if (result.isFailure) {
+            val e = result.exceptionOrNull()!!
+            val msg = (e as? ApiException)?.message ?: e.message ?: "파일 삭제 실패"
+            call.respondRedirect("/projects/$id/files?err=${msg.encodeUrl()}")
+            return@post
+        }
+        log.info { "file deleted: $fileId project=$id by ${sess.username}" }
+        call.respondRedirect("/projects/$id/files?ok=${"파일이 삭제되었습니다.".encodeUrl()}")
+    }
+
+    // ── Git ───────────────────────────────────────────────────────────
+    get("/projects/{id}/git") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@get
+        val id = call.parameters["id"]!!
+        val p = runCatching { projects.get(id) }.getOrElse {
+            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            return@get
+        }
+        val source = Path.of(p.sourcePath)
+        // git이 초기화 안 됐거나 외부 명령 자체가 실패해도 페이지는 살아야 한다.
+        val status = runCatching { gitReader.status(source) }.getOrElse { null }
+        val diff = runCatching { gitReader.diff(source) }.getOrElse { null }
+        val gitLog = runCatching { gitReader.log(source, count = 10) }.getOrElse { null }
+        val unavailable = status == null && diff == null && gitLog == null
+
+        call.respondText(
+            WebProjectTemplates.gitPage(
+                sess.username, p,
+                status = status, diff = diff, log = gitLog,
+                unavailable = unavailable,
+            ),
+            ContentType.Text.Html,
+        )
+    }
+
+    // ── 콘솔: 액션 chip 전송 (form action) ─────────────────────────────
+    post("/projects/{id}/console/slash") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        val id = call.parameters["id"]!!
+        val params = call.receiveParameters()
+        val cmd = params["command"]?.trim().orEmpty()
+
+        if (cmd.isBlank() || cmd !in CONSOLE_SLASH_WHITELIST) {
+            call.respondRedirect("/projects/$id/console")
+            return@post
+        }
+        runCatching { sessionManager.sendPrompt(id, "/$cmd") }
+            .onFailure { log.warn(it) { "slash chip failed: $cmd project=$id" } }
+        log.info { "slash chip: /$cmd project=$id by ${sess.username}" }
+        call.respondRedirect("/projects/$id/console")
+    }
 }
+
+/** 콘솔 액션 chip 으로 노출할 슬래시 커맨드 화이트리스트. ServerActionHandler 와 동일. */
+private val CONSOLE_SLASH_WHITELIST: Set<String> =
+    setOf("status", "cost", "model", "clear", "memory", "plan", "compact")
 
 /**
  * 폼 flash 메시지를 query string 으로 옮길 때 쓰는 단순 URL encoder.

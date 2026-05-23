@@ -2,6 +2,10 @@ package com.siamakerlab.vibecoder.server.admin
 
 import com.siamakerlab.vibecoder.server.repo.ArtifactRow
 import com.siamakerlab.vibecoder.shared.dto.BuildDto
+import com.siamakerlab.vibecoder.shared.dto.FileEntryDto
+import com.siamakerlab.vibecoder.shared.dto.GitDiffDto
+import com.siamakerlab.vibecoder.shared.dto.GitLogDto
+import com.siamakerlab.vibecoder.shared.dto.GitStatusDto
 import com.siamakerlab.vibecoder.shared.dto.ProjectDto
 
 /**
@@ -21,6 +25,18 @@ object WebProjectTemplates {
             .replace(">", "&gt;")
             .replace("\"", "&quot;")
             .replace("'", "&#39;")
+
+    /**
+     * 콘솔 슬래시 chip 1개. 동일 form 안에 hidden command + 버튼.
+     * `danger=true` 면 빨간색 (예: /clear).
+     */
+    private fun slashChip(projectId: String, command: String, label: String, danger: Boolean = false): String {
+        val cls = if (danger) "chip chip-danger" else "chip"
+        return """<form method="post" action="/projects/${esc(projectId)}/console/slash" style="display:inline">
+          <input type="hidden" name="command" value="${esc(command)}">
+          <button type="submit" class="$cls">${esc(label)}</button>
+        </form>"""
+    }
 
     // ────────────────────────────────────────────────────────────────────
     // /projects — 목록 + 등록 폼
@@ -155,6 +171,8 @@ $errHtml
     <h2>작업</h2>
     <p><a href="/projects/${esc(p.id)}/console" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px">콘솔 / Claude 프롬프트 →</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/builds" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px">빌드 / APK →</a></p>
+    <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/files" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)">파일 업로드 / 다운로드 →</a></p>
+    <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/git" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)">git status / diff / log →</a></p>
     <form method="post" action="/projects/${esc(p.id)}/delete" style="margin-top:24px"
           onsubmit="return confirm('정말 삭제하시겠습니까? 워크스페이스 폴더는 그대로 남고 DB 항목만 제거됩니다.')">
       <button type="submit" class="danger" style="width:100%">프로젝트 삭제 (메타데이터만)</button>
@@ -207,13 +225,26 @@ $errHtml
       <strong>세션:</strong> $statusBadge
       ${if (sessionId != null) """ <span class="dim">${esc(sessionId.take(12))}…</span>""" else ""}
     </div>
-    <div style="display:flex;gap:8px">
-      <a href="/projects/${esc(p.id)}" class="primary-link" style="width:auto;display:inline-block;padding:6px 12px;background:transparent;border:1px solid var(--border);color:var(--text-dim)">← 프로젝트로</a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="/projects/${esc(p.id)}" class="chip chip-link">← 프로젝트</a>
+      <a href="/projects/${esc(p.id)}/builds" class="chip chip-link">빌드 / APK →</a>
+      <a href="/projects/${esc(p.id)}/files" class="chip chip-link">파일 →</a>
+      <a href="/projects/${esc(p.id)}/git" class="chip chip-link">git →</a>
       <form method="post" action="/projects/${esc(p.id)}/console/new" style="display:inline"
             onsubmit="return confirm('현재 세션을 종료하고 새 대화를 시작할까요?')">
-        <button type="submit" class="danger">새 세션 시작</button>
+        <button type="submit" class="chip chip-danger">새 세션</button>
       </form>
     </div>
+  </div>
+  <div class="chip-row" style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+    <small class="dim" style="margin-right:4px">슬래시:</small>
+    ${slashChip(p.id, "status", "/status")}
+    ${slashChip(p.id, "cost", "/cost")}
+    ${slashChip(p.id, "model", "/model")}
+    ${slashChip(p.id, "memory", "/memory")}
+    ${slashChip(p.id, "plan", "/plan")}
+    ${slashChip(p.id, "compact", "/compact")}
+    ${slashChip(p.id, "clear", "/clear", danger = true)}
   </div>
 </div>
 
@@ -433,6 +464,170 @@ $errHtml
   </thead>
   <tbody>$rowsHtml</tbody>
 </table>
+"""
+        )
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // /projects/{id}/files — 업로드된 파일 관리
+    // ────────────────────────────────────────────────────────────────────
+
+    fun filesPage(
+        username: String,
+        p: ProjectDto,
+        files: List<FileEntryDto>,
+        flashErr: String? = null,
+        flashOk: String? = null,
+    ): String {
+        val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
+        val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
+
+        val rowsHtml = if (files.isEmpty()) {
+            """<tr><td colspan="5" class="dim">업로드된 파일이 없습니다.</td></tr>"""
+        } else {
+            files.joinToString("\n") { f ->
+                val sizeKb = (f.sizeBytes + 512L) / 1024L
+                """<tr>
+                    <td>${esc(f.originalName)}</td>
+                    <td><span class="dim">${esc(f.mimeType ?: "-")}</span></td>
+                    <td>${sizeKb}KB</td>
+                    <td>${esc(f.createdAt)}</td>
+                    <td style="display:flex;gap:6px">
+                      <a href="/projects/${esc(p.id)}/files/${esc(f.id)}/download" class="chip chip-link">다운로드</a>
+                      <form method="post" action="/projects/${esc(p.id)}/files/${esc(f.id)}/delete" style="display:inline"
+                            onsubmit="return confirm('정말 삭제하시겠습니까?')">
+                        <button type="submit" class="chip chip-danger">삭제</button>
+                      </form>
+                    </td>
+                  </tr>"""
+            }
+        }
+
+        return AdminTemplates.shell(
+            title = "${esc(p.name)} · 파일",
+            username = username,
+            currentPath = "/projects",
+            body = """
+<header>
+  <h1>파일
+    <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
+  </h1>
+</header>
+$okHtml
+$errHtml
+
+<div class="card" style="margin-bottom:16px">
+  <h2>파일 업로드</h2>
+  <form method="post" action="/projects/${esc(p.id)}/files/upload" enctype="multipart/form-data">
+    <input type="file" name="file" required>
+    <button type="submit" class="primary" style="width:auto;padding:8px 16px;margin-left:8px">업로드</button>
+  </form>
+  <p class="hint">업로드된 파일은 <code>&lt;workspace&gt;/.vibecoder/&lt;projectId&gt;/uploads/YYYYMMDD/</code> 에 저장됩니다.
+  확장자 블랙리스트 (<code>exe/bat/cmd/ps1/sh</code>) 와 최대 크기는 <code>server.yml</code> 에서 관리.</p>
+</div>
+
+<table class="devices">
+  <thead>
+    <tr><th>이름</th><th>MIME</th><th>크기</th><th>업로드</th><th></th></tr>
+  </thead>
+  <tbody>$rowsHtml</tbody>
+</table>
+
+<p class="hint" style="margin-top:16px">
+  <a href="/projects/${esc(p.id)}" class="chip chip-link">← 프로젝트로</a>
+  <a href="/projects/${esc(p.id)}/console" class="chip chip-link">콘솔로</a>
+</p>
+"""
+        )
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // /projects/{id}/git — 읽기 전용 git status / diff / log
+    // ────────────────────────────────────────────────────────────────────
+
+    fun gitPage(
+        username: String,
+        p: ProjectDto,
+        status: GitStatusDto?,
+        diff: GitDiffDto?,
+        log: GitLogDto?,
+        unavailable: Boolean,
+    ): String {
+        val unavailableHtml = if (unavailable) {
+            """<div class="error">이 프로젝트 폴더는 git repository 가 아니거나 git CLI 실행이 실패했습니다.
+            Claude 에게 "git 초기화해줘" 같은 프롬프트를 보내거나, 컨테이너 안에서 직접 <code>git init</code> 하세요.</div>"""
+        } else ""
+
+        val statusHtml = if (status == null) "" else {
+            val entries = if (status.entries.isEmpty()) {
+                """<p class="dim">clean — 변경 사항 없음.</p>"""
+            } else {
+                val rows = status.entries.joinToString("\n") { e ->
+                    """<tr><td><code>${esc(e.status)}</code></td><td>${esc(e.path)}</td></tr>"""
+                }
+                """<table class="devices"><thead><tr><th>상태</th><th>경로</th></tr></thead><tbody>$rows</tbody></table>"""
+            }
+            """<div class="card">
+              <h2>status</h2>
+              <p><strong>branch:</strong> <code>${esc(status.branch)}</code>
+                · <span class="dim">ahead</span> ${status.ahead}
+                · <span class="dim">behind</span> ${status.behind}</p>
+              $entries
+            </div>"""
+        }
+
+        val diffHtml = if (diff == null) "" else {
+            val body = if (diff.diff.isBlank()) {
+                """<p class="dim">no diff</p>"""
+            } else {
+                """<pre class="diff-block">${esc(diff.diff.take(20_000))}</pre>"""
+            }
+            """<div class="card">
+              <h2>diff</h2>
+              $body
+              ${if (diff.diff.length > 20_000) """<p class="hint">${diff.diff.length - 20_000} 바이트 더 있음 (UI에서 잘림)</p>""" else ""}
+            </div>"""
+        }
+
+        val logHtml = if (log == null) "" else {
+            val rows = if (log.entries.isEmpty()) {
+                """<tr><td colspan="2" class="dim">no commits yet</td></tr>"""
+            } else {
+                log.entries.joinToString("\n") { e ->
+                    """<tr><td><code>${esc(e.sha.take(8))}</code></td><td>${esc(e.message)}</td></tr>"""
+                }
+            }
+            """<div class="card">
+              <h2>log (recent 10)</h2>
+              <table class="devices"><thead><tr><th>sha</th><th>message</th></tr></thead><tbody>$rows</tbody></table>
+            </div>"""
+        }
+
+        return AdminTemplates.shell(
+            title = "${esc(p.name)} · git",
+            username = username,
+            currentPath = "/projects",
+            body = """
+<header>
+  <h1>git
+    <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
+  </h1>
+</header>
+
+$unavailableHtml
+
+<section style="display:grid;gap:16px">
+  $statusHtml
+  $diffHtml
+  $logHtml
+</section>
+
+<p class="hint" style="margin-top:16px">
+  <a href="/projects/${esc(p.id)}" class="chip chip-link">← 프로젝트로</a>
+  <a href="/projects/${esc(p.id)}/console" class="chip chip-link">콘솔로</a>
+</p>
+<p class="hint">읽기 전용입니다. <code>git push</code> / <code>git reset --hard</code> 등 쓰기 작업은
+브라우저에서 노출하지 않습니다 (CLAUDE.md §3 보안). 콘솔에서 Claude 에게 부탁하세요.</p>
 """
         )
     }
