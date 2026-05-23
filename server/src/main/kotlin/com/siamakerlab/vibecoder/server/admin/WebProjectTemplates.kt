@@ -397,11 +397,9 @@ $authBannerHtml
     ws = new WebSocket(proto + '//' + location.host + '/ws/projects/' + projectId + '/console/logs');
 
     ws.onopen = function() {
-      append('sys', 'ws', 'connected; sending auth');
-      // 인증: WS 첫 프레임으로 {type:"auth", token} 전송. 서버는 쿠키도 토큰 운반체로
-      // 받아들이므로 같은 vibe_session 쿠키 값을 그대로 사용.
-      var token = (document.cookie.match(/(?:^| )vibe_session=([^;]+)/) || [])[1] || '';
-      ws.send(JSON.stringify({type: 'auth', token: token}));
+      append('sys', 'ws', 'connected');
+      // 인증은 WS handshake 의 cookie 헤더로 처리 (vibe_session 은 httpOnly 이므로
+      // JS 가 읽지 못함 — XSS 방어). 서버가 handshake 시점에 cookie 에서 토큰을 추출.
     };
 
     ws.onmessage = function(ev) {
@@ -681,8 +679,7 @@ ${if (attachWs) """
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     var ws = new WebSocket(proto + '//' + location.host + '/ws/projects/' + projectId + '/builds/' + buildId + '/logs');
     ws.onopen = function() {
-      var token = (document.cookie.match(/(?:^| )vibe_session=([^;]+)/) || [])[1] || '';
-      ws.send(JSON.stringify({type: 'auth', token: token}));
+      // 인증은 WS handshake cookie 로 처리 (vibe_session 은 httpOnly).
       append('sys', 'ws', 'connected');
     };
     ws.onmessage = function(ev) {

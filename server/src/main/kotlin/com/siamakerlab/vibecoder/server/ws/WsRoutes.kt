@@ -2,6 +2,7 @@ package com.siamakerlab.vibecoder.server.ws
 
 import com.siamakerlab.vibecoder.server.actions.ProjectActionRegistry
 import com.siamakerlab.vibecoder.server.actions.ServerActionHandler
+import com.siamakerlab.vibecoder.server.auth.SESSION_COOKIE
 import com.siamakerlab.vibecoder.server.auth.TokenService
 import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
 import com.siamakerlab.vibecoder.server.repo.DeviceRepository
@@ -64,37 +65,65 @@ fun Routing.wsRoutes(
 private suspend fun WebSocketServerSession.authenticateFirstFrame(
     deviceRepo: DeviceRepository,
     tokens: TokenService,
-): Boolean = try {
-    withTimeout(5_000) {
-        val firstRaw = (incoming.receive() as? Frame.Text)?.readText()
-        if (firstRaw == null) {
-            sendFrame(WsFrame.Error("auth_required", "first frame must be Auth (text)"))
-            close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "auth_required"))
-            return@withTimeout false
+): Boolean {
+    // Path 1 — WebSocket handshake 의 cookie 헤더에서 vibe_session 시도.
+    //
+    // 웹 클라이언트는 SESSION_COOKIE 를 httpOnly 로 받기 때문에 JavaScript 에서
+    // document.cookie 로 읽을 수 없다 (의도된 XSS 방어). 따라서 첫 Auth 프레임으로
+    // 토큰을 실어 보내는 건 브라우저에선 동작하지 않는다.
+    //
+    // 그러나 동일 origin WebSocket handshake 시 브라우저는 자동으로 쿠키를 첨부하므로,
+    // 서버가 그걸 직접 읽어 인증하면 브라우저는 토큰을 알 필요가 없다.
+    //
+    // 안드로이드 앱은 쿠키가 없어 이 경로를 그냥 통과 → 기존 첫 Auth 프레임 인증으로 fallback.
+    val cookieToken = call.request.cookies[SESSION_COOKIE]
+    if (!cookieToken.isNullOrBlank()) {
+        val device = deviceRepo.findByTokenHash(tokens.hashOf(cookieToken))
+        if (device != null) {
+            deviceRepo.touchLastSeen(device.id)
+            return true
         }
-        val first = runCatching { wsJson.decodeFromString(WsFrame.serializer(), firstRaw) }
-            .getOrNull()
-        if (first !is WsFrame.Auth) {
-            sendFrame(WsFrame.Error("auth_required", "first frame must be Auth"))
-            close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "auth_required"))
-            return@withTimeout false
-        }
-        val device = deviceRepo.findByTokenHash(tokens.hashOf(first.token))
-        if (device == null) {
-            sendFrame(WsFrame.Error("invalid_token", "bearer token not recognized"))
+        // 쿠키는 보내왔지만 hash 가 안 맞음 → 즉시 invalid_token 으로 끊음.
+        runCatching {
+            sendFrame(WsFrame.Error("invalid_token", "session cookie not recognized"))
             close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "invalid_token"))
-            return@withTimeout false
         }
-        deviceRepo.touchLastSeen(device.id)
-        true
+        return false
     }
-} catch (_: TimeoutCancellationException) {
-    runCatching { close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "auth_timeout")) }
-    false
-} catch (e: Throwable) {
-    log.debug { "ws auth failed: ${e.message}" }
-    runCatching { close(CloseReason(CloseReason.Codes.INTERNAL_ERROR, "auth_failed")) }
-    false
+
+    // Path 2 — 안드로이드 앱 등 쿠키가 없는 클라이언트: 첫 텍스트 프레임이 WsFrame.Auth.
+    return try {
+        withTimeout(5_000) {
+            val firstRaw = (incoming.receive() as? Frame.Text)?.readText()
+            if (firstRaw == null) {
+                sendFrame(WsFrame.Error("auth_required", "first frame must be Auth (text)"))
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "auth_required"))
+                return@withTimeout false
+            }
+            val first = runCatching { wsJson.decodeFromString(WsFrame.serializer(), firstRaw) }
+                .getOrNull()
+            if (first !is WsFrame.Auth) {
+                sendFrame(WsFrame.Error("auth_required", "first frame must be Auth"))
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "auth_required"))
+                return@withTimeout false
+            }
+            val device = deviceRepo.findByTokenHash(tokens.hashOf(first.token))
+            if (device == null) {
+                sendFrame(WsFrame.Error("invalid_token", "bearer token not recognized"))
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "invalid_token"))
+                return@withTimeout false
+            }
+            deviceRepo.touchLastSeen(device.id)
+            true
+        }
+    } catch (_: TimeoutCancellationException) {
+        runCatching { close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "auth_timeout")) }
+        false
+    } catch (e: Throwable) {
+        log.debug { "ws auth failed: ${e.message}" }
+        runCatching { close(CloseReason(CloseReason.Codes.INTERNAL_ERROR, "auth_failed")) }
+        false
+    }
 }
 
 private suspend fun WebSocketServerSession.handleLegacyLogStream(
