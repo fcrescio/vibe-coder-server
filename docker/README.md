@@ -36,7 +36,7 @@ docker exec -it vibe-coder-server vibe-doctor
 
 | 레이어 | 내용 | 크기 |
 |---|---|---|
-| Ubuntu 22.04 (slim) | base | ~30MB |
+| Ubuntu 24.04 LTS (noble) | base | ~30MB |
 | OpenJDK 17 (JRE) | vibe-coder 서버 실행 | ~200MB |
 | Node 20 LTS + Claude Code CLI | Claude 자식 프로세스 | ~250MB |
 | git, curl, unzip, jq, tini, gosu 등 | 빌드 도구 최소셋 | ~80MB |

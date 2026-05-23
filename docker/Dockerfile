@@ -20,7 +20,7 @@
 # ------------------------------------------------------------------------------
 # Stage 1: 서버 빌드 (Gradle installDist)
 # ------------------------------------------------------------------------------
-FROM eclipse-temurin:17-jdk-jammy AS builder
+FROM eclipse-temurin:17-jdk-noble AS builder
 
 WORKDIR /src
 
@@ -43,7 +43,7 @@ RUN --mount=type=cache,target=/root/.gradle \
 # ------------------------------------------------------------------------------
 # Stage 2: 런타임 (슬림)
 # ------------------------------------------------------------------------------
-FROM eclipse-temurin:17-jre-jammy AS runtime
+FROM eclipse-temurin:17-jre-noble AS runtime
 
 LABEL org.opencontainers.image.title="Vibe Coder Server"
 LABEL org.opencontainers.image.description="Ktor 기반 vibe-coder 서버 (LAN 페어링 1인 개발 도구)"
@@ -89,7 +89,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 # entrypoint에서 호스트 UID에 맞춰 재조정한다. 여기는 기본값.
 ARG VIBE_UID=1000
 ARG VIBE_GID=1000
-RUN groupadd --gid ${VIBE_GID} vibe \
+# Ubuntu 24.04 (noble) base 부터 default `ubuntu` 사용자가 UID 1000 으로
+# 사전 생성되어 있어 충돌. 먼저 제거 후 vibe 생성. (조용히 실패 허용 — 다른
+# base 에선 ubuntu 사용자가 없을 수 있음)
+RUN userdel -r ubuntu 2>/dev/null || true \
+    && groupdel ubuntu 2>/dev/null || true \
+    && groupadd --gid ${VIBE_GID} vibe \
     && useradd --uid ${VIBE_UID} --gid ${VIBE_GID} --create-home --shell /bin/bash vibe \
     && mkdir -p \
         /opt/android-sdk \

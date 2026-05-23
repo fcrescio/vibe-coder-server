@@ -43,7 +43,7 @@ Then sign in from the Android console app using the same server URL and username
 
 | Layer | Contents | Size |
 |---|---|---|
-| Ubuntu 22.04 (slim) | base | ~30MB |
+| Ubuntu 24.04 LTS (noble) | base | ~30MB |
 | OpenJDK 17 (JRE) | runs the vibe-coder server | ~200MB |
 | Node 20 LTS + Claude Code CLI | Claude child process | ~250MB |
 | git, curl, unzip, jq, tini, gosu, etc. | minimal build tooling | ~80MB |
