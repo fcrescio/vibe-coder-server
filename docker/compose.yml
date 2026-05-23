@@ -52,7 +52,7 @@ services:
       dockerfile: docker/Dockerfile
 
     # Docker Hub 배포 사용자는 위 build: 블록 대신 image: 만 사용
-    image: ${VIBECODER_IMAGE:-siamakerlab/vibe-coder-server:0.14.0}
+    image: ${VIBECODER_IMAGE:-siamakerlab/vibe-coder-server:latest}
 
     container_name: vibe-coder-server
     restart: unless-stopped

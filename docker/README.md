@@ -8,7 +8,7 @@
 
 ```bash
 # 1) 이미지 받기 (또는 로컬 빌드)
-docker pull siamakerlab/vibe-coder-server:0.14.0
+docker pull siamakerlab/vibe-coder-server:latest
 docker pull postgres:17-alpine    # v0.14.0+ 신규 의존
 
 # 2) compose 파일과 .env 복사
@@ -66,7 +66,7 @@ docker exec -it vibe-coder-server vibe-doctor
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
-| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:0.14.0` | pull 할 이미지 태그 |
+| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:latest` | pull 할 이미지 태그. 재현 가능성을 우선하면 특정 `0.x.y` 핀 |
 | `VIBECODER_POSTGRES_IMAGE` | `postgres:17-alpine` | PG 컨테이너 이미지 (v0.14.0+) |
 | **`VIBECODER_DB_PASSWORD`** | (필수) | **반드시 강력한 값으로 변경.** 비면 compose 가 부팅 거절 |
 | `VIBECODER_DB_HOST` | `postgres` | DB 호스트. 외부 PG 인스턴스면 host:port 로 |

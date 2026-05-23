@@ -83,7 +83,7 @@ docker compose up -d            # boots postgres + vibe-coder-server
 
 | Variable | Default | Description |
 |---|---|---|
-| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:0.14.0` | Image tag to pull |
+| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:latest` | Image tag to pull (pin to a specific `0.x.y` for reproducibility) |
 | `VIBECODER_POSTGRES_IMAGE` | `postgres:17-alpine` | PG sidecar image (v0.14.0+) |
 | **`VIBECODER_DB_PASSWORD`** | (required) | **Must be set.** compose refuses to start with empty value |
 | `VIBECODER_DB_HOST` | `postgres` | DB host. Use `host:port` for an external PG |
@@ -126,15 +126,27 @@ ${VIBE_DATA_ROOT}/                          container
 
 ### Backup / migrate
 
+Stop the containers (especially `postgres`) before snapshotting to guarantee
+file consistency.
+
 ```bash
+# Snapshot everything (workspace + PostgreSQL data + dev-tools + Claude auth)
 docker compose stop
 tar czf vibe-coder-data-$(date +%F).tar.gz vibe-coder-data/
 docker compose start
+
+# Or: PostgreSQL logical dump while the server keeps running
+docker exec vibe-coder-postgres pg_dump -U vibecoder -F c vibecoder > vibe-pg-$(date +%F).pgdump
 
 # On another machine
 scp vibe-coder-data-*.tar.gz user@newhost:~/vibe-coder/
 ssh user@newhost 'cd ~/vibe-coder && tar xzf vibe-coder-data-*.tar.gz && docker compose up -d'
 ```
+
+`vibe-coder-data/postgres/` is owned by the `postgres` user inside the
+container (UID 70 in alpine images). On the host you may need `sudo` to read
+files directly. Either use `tar` with sudo, or do logical `pg_dump` against
+the running container.
 
 ## Web UI routes (v0.10.0)
 

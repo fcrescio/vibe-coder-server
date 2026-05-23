@@ -88,7 +88,7 @@ services:
       start_period: 20s
 
   vibe-coder-server:
-    image: siamakerlab/vibe-coder-server:0.14.0
+    image: siamakerlab/vibe-coder-server:latest
     container_name: vibe-coder-server
     restart: unless-stopped
     depends_on:
