@@ -2,7 +2,7 @@ server:
   name: Vibe Coder Server
   host: 0.0.0.0
   port: 17880
-  version: 0.11.0
+  version: 0.12.0
 
 workspace:
   # Each project lives at <root>/<projectId>/.
@@ -36,3 +36,19 @@ build:
 git:
   enabled: true
   path: auto
+
+# CORS 정책 (v0.12.0+).
+# `*` 가 포함되면 anyHost — LAN 격리 환경 기본값. 외부 origin 노출 시엔
+# 신뢰 origin 만 명시 (CSRF 보호). compose.yml 의 VIBECODER_CORS_ALLOWED_HOSTS
+# env (콤마 구분) 가 있으면 server.yml 보다 우선.
+#
+# 형식 예:
+#   "*"                            anyHost (모든 origin 허용)
+#   "example.com"                  http + https 둘 다 허용
+#   "https://example.com"          https 만
+#   "http://example.com:8080"      포트 명시
+#   "*.example.com"                wildcard subdomain
+cors:
+  allowedHosts:
+    - "*"
+  allowCredentials: false

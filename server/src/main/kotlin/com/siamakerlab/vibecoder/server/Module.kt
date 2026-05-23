@@ -6,6 +6,7 @@ import com.siamakerlab.vibecoder.server.actions.ServerActionHandler
 import com.siamakerlab.vibecoder.server.actions.projectActionRoutes
 import com.siamakerlab.vibecoder.server.admin.AdminRoutesDeps
 import com.siamakerlab.vibecoder.server.admin.adminRoutes
+import com.siamakerlab.vibecoder.server.admin.corsSettingsRoutes
 import com.siamakerlab.vibecoder.server.admin.envSetupRoutes
 import com.siamakerlab.vibecoder.server.admin.gitIntegrationsRoutes
 import com.siamakerlab.vibecoder.server.admin.mcpRoutes
@@ -119,7 +120,20 @@ fun Application.module(ctx: ServerContext) {
     install(IgnoreTrailingSlash) // accept `/api/path` and `/api/path/` as the same route
     install(ContentNegotiation) { json(jsonCfg) }
     install(CORS) {
-        anyHost()
+        // v0.12.0 — config 기반 host 허용. `*` 포함 시 anyHost (LAN 기본).
+        // 외부 노출 시엔 신뢰 origin 만 명시 (CSRF 보호).
+        val hosts = ctx.config.cors.allowedHosts
+        if (hosts.contains("*")) {
+            anyHost()
+        } else {
+            hosts.forEach { entry ->
+                val (host, schemes) = parseCorsHostEntry(entry)
+                allowHost(host, schemes = schemes)
+            }
+        }
+        if (ctx.config.cors.allowCredentials) {
+            allowCredentials = true
+        }
         allowHeader(io.ktor.http.HttpHeaders.Authorization)
         allowHeader(io.ktor.http.HttpHeaders.ContentType)
         allowMethod(io.ktor.http.HttpMethod.Get)
@@ -173,6 +187,7 @@ fun Application.module(ctx: ServerContext) {
         envSetupRoutes(adminDeps, ctx.envSetup, ctx.claudeAuth, ctx.claudeLogin)
         mcpRoutes(adminDeps, ctx.mcp)
         gitIntegrationsRoutes(adminDeps, ctx.gitCredentials, ctx.gitClone, ctx.clock)
+        corsSettingsRoutes(adminDeps)
         // v0.10.0 — admin SSR 라우트들의 JSON API 이중 노출 (vibe-coder-android wire)
         envSetupApiRoutes(
             envSetup = ctx.envSetup,
@@ -205,5 +220,28 @@ fun Application.module(ctx: ServerContext) {
         fileRoutes(ctx.uploads)
         wsRoutes(ctx.hub, ctx.deviceRepo, ctx.tokens, ctx.sessionManager,
             ctx.actionRegistry, ctx.actionHandler)
+    }
+}
+
+/**
+ * v0.12.0 — CORS allowed host 문자열 파싱.
+ *
+ * 입력 패턴 (모두 지원):
+ *   `example.com`              → host="example.com", schemes=["http", "https"]
+ *   `https://example.com`      → host="example.com", schemes=["https"]
+ *   `http://example.com:8080`  → host="example.com:8080", schemes=["http"]
+ *   `*.example.com`            → host="*.example.com", schemes=["http", "https"]
+ *
+ * 포트는 host 의 일부로 그대로 통과 (Ktor allowHost 가 지원).
+ */
+internal fun parseCorsHostEntry(entry: String): Pair<String, List<String>> {
+    val trimmed = entry.trim()
+    return when {
+        trimmed.startsWith("https://") ->
+            trimmed.removePrefix("https://").trimEnd('/') to listOf("https")
+        trimmed.startsWith("http://") ->
+            trimmed.removePrefix("http://").trimEnd('/') to listOf("http")
+        else ->
+            trimmed.trimEnd('/') to listOf("http", "https")
     }
 }

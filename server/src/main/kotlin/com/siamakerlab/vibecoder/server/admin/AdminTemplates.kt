@@ -36,6 +36,7 @@ object AdminTemplates {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${esc(title)} · Vibe Coder</title>
+  <link rel="icon" type="image/png" href="/static/icon.png">
   <link rel="stylesheet" href="/static/admin.css">
 </head>
 <body>
@@ -62,7 +63,11 @@ object AdminTemplates {
         }
         return """
 <nav class="sidebar">
-  <div class="brand">Vibe Coder</div>
+  <div class="brand" style="display:flex;align-items:center;gap:10px">
+    <img src="/static/icon.png" alt=""
+         style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0">
+    <span>Vibe Coder</span>
+  </div>
   <div class="nav-links">
     ${link("/", "대시보드", "dashboard")}
     ${link("/projects", "프로젝트", "projects")}

@@ -36,8 +36,24 @@ object ConfigLoader {
     }
 
     private fun applyEnvironmentOverrides(cfg: ServerConfig): ServerConfig {
-        val workspaceRoot = System.getenv("VIBECODER_WORKSPACE_ROOT")
-        return if (workspaceRoot.isNullOrBlank()) cfg
-        else cfg.copy(workspace = cfg.workspace.copy(root = workspaceRoot))
+        var current = cfg
+
+        // workspace root
+        System.getenv("VIBECODER_WORKSPACE_ROOT")?.takeIf { it.isNotBlank() }?.let {
+            current = current.copy(workspace = current.workspace.copy(root = it))
+        }
+
+        // v0.12.0 — CORS allowed hosts (콤마 구분)
+        System.getenv("VIBECODER_CORS_ALLOWED_HOSTS")?.takeIf { it.isNotBlank() }?.let { raw ->
+            val hosts = raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            if (hosts.isNotEmpty()) {
+                current = current.copy(cors = current.cors.copy(allowedHosts = hosts))
+            }
+        }
+        System.getenv("VIBECODER_CORS_ALLOW_CREDENTIALS")?.takeIf { it.isNotBlank() }?.let {
+            current = current.copy(cors = current.cors.copy(allowCredentials = it.equals("true", true)))
+        }
+
+        return current
     }
 }

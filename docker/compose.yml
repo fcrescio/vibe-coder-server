@@ -38,6 +38,11 @@ services:
       VIBECODER_ADMIN_USERNAME: ${VIBECODER_ADMIN_USERNAME:-}
       VIBECODER_ADMIN_PASSWORD: ${VIBECODER_ADMIN_PASSWORD:-}
 
+      # CORS 허용 host (v0.12.0+) — 콤마 구분. 기본 `*` = anyHost.
+      # 외부 origin 노출 시엔 신뢰 origin 만 명시 (예: "https://my-app.example.com").
+      VIBECODER_CORS_ALLOWED_HOSTS: ${VIBECODER_CORS_ALLOWED_HOSTS:-*}
+      VIBECODER_CORS_ALLOW_CREDENTIALS: ${VIBECODER_CORS_ALLOW_CREDENTIALS:-false}
+
     # LAN 페어링 / admin 웹 / API 모두 같은 포트
     ports:
       - "${VIBE_PORT:-17880}:17880"
