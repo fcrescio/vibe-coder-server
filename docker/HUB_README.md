@@ -9,7 +9,7 @@
 - **Source repository**: <https://github.com/siamakerlab/vibe-coder>
 - **Issue tracker**: <https://github.com/siamakerlab/vibe-coder/issues>
 - **Supported architectures**: `linux/amd64`, `linux/arm64`
-- **Supported tags**: `0.6.3`, `latest`
+- **Supported tags**: `0.7.0`, `latest`
 - **Image size**: ~600MB (Android SDK and Gradle cache are downloaded into volumes separately)
 - **License**: see LICENSE in the source repository
 
@@ -17,7 +17,7 @@
 
 ```bash
 # 1) Pull the image
-docker pull siamakerlab/vibe-coder-server:0.6.3
+docker pull siamakerlab/vibe-coder-server:0.7.0
 
 # 2) Grab the compose file and .env template
 mkdir -p ~/vibe-coder && cd ~/vibe-coder
@@ -65,30 +65,40 @@ Copy `.env.example` to `.env`. Key variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:0.6.3` | Image tag to pull |
+| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:0.7.0` | Image tag to pull |
 | `PUID` / `PGID` | `1000` / `1000` | Match the host UID/GID. Use `id -u` / `id -g` to find them |
 | `VIBE_PORT` | `17880` | Host port to expose |
-| `VIBE_WORKSPACE` | `./workspace` | Source / build-artifact directory |
-| `VIBE_DATA` | `./vibe-data` | Server metadata (SQLite, etc.) |
-| `VIBE_CLAUDE_DIR` | `~/.claude` | Claude auth directory (sharing the host copy is recommended) |
+| `VIBE_DATA_ROOT` | `./vibe-coder-data` | **Unified host directory** holding workspace + server data + dev-tools + Claude auth |
+| `VIBE_CLAUDE_DIR` | `${VIBE_DATA_ROOT}/claude` | Override to `~/.claude` to share host auth |
 | `VIBECODER_ADMIN_USERNAME` | (unset) | Auto-creates an admin on first boot |
 | `VIBECODER_ADMIN_PASSWORD` | (unset) | Paired with the above. Change immediately after boot |
 | `JAVA_OPTS` | `-Xmx2g …` | JVM heap. Tune to your host RAM |
 
-### Volume Mount Layout
+### Volume Layout (v0.7.0 — unified)
+
+All persistent data sits inside **one host directory** (`./vibe-coder-data`).
+Back it up, copy it to another machine, or upgrade the image — nothing is lost.
 
 ```
-host                              container
-────                              ─────────
-${VIBE_WORKSPACE}              →  /workspace          (source / APKs)
-${VIBE_DATA}                   →  /data               (DB / logs)
-${VIBE_CLAUDE_DIR}             →  /home/vibe/.claude  (auth)
-named: vibe-android-sdk        →  /opt/android-sdk    (SDK)
-named: vibe-gradle-cache       →  /home/vibe/.gradle  (dependency cache)
+${VIBE_DATA_ROOT}/                          container
+─────────────────                           ─────────
+├── workspace/                  →  /workspace
+├── server/                     →  /data                              (SQLite/logs)
+├── dev-tools/
+│   ├── android-sdk/            →  /opt/android-sdk                   (3-4GB)
+│   ├── gradle/                 →  /home/vibe/.gradle                 (1-2GB)
+│   ├── npm-global/             →  /home/vibe/.local                  (MCP `npm -g`)
+│   ├── npm-cache/              →  /home/vibe/.npm                    (npx cache)
+│   ├── playwright/             →  /home/vibe/.cache/ms-playwright    (optional)
+│   └── config/                 →  /home/vibe/.config                 (tool config)
+└── claude/                     →  /home/vibe/.claude                 (OAuth/MCP)
 ```
 
-Host bind mounts let your IDE/editor reach the files directly; named volumes are managed
-by Docker and survive container removal.
+> **v0.7.0 fixes a data-loss bug**: pre-0.7.0 installs stored MCP servers in
+> the image's system directory (`/usr/local/lib/node_modules`), so they
+> vanished on `docker compose pull && up -d`. v0.7.0 routes them to a bind
+> mount under `dev-tools/npm-global/`. Existing users — see the
+> "v0.7.0 Migration" section in the full README.
 
 ---
 

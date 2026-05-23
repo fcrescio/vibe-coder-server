@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.env.ClaudeLoginService
 import com.siamakerlab.vibecoder.server.env.ComponentState
 import com.siamakerlab.vibecoder.server.env.ComponentStatus
 import com.siamakerlab.vibecoder.server.env.SetupComponent
@@ -23,8 +24,9 @@ object EnvSetupTemplates {
             .replace("\"", "&quot;")
             .replace("'", "&#39;")
 
-    fun envSetupPage(username: String, states: List<ComponentState>): String {
+    fun envSetupPage(username: String, states: List<ComponentState>, claudeFlash: String? = null): String {
         val cards = states.joinToString("\n") { renderCard(it) }
+        val flashHtml = claudeFlashBlurb(claudeFlash)
         return AdminTemplates.shell(
             title = "빌드환경",
             username = username,
@@ -39,6 +41,7 @@ object EnvSetupTemplates {
     </form>
   </div>
 </header>
+$flashHtml
 
 <div class="card" style="margin-bottom:16px">
   <h2>처음 사용하시나요?</h2>
@@ -114,14 +117,13 @@ docker compose up -d --force-recreate</pre>
                 if (status == ComponentStatus.INSTALLED) ""
                 else """<p class="hint" style="margin-top:8px">⚠ 이미지 내장 컴포넌트인데 진단 실패. 컨테이너 재기동 또는 이미지 재pull 을 시도하세요.</p>"""
 
-            // Claude 로그인 — OAuth 라 자동화 불가. 명령 안내만.
-            SetupComponent.CLAUDE_AUTH -> {
-                if (status == ComponentStatus.INSTALLED) ""
-                else """<details style="margin-top:8px" open><summary class="dim" style="cursor:pointer;font-size:12px">로그인 방법</summary>
-                  <pre class="diff-block" style="margin-top:6px">docker exec -it --user vibe vibe-coder claude login</pre>
-                  <p class="hint">OAuth 콜백을 위해 터미널에서 직접 실행해 주세요. 완료 후 이 페이지를 새로고침. (자동화 불가)</p>
-                </details>"""
-            }
+            // Claude 로그인 — 세 가지 경로 제공.
+            //  1) 터미널에서 직접 `claude login` (가장 표준).
+            //  2) 다른 머신에서 받은 .credentials.json 업로드 (web-only 환경 대응).
+            //  3) ANTHROPIC_API_KEY 등록 (OAuth 미사용 / API 키 사용자).
+            // v0.7.0 — terminal 접근 불가능한 운영 환경 (외부 호스팅 / 모바일) 에서도
+            // 100% 웹으로 인증 완료 가능. raw-shell UI 미사용 (CLAUDE.md §3 정책 준수).
+            SetupComponent.CLAUDE_AUTH -> renderClaudeAuthActions(status)
 
             // Android SDK — 원클릭 설치 + 진행 페이지.
             SetupComponent.ANDROID_SDK -> {
@@ -151,6 +153,219 @@ docker compose up -d --force-recreate</pre>
     }
 
     // ────────────────────────────────────────────────────────────────────
+    // v0.7.0 — Claude 로그인 카드 (3-옵션 + flash blurb)
+    // ────────────────────────────────────────────────────────────────────
+
+    /** /env-setup?claude=<...> redirect 후 표시되는 한 줄 알림. */
+    private fun claudeFlashBlurb(code: String?): String = when (code) {
+        "uploaded" -> blurb("ok", "✓ Claude 자격증명 파일이 등록되었습니다. 콘솔에서 즉시 사용할 수 있습니다.")
+        "api-key" -> blurb("ok", "✓ ANTHROPIC_API_KEY 가 등록되었습니다. 이후 모든 Claude 자식 프로세스가 자동 사용합니다.")
+        "api-key-deleted" -> blurb("warn", "API 키 모드가 해제되었습니다. OAuth 자격증명 모드로 돌아갑니다.")
+        else -> ""
+    }
+
+    private fun blurb(cls: String, text: String): String =
+        """<div class="card" style="margin-bottom:12px;background:rgba(105,219,124,0.08);border-color:var(--$cls)">
+        <p style="margin:0;color:var(--$cls)">${esc(text)}</p></div>"""
+
+    private fun renderClaudeAuthActions(status: ComponentStatus): String {
+        val statusHint = when (status) {
+            ComponentStatus.INSTALLED -> """<p class="hint" style="margin-top:8px">이미 인증되어 있습니다. 토큰을 교체하거나 인증 방식을 바꾸려면 아래를 사용하세요.</p>"""
+            else -> ""
+        }
+        return """
+$statusHint
+
+<div style="margin-top:10px;padding:10px;border:1px solid var(--ok);border-radius:6px;background:rgba(105,219,124,0.06)">
+  <strong style="color:var(--ok)">★ 옵션 0 — 웹에서 한 번에 로그인 (v0.7.0 신규)</strong>
+  <p class="hint" style="margin:6px 0 8px">브라우저만으로 OAuth 완료. 터미널/다른 머신 불요. 가장 빠릅니다.</p>
+  <a href="/env-setup/claude-login" class="primary chip" style="padding:8px 16px;display:inline-block">웹으로 로그인 →</a>
+</div>
+
+<details style="margin-top:10px"><summary class="dim" style="cursor:pointer;font-size:13px">옵션 1 — 컨테이너 터미널에서 직접 로그인 (표준)</summary>
+  <pre class="diff-block" style="margin-top:6px">docker exec -it --user vibe vibe-coder claude login</pre>
+  <p class="hint">한 번만 진행. refresh token 으로 access token 은 자동 갱신됩니다. 터미널 접근이 가능하면 가장 단순.</p>
+</details>
+
+<details style="margin-top:10px" ${if (status != ComponentStatus.INSTALLED) "open" else ""}>
+  <summary class="dim" style="cursor:pointer;font-size:13px">옵션 2 — 다른 머신에서 받은 <code>.credentials.json</code> 업로드</summary>
+  <p class="hint" style="margin-top:6px">먼저 터미널이 있는 머신(노트북/데스크톱) 에서 <code>claude login</code> 으로 인증을 완료한 뒤,
+  그 머신의 <code>~/.claude/.credentials.json</code> 을 아래에 업로드하세요. 컨테이너 터미널 접근이 불가능한 환경(원격 호스팅 / 모바일 운영)에서 사용.</p>
+  <form method="post" action="/env-setup/claude-auth/upload" enctype="multipart/form-data"
+        style="margin-top:8px;display:flex;flex-direction:column;gap:8px"
+        onsubmit="return confirm('업로드한 파일이 vibe 홈의 .credentials.json 을 덮어씁니다 (기존 파일은 자동 백업). 계속할까요?')">
+    <input type="file" name="credentials" accept=".json,application/json" required
+           style="font-size:13px">
+    <button type="submit" class="primary" style="width:auto;padding:8px 16px;align-self:flex-start">자격증명 업로드</button>
+  </form>
+  <p class="hint" style="font-size:11px;margin-top:6px">⚠ 자격증명은 토큰을 포함합니다. 신뢰할 수 있는 네트워크에서만 업로드하세요. 파일 권한은 0600 으로 설정됩니다.</p>
+</details>
+
+<details style="margin-top:10px">
+  <summary class="dim" style="cursor:pointer;font-size:13px">옵션 3 — <code>ANTHROPIC_API_KEY</code> 사용 (OAuth 미사용)</summary>
+  <p class="hint" style="margin-top:6px">Anthropic API 종량제 결제 사용자 또는 Pro/Max 구독을 OAuth 없이 쓰고 싶은 경우.
+  키는 <a href="https://console.anthropic.com/" target="_blank" rel="noreferrer">console.anthropic.com</a> 의 API Keys 에서 발급.
+  키 등록 즉시 모든 Claude 자식 프로세스가 이 키를 환경변수로 받아 동작합니다 (컨테이너 재기동 불필요).</p>
+  <form method="post" action="/env-setup/claude-auth/api-key"
+        style="margin-top:8px;display:flex;flex-direction:column;gap:8px"
+        onsubmit="return confirm('API 키를 vibe 홈의 .env.api-key 파일에 저장합니다. 등록 후엔 OAuth 자격증명보다 API 키가 우선합니다. 계속할까요?')">
+    <input type="password" name="apiKey" placeholder="sk-ant-..." required minlength="20" autocomplete="off"
+           style="font-size:13px;padding:6px 8px">
+    <button type="submit" class="primary" style="width:auto;padding:8px 16px;align-self:flex-start">API 키 등록</button>
+  </form>
+  <form method="post" action="/env-setup/claude-auth/api-key/delete"
+        style="margin-top:6px"
+        onsubmit="return confirm('API 키를 삭제하면 OAuth 자격증명 모드로 돌아갑니다. 계속할까요?')">
+    <button type="submit" style="width:auto;padding:6px 12px;font-size:12px">API 키 모드 해제</button>
+  </form>
+  <p class="hint" style="font-size:11px;margin-top:6px">⚠ API 키는 OAuth 와 빌링이 다릅니다 (Pro/Max 구독이 아니라 API 종량제). 본인의 결제 상황을 확인하세요.</p>
+</details>
+"""
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // v0.7.0 옵션 A — 반자동 웹 OAuth 진행 페이지 (/env-setup/claude-login)
+    // ────────────────────────────────────────────────────────────────────
+
+    /**
+     * Claude 웹 로그인 진행 페이지.
+     *
+     * 사용자에게 보이는 것은 단순 폼 3개 (시작 / URL 클릭 / 코드 입력). pty 는
+     * 서버 내부 디테일이며 브라우저에는 노출되지 않는다 (CLAUDE.md §3 정책 준수).
+     * 1초마다 `/env-setup/claude-login/status.json` 을 폴링해 상태를 갱신.
+     */
+    fun claudeLoginPage(username: String, state: ClaudeLoginService.SessionDto?): String {
+        val (statusText, statusCls) = stateLabel(state?.state)
+        val urlBlock = if (state?.url != null) {
+            """<div class="card" style="margin-top:12px;background:rgba(80,150,255,0.08)">
+              <strong>2. 아래 URL 을 새 탭에서 열어 인증하세요</strong>
+              <div style="margin:8px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <a href="${esc(state.url)}" target="_blank" rel="noreferrer" class="primary chip" style="padding:8px 14px">새 탭에서 열기 ↗</a>
+                <button type="button" class="chip" onclick="navigator.clipboard.writeText(${"'" + escJs(state.url) + "'"});this.textContent='✓ 복사됨';setTimeout(()=>this.textContent='URL 복사',2000)">URL 복사</button>
+              </div>
+              <pre class="diff-block" style="margin:0;font-size:11px;overflow-x:auto">${esc(state.url)}</pre>
+              <p class="hint" style="margin-top:8px">Anthropic 페이지에서 인증을 완료하면 화면 또는 콜백 URL 에서 <strong>authorization code</strong> 가 표시됩니다. 그 코드를 아래 폼에 paste 하세요.</p>
+            </div>"""
+        } else ""
+
+        val codeForm = if (state?.state == "AWAITING_CODE") {
+            """<div class="card" style="margin-top:12px;background:rgba(105,219,124,0.06);border-color:var(--ok)">
+              <strong>3. 받은 코드를 paste 후 제출</strong>
+              <form method="post" action="/env-setup/claude-login/submit"
+                    style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+                <input type="text" name="code" placeholder="여기에 authorization code 를 paste" required
+                       autocomplete="off" autocapitalize="off" spellcheck="false"
+                       style="font-size:13px;padding:8px;font-family:ui-monospace,Menlo,monospace">
+                <div style="display:flex;gap:8px">
+                  <button type="submit" class="primary" style="padding:8px 18px">제출</button>
+                  <button type="submit" formaction="/env-setup/claude-login/cancel" formmethod="post"
+                          formnovalidate style="padding:8px 14px">취소</button>
+                </div>
+              </form>
+            </div>"""
+        } else ""
+
+        val finalBlock = when (state?.state) {
+            "DONE" -> """<div class="card" style="margin-top:12px;background:rgba(105,219,124,0.10);border-color:var(--ok)">
+              <strong style="color:var(--ok)">✓ 로그인 완료</strong>
+              <p style="margin-top:6px">자격증명이 vibe 홈에 저장되었습니다. 콘솔에서 즉시 사용 가능합니다.</p>
+              <a href="/env-setup" class="chip primary" style="padding:8px 16px;margin-top:8px;display:inline-block">← 빌드환경으로</a>
+            </div>"""
+            "FAILED" -> """<div class="card" style="margin-top:12px;background:rgba(255,150,80,0.08);border-color:var(--warn)">
+              <strong style="color:var(--warn)">✗ 실패</strong>
+              <p style="margin-top:6px">${esc(state.errorMessage ?: "원인 미상")}</p>
+              <p class="hint" style="margin-top:8px">웹 로그인이 실패하면 옵션 B(자격증명 업로드) 또는 옵션 C(API 키)를 사용하세요. <a href="/env-setup">빌드환경으로 돌아가기</a>.</p>
+              <form method="post" action="/env-setup/claude-login/start" style="margin-top:8px">
+                <button type="submit" class="primary" style="padding:8px 14px">다시 시도</button>
+              </form>
+            </div>"""
+            "CANCELED" -> """<div class="card" style="margin-top:12px;background:rgba(160,160,160,0.05)">
+              <strong class="dim">취소됨</strong>
+              <form method="post" action="/env-setup/claude-login/start" style="margin-top:8px">
+                <button type="submit" class="primary" style="padding:8px 14px">새 세션 시작</button>
+              </form>
+            </div>"""
+            else -> ""
+        }
+
+        val startForm = if (state == null || state.state in listOf("DONE", "FAILED", "CANCELED")) {
+            """<form method="post" action="/env-setup/claude-login/start" style="margin-top:8px">
+              <button type="submit" class="primary" style="padding:10px 20px">▶ 1. 로그인 시작</button>
+            </form>"""
+        } else ""
+
+        val lastLinesBlock = if (!state?.lastLines.isNullOrEmpty()) {
+            val lines = state!!.lastLines.takeLast(8).joinToString("\n") { esc(it) }
+            """<details style="margin-top:12px"><summary class="dim" style="cursor:pointer;font-size:12px">자식 프로세스 출력 (디버그)</summary>
+              <pre class="diff-block" style="margin-top:6px;font-size:11px;max-height:160px;overflow:auto">$lines</pre>
+            </details>"""
+        } else ""
+
+        return AdminTemplates.shell(
+            title = "Claude 웹 로그인",
+            username = username,
+            currentPath = "/env-setup",
+            body = """
+<header>
+  <h1>Claude 웹 로그인 <small class="dim" style="font-size:14px;font-weight:400">v0.7.0 옵션 A · 반자동 OAuth</small></h1>
+</header>
+
+<div class="card" style="margin-bottom:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <div><strong>상태</strong> · <span id="state-chip" class="$statusCls">${esc(statusText)}</span></div>
+    <a href="/env-setup" class="chip chip-link">← 빌드환경</a>
+  </div>
+  <p class="hint" style="margin-top:8px">브라우저만으로 OAuth 인증을 완료합니다. 터미널 / 다른 머신 / 파일 업로드 모두 불요. 사용자가 임의 shell 명령을 칠 수 있는 UI 는 아니며, 정해진 OAuth 코드 한 줄 입력 폼입니다.</p>
+  $startForm
+</div>
+
+$urlBlock
+$codeForm
+$finalBlock
+$lastLinesBlock
+
+<script>
+(function() {
+  // 진행 상태가 변할 수 있을 때만 폴링 (DONE/FAILED/CANCELED 면 stop)
+  var initial = ${if (state == null) "null" else "\"${state.state}\""};
+  var terminal = ['DONE', 'FAILED', 'CANCELED'];
+  if (initial && terminal.indexOf(initial) >= 0) return;
+
+  var lastState = initial;
+  var timer = setInterval(function() {
+    fetch('/env-setup/claude-login/status.json', { credentials: 'same-origin' })
+      .then(function(r) { return r.json(); })
+      .then(function(s) {
+        if (s == null) { clearInterval(timer); return; }
+        // 상태 변경 시 페이지 reload (폼/카드 다시 그리기 위해)
+        if (s.state !== lastState) {
+          clearInterval(timer);
+          window.location.reload();
+        }
+      })
+      .catch(function() { /* 일시 오류 무시 */ });
+  }, 1000);
+})();
+</script>
+"""
+        )
+    }
+
+    private fun stateLabel(state: String?): Pair<String, String> = when (state) {
+        null, "IDLE" -> "● 대기" to "dim"
+        "STARTING" -> "● 시작 중 (URL 대기)" to "dim"
+        "AWAITING_CODE" -> "▶ 코드 입력 대기" to "ok"
+        "VERIFYING" -> "● 검증 중" to "warn"
+        "DONE" -> "✓ 완료" to "ok"
+        "FAILED" -> "✗ 실패" to "warn"
+        "CANCELED" -> "취소됨" to "dim"
+        else -> state to "dim"
+    }
+
+    private fun escJs(s: String): String =
+        s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
+
+    // ────────────────────────────────────────────────────────────────────
     // 진행 페이지 (/env-setup/tasks/{taskId})
     // ────────────────────────────────────────────────────────────────────
 
@@ -167,16 +382,14 @@ docker compose up -d --force-recreate</pre>
 
 <div class="card" style="margin-bottom:16px">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-    <div>
-      <strong>상태:</strong> <span id="job-status" class="dim">대기 중</span>
-      · <span id="job-lines" class="dim">0 줄</span>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center">
+      <span><strong>상태</strong> · <span id="job-status" class="dim">연결 중…</span></span>
+      <span><strong>경과</strong> · <span id="job-elapsed" style="font-variant-numeric:tabular-nums">00:00:00</span></span>
+      <span class="dim" style="font-size:12px"><span id="job-lines">0</span> 줄 · 마지막 활동 <span id="job-last">-</span></span>
     </div>
     <a href="/env-setup" class="chip chip-link">← 빌드환경</a>
   </div>
-  <div class="progress-bar" style="margin-top:12px">
-    <div id="progress-fill" class="progress-fill"></div>
-  </div>
-  <p class="hint" id="progress-hint" style="margin-top:8px">설치 작업의 정확한 종료 시점을 미리 알 수 없으므로 진행도는 라인 수 기반의 추정치입니다.</p>
+  <p class="hint" id="progress-hint" style="margin-top:10px">설치 시간은 작업/네트워크에 따라 5초~수십 분까지 다양합니다. Android SDK 첫 설치는 3~4GB 다운로드로 5~15분이 일반적.</p>
 </div>
 
 <div class="card">
@@ -190,14 +403,38 @@ docker compose up -d --force-recreate</pre>
   var logEl = document.getElementById('job-log');
   var statusEl = document.getElementById('job-status');
   var linesEl = document.getElementById('job-lines');
-  var progressEl = document.getElementById('progress-fill');
+  var elapsedEl = document.getElementById('job-elapsed');
+  var lastEl = document.getElementById('job-last');
   var hintEl = document.getElementById('progress-hint');
   var lineCount = 0;
+  var startedAt = Date.now();   // WS open 시점에 0 으로 리셋
+  var lastActivityAt = startedAt;
+  var finished = false;
+  var elapsedTimer = null;
 
   function escHtml(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function fmtDuration(ms) {
+    var s = Math.floor(ms / 1000);
+    var h = Math.floor(s / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    var sec = s % 60;
+    return pad2(h) + ':' + pad2(m) + ':' + pad2(sec);
+  }
+  function setStatus(text, cls) {
+    statusEl.textContent = text;
+    statusEl.className = cls || 'dim';
+  }
+  function tickElapsed() {
+    if (finished) return;
+    var now = Date.now();
+    elapsedEl.textContent = fmtDuration(now - startedAt);
+    var idleSec = Math.floor((now - lastActivityAt) / 1000);
+    lastEl.textContent = idleSec < 5 ? '방금' : (idleSec + '초 전');
   }
   function append(cls, label, body) {
     var atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 10;
@@ -207,10 +444,9 @@ docker compose up -d --force-recreate</pre>
     logEl.appendChild(row);
     if (atBottom) logEl.scrollTop = logEl.scrollHeight;
     lineCount += 1;
-    linesEl.textContent = lineCount + ' 줄';
-    // 라인 수 기반 progress: 1000 라인을 100% 로 보정 (saturating).
-    var pct = Math.min(100, Math.round(lineCount / 10));
-    progressEl.style.width = pct + '%';
+    linesEl.textContent = lineCount;
+    lastActivityAt = Date.now();
+    tickElapsed();
   }
   function classOfLevel(level) {
     if (level === 'ERROR' || level === 'STDERR') return 'err';
@@ -219,19 +455,28 @@ docker compose up -d --force-recreate</pre>
     if (level === 'INFO') return 'sys';
     return 'sys';
   }
+  function markFinished(ok, message) {
+    finished = true;
+    if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+    var total = fmtDuration(Date.now() - startedAt);
+    elapsedEl.textContent = total;
+    if (ok) {
+      setStatus('✓ 완료', 'ok');
+      hintEl.innerHTML = '✅ 완료 (총 ' + total + ') — <a href="/env-setup">빌드환경 페이지</a>로 돌아가 다음 단계를 확인하세요.';
+    } else {
+      setStatus('✗ 오류' + (message ? ' · ' + message : ''), 'warn');
+      hintEl.innerHTML = '✗ 실패 (총 ' + total + ') — 위 로그에서 원인을 확인한 뒤 다시 시도하세요.';
+    }
+    lastEl.textContent = '종료됨';
+  }
   function renderFrame(f) {
     if (f.type === 'log') {
       append(classOfLevel(f.level), f.level, f.message);
+      if (!finished) setStatus('▶ 진행 중', 'ok');
     } else if (f.type === 'done') {
       var ok = f.status === 'SUCCESS';
-      statusEl.textContent = f.status + (f.errorMessage ? ' · ' + f.errorMessage : '');
-      statusEl.className = ok ? 'ok' : 'warn';
-      progressEl.style.width = '100%';
-      progressEl.className = 'progress-fill ' + (ok ? 'done-ok' : 'done-fail');
-      hintEl.innerHTML = ok
-        ? '✅ 완료 — <a href="/env-setup">빌드환경 페이지</a>로 돌아가 다음 단계를 확인하세요.'
-        : '✗ 실패 — 위 로그에서 원인을 확인 후 다시 시도하세요.';
       append(ok ? 'sys' : 'err', 'done', f.status + (f.errorMessage ? ' · ' + f.errorMessage : ''));
+      markFinished(ok, f.errorMessage);
     } else if (f.type === 'error') {
       append('err', 'ws', (f.code || '') + ': ' + (f.message || ''));
     }
@@ -240,14 +485,25 @@ docker compose up -d --force-recreate</pre>
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     var ws = new WebSocket(proto + '//' + location.host + '/ws/env-setup/' + taskId + '/logs');
     ws.onopen = function() {
-      statusEl.textContent = '연결됨, 작업 대기 중…';
+      startedAt = Date.now();
+      lastActivityAt = startedAt;
+      setStatus('● 연결됨, 작업 시작 대기 중…', 'dim');
       append('sys', 'ws', 'connected');
+      elapsedTimer = setInterval(tickElapsed, 1000);
+      tickElapsed();
     };
     ws.onmessage = function(ev) {
       try { renderFrame(JSON.parse(ev.data)); }
       catch (e) { append('err', 'parse', String(e)); }
     };
-    ws.onclose = function(ev) { append('sys', 'ws', 'closed (' + ev.code + ')'); };
+    ws.onclose = function(ev) {
+      append('sys', 'ws', 'closed (' + ev.code + ')');
+      if (!finished) {
+        // 서버가 done 을 보내기 전에 끊긴 경우 — 알 수 없음으로 표시.
+        setStatus('● 연결 끊김 (재기동 또는 네트워크)', 'warn');
+        if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+      }
+    };
     ws.onerror = function() { append('err', 'ws', 'error'); };
   }
   connect();

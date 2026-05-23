@@ -17,6 +17,8 @@ import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.SystemClock
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.db.VibeDb
+import com.siamakerlab.vibecoder.server.env.ClaudeAuthService
+import com.siamakerlab.vibecoder.server.env.ClaudeLoginService
 import com.siamakerlab.vibecoder.server.env.EnvDiagnostics
 import com.siamakerlab.vibecoder.server.env.EnvSetupService
 import com.siamakerlab.vibecoder.server.env.StatusService
@@ -142,6 +144,8 @@ fun main(args: Array<String>) {
     val uploads = UploadService(config, workspace, uploadedRepo, clock)
     val env = EnvDiagnostics(config)
     val envSetup = EnvSetupService(config, queue, hub, clock)
+    val claudeAuth = ClaudeAuthService(clock)
+    val claudeLogin = ClaudeLoginService(clock, claudeAuth)
     val status = StatusService(config, projectRepo, buildRepo, env)
     val actionRegistry = ProjectActionRegistry(workspace)
     val actionHandler = ServerActionHandler(projects, build, git, hub, sessionManager)
@@ -173,6 +177,8 @@ fun main(args: Array<String>) {
         status = status,
         env = env,
         envSetup = envSetup,
+        claudeAuth = claudeAuth,
+        claudeLogin = claudeLogin,
         actionRegistry = actionRegistry,
         actionHandler = actionHandler,
         capabilityService = capabilityService,

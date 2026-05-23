@@ -66,10 +66,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         tini \
         tzdata \
         unzip \
+        util-linux \
         wget \
         xz-utils \
         zip \
     && rm -rf /var/lib/apt/lists/*
+# util-linux 는 `script` 명령(pty wrapping) 을 제공 — v0.7.0 옵션 A (Claude
+# 반자동 웹 OAuth) 가 `claude auth login` TUI 를 spawn 할 때 필수.
 
 # ---- Node.js 20 LTS + Claude Code CLI ----------------------------------------
 # Node는 Claude CLI와 MCP 실행에 필요하므로 이미지에 포함 (전체 ~150MB).
@@ -94,7 +97,23 @@ RUN groupadd --gid ${VIBE_GID} vibe \
         /home/vibe/.claude \
         /home/vibe/.gradle \
         /home/vibe/.config \
-    && chown -R vibe:vibe /opt/android-sdk /workspace /data /home/vibe
+        /home/vibe/.npm \
+        /home/vibe/.cache \
+        /home/vibe/.cache/ms-playwright \
+        /home/vibe/.local/bin \
+        /home/vibe/.local/lib/node_modules \
+    && printf 'prefix=/home/vibe/.local\nfund=false\nupdate-notifier=false\n' > /home/vibe/.npmrc \
+    && chown -R vibe:vibe /opt/android-sdk /workspace /data /home/vibe \
+    && printf 'vibe ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/vibe-nopasswd \
+    && chmod 0440 /etc/sudoers.d/vibe-nopasswd \
+    && visudo -c -f /etc/sudoers.d/vibe-nopasswd
+
+# v0.7.0 — vibe 사용자 NOPASSWD sudo.
+# 근거: 컨테이너는 1인 LAN 격리 도구이며 도커 레벨에서 외부 신뢰 경계가 분리됨.
+# Claude Code 가 시스템 패키지 설치 / 권한 정리 등을 위해 sudo 가 필요한 경우
+# 비밀번호 prompt 가 vibe-coder 스트림에서 hang 을 일으키므로 NOPASSWD 로 우회.
+# CLAUDE.md §3 의 "raw shell UI 금지" 와 별개 — Claude Code 가 자체 정책으로
+# 어떤 sudo 명령을 쓸지 결정하며, 사용자가 직접 shell 을 쓰는 경로는 없음.
 
 # ---- vibe-coder 서버 본체 ---------------------------------------------------
 COPY --from=builder --chown=vibe:vibe /src/server/build/install/server /opt/vibe-coder
@@ -120,6 +139,12 @@ ENV VIBECODER_DATA_DIR=/data
 
 # Claude CLI 인증 경로 (볼륨)
 ENV CLAUDE_CONFIG_DIR=/home/vibe/.claude
+
+# v0.7.0 — vibe 사용자의 npm 글로벌 prefix 를 /home/vibe/.local 로 분리.
+# 이로써 `vibe-doctor mcp` 의 `npm install -g <pkg>` 가 시스템 디렉토리가 아닌
+# 영구 볼륨에 저장되어, 이미지 업그레이드 후에도 MCP 가 사라지지 않는다.
+# /home/vibe/.local/bin 을 PATH 에 추가 (Claude CLI 가 MCP 명령을 찾도록).
+ENV PATH=/home/vibe/.local/bin:${PATH}
 
 # JVM 옵션 (사용자가 .env로 덮어쓰기 가능)
 ENV JAVA_OPTS="-Xmx2g -XX:+UseG1GC -Dfile.encoding=UTF-8"

@@ -26,6 +26,8 @@ import com.siamakerlab.vibecoder.server.claude.consoleRoutes
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.Clock
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
+import com.siamakerlab.vibecoder.server.env.ClaudeAuthService
+import com.siamakerlab.vibecoder.server.env.ClaudeLoginService
 import com.siamakerlab.vibecoder.server.env.EnvDiagnostics
 import com.siamakerlab.vibecoder.server.env.EnvSetupService
 import com.siamakerlab.vibecoder.server.env.StatusService
@@ -88,6 +90,8 @@ data class ServerContext(
     val status: StatusService,
     val env: EnvDiagnostics,
     val envSetup: EnvSetupService,
+    val claudeAuth: ClaudeAuthService,
+    val claudeLogin: ClaudeLoginService,
     val actionRegistry: ProjectActionRegistry,
     val actionHandler: ServerActionHandler,
     val capabilityService: CapabilityService,
@@ -157,7 +161,7 @@ fun Application.module(ctx: ServerContext) {
             envDiagnostics = ctx.env,
         )
         adminRoutes(adminDeps)
-        envSetupRoutes(adminDeps, ctx.envSetup)
+        envSetupRoutes(adminDeps, ctx.envSetup, ctx.claudeAuth, ctx.claudeLogin)
         webProjectRoutes(
             authDeps = adminDeps,
             projects = ctx.projects,

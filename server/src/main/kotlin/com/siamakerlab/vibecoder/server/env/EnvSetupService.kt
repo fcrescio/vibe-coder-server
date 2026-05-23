@@ -166,12 +166,17 @@ class EnvSetupService(
     }
 
     private fun probeClaudeAuth(c: SetupComponent): ComponentState {
+        // v0.7.0 — API 키 모드 (.env.api-key) 가 먼저. 등록되어 있으면 OAuth 자격증명 없이도 OK.
+        val cfg = claudeConfigDir()
+        val apiKeyPath = cfg.resolve(".env.api-key")
+        if (ClaudeProcessEnv.readApiKey(apiKeyPath) != null) {
+            return ComponentState(c, ComponentStatus.INSTALLED, "API 키 모드 (ANTHROPIC_API_KEY)")
+        }
         // `.credentials.json` 존재 + 그 안의 claudeAiOauth.expiresAt 까지 검증.
         // 파일만 보면 v0.5.4~v0.6.1 처럼 토큰 만료 시 false positive 가 난다.
-        val cfg = claudeConfigDir()
         val credentials = cfg.resolve(".credentials.json")
         if (!cfg.exists()) {
-            return ComponentState(c, ComponentStatus.MISSING, "디렉토리 없음: $cfg — `claude login` 필요")
+            return ComponentState(c, ComponentStatus.MISSING, "디렉토리 없음: $cfg — 로그인 필요")
         }
         if (!credentials.exists()) {
             // root 쪽에 잘못 저장됐는지 함께 안내.

@@ -1,5 +1,17 @@
 name: vibe-coder
 
+# ──────────────────────────────────────────────────────────────────────────
+# v0.7.0 — 통합 데이터 디렉토리 (./vibe-coder-data) 권장 구조.
+#
+# 모든 영구 데이터를 호스트 한 디렉토리 안에 모으므로:
+#   - `tar czf backup.tar.gz vibe-coder-data/` 한 줄로 백업
+#   - 컴퓨터 이전 시 디렉토리 통째로 복사
+#   - 이미지 업그레이드(`docker compose pull && up -d`) 시 절대 사라지지 않음
+#
+# 기존 named volume 사용자 마이그레이션은 README.md 의 "v0.7.0 마이그레이션"
+# 섹션 참고. 신규 사용자는 그대로 사용하면 됩니다.
+# ──────────────────────────────────────────────────────────────────────────
+
 services:
   vibe-coder:
     # 로컬 빌드 (개발자용)
@@ -8,7 +20,7 @@ services:
       dockerfile: docker/Dockerfile
 
     # Docker Hub 배포 사용자는 위 build: 블록 대신 image: 만 사용
-    image: ${VIBECODER_IMAGE:-siamakerlab/vibe-coder-server:0.6.3}
+    image: ${VIBECODER_IMAGE:-siamakerlab/vibe-coder-server:0.7.0}
 
     container_name: vibe-coder
     restart: unless-stopped
@@ -30,23 +42,43 @@ services:
     ports:
       - "${VIBE_PORT:-17880}:17880"
 
-    # 볼륨: 슬림 이미지 + 무거운 컴포넌트는 볼륨에 둔다.
+    # ────────────────────────────────────────────────────────────────────
+    # 볼륨 — v0.7.0 통합 구조
+    #
+    # ${VIBE_DATA_ROOT:-./vibe-coder-data}/ 한 디렉토리 안에 모든 영구 데이터.
+    # 처음 실행 시 호스트에 빈 디렉토리들이 자동 생성되고, doctor/MCP 가
+    # 그 안을 채워 넣습니다. 이미지 교체와 무관하게 보존됩니다.
+    # ────────────────────────────────────────────────────────────────────
     volumes:
-      # 빌드 결과물 / 프로젝트 소스 (호스트와 공유 권장)
-      - ${VIBE_WORKSPACE:-./workspace}:/workspace
+      # 프로젝트 소스 + 빌드 산출물 (호스트 IDE 와 직접 공유 가능)
+      - ${VIBE_DATA_ROOT:-./vibe-coder-data}/workspace:/workspace
 
-      # 서버 영속 데이터 (SQLite, 로그, 빌드 메타)
-      - ${VIBE_DATA:-./vibe-data}:/data
+      # 서버 영속 데이터 (SQLite / 로그 / 빌드 메타)
+      - ${VIBE_DATA_ROOT:-./vibe-coder-data}/server:/data
 
-      # 무거운 빌드환경 (doctor가 채움) — named volume으로 재사용
-      - vibe-android-sdk:/opt/android-sdk
-      - vibe-gradle-cache:/home/vibe/.gradle
+      # ── dev-tools — 한 부모 아래로 모은 빌드 환경 도구들 ───────────
+      # Android SDK (3~4GB, doctor 가 채움)
+      - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/android-sdk:/opt/android-sdk
+      # Gradle 의존성 캐시 (1~2GB, 첫 빌드 시 채워짐)
+      - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/gradle:/home/vibe/.gradle
+      # vibe 의 npm 글로벌 prefix — MCP `npm install -g <pkg>` 가 여기에 떨어짐
+      # (v0.7.0 신규: 이전엔 시스템 디렉토리로 가서 이미지 교체 시 사라졌음)
+      - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/npm-global:/home/vibe/.local
+      # npx / npm 다운로드 캐시
+      - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/npm-cache:/home/vibe/.npm
+      # Playwright 브라우저 (Playwright MCP 사용 시 ~300MB)
+      - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/playwright:/home/vibe/.cache/ms-playwright
+      # 기타 도구 설정 (claude-code, npm config 등)
+      - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/config:/home/vibe/.config
 
-      # Claude 인증: 호스트 ~/.claude를 그대로 마운트하면 호스트와 동일 인증.
-      # 비활성화하려면 .env에서 VIBE_CLAUDE_DIR=vibe-claude-data 등으로 변경.
-      - ${VIBE_CLAUDE_DIR:-~/.claude}:/home/vibe/.claude
+      # ── Claude 인증 ─────────────────────────────────────────────
+      # 기본: 통합 디렉토리 안의 vibe-coder-data/claude/.
+      # 호스트의 ~/.claude 와 공유하고 싶으면 .env 에서
+      #   VIBE_CLAUDE_DIR=~/.claude
+      # 으로 override.
+      - ${VIBE_CLAUDE_DIR:-./vibe-coder-data/claude}:/home/vibe/.claude
 
-    # 헬스체크: /health 엔드포인트 (Module.kt:114)
+    # 헬스체크: /health 엔드포인트
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:17880/health"]
       interval: 30s
@@ -54,11 +86,10 @@ services:
       start_period: 20s
       retries: 3
 
-    # 컨테이너 안에서 빌드된 APK를 호스트 폰에 설치하려면 adb-over-network 사용 권장.
-    # USB 사용 시 아래 활성화:
+    # USB 디바이스로 ADB 사용 시 활성화:
     # devices:
     #   - /dev/bus/usb:/dev/bus/usb
 
-volumes:
-  vibe-android-sdk:
-  vibe-gradle-cache:
+# v0.7.0 — named volume 선언 제거.
+# 기존 vibe-android-sdk / vibe-gradle-cache named volume 사용자는
+# README.md 의 "v0.7.0 마이그레이션" 섹션을 따라 bind mount 로 이전하세요.

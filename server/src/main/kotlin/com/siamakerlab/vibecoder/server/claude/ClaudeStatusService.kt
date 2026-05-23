@@ -61,10 +61,12 @@ class ClaudeStatusService(
     private suspend fun runStatusCommand(projectId: String): ParsedStatus = withContext(Dispatchers.IO) {
         val cmd = resolveClaudeCmd()
         val projectRoot = workspace.projectRoot(projectId)
-        val proc = ProcessBuilder(cmd, "--print", "/status")
+        val pb = ProcessBuilder(cmd, "--print", "/status")
             .directory(projectRoot.toFile())
             .redirectErrorStream(true)
-            .start()
+        // v0.7.0 — API 키 모드면 ANTHROPIC_API_KEY 주입.
+        com.siamakerlab.vibecoder.server.env.ClaudeProcessEnv.applyApiKey(pb.environment())
+        val proc = pb.start()
         val output = proc.inputStream.bufferedReader().readText()
         proc.waitFor(10, TimeUnit.SECONDS)
         if (proc.isAlive) {

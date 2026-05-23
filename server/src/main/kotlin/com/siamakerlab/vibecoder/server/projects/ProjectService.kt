@@ -63,6 +63,15 @@ class ProjectService(
             Files.writeString(claudeMd, ClaudeMdTemplate.CONTENT)
         }
 
+        // v0.7.0 — .claude/settings.json: vibe-coder 비인터랙티브 환경 권장 정책.
+        // bypassPermissions + 인터랙티브 도구 deny + 비대화형 env 강제.
+        val claudeDir = srcRoot.resolve(".claude")
+        if (claudeDir.notExists()) claudeDir.createDirectories()
+        val settingsJson = claudeDir.resolve("settings.json")
+        if (settingsJson.notExists()) {
+            Files.writeString(settingsJson, ClaudeSettingsTemplate.CONTENT)
+        }
+
         val vibeDir = workspace.vibecoderDir(body.projectId)
         val projectYml = vibeDir.resolve("project.yml")
         if (projectYml.notExists()) {

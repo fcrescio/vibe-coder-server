@@ -108,6 +108,16 @@ class EnvDiagnostics(private val config: ServerConfig) {
         }
 
         val cfg = claudeConfigDir()
+        // v0.7.0 — API 키 모드 (.env.api-key 등록) 가 OAuth 자격증명 검사보다 우선.
+        // 등록되어 있으면 OAuth 자격증명 유무와 무관하게 OK.
+        val apiKey = ClaudeProcessEnv.readApiKey(cfg.resolve(".env.api-key"))
+        if (apiKey != null) {
+            return CheckItemDto(
+                CheckStatus.OK, "Claude Auth",
+                "API 키 모드 (ANTHROPIC_API_KEY)",
+                detail = "${cfg.resolve(".env.api-key")} — 길이 ${apiKey.length}자, 'sk-' 접두 확인됨.",
+            )
+        }
         val credentials = cfg.resolve(".credentials.json")
         if (!credentials.exists()) {
             // 잘못된 위치 (/root/.claude) 에 토큰이 떨어진 흔적이 있는지 별도 안내.

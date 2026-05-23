@@ -8,21 +8,23 @@
 
 ```bash
 # 1) 이미지 받기 (또는 로컬 빌드)
-docker pull siamakerlab/vibe-coder-server:0.6.3
+docker pull siamakerlab/vibe-coder-server:0.7.0
 
 # 2) compose 파일과 .env 복사
 mkdir -p ~/vibe-coder && cd ~/vibe-coder
 curl -fsSL https://raw.githubusercontent.com/siamakerlab/vibe-coder/main/docker/compose.yml -o compose.yml
 curl -fsSL https://raw.githubusercontent.com/siamakerlab/vibe-coder/main/docker/.env.example -o .env
-# .env 를 편집기로 열어 PUID/PGID/포트/볼륨 경로 조정
+# .env 를 편집기로 열어 PUID/PGID/포트 조정
 
-# 3) 부팅
+# 3) 부팅 — ./vibe-coder-data/ 가 자동 생성됩니다
 docker compose up -d
 
 # 4) admin 웹 셋업 (브라우저)
-#    http://<PC IP>:17880/admin → 첫 비밀번호 설정
+#    http://<PC IP>:17880/admin → 첫 비밀번호 설정 → 빌드환경 페이지
 
 # 5) 빌드 환경 다운로드 (Android SDK 등)
+#    웹 UI 의 "⚡ 모두 설치/업데이트" 버튼이 표준입니다.
+#    터미널로 진행하려면:
 docker exec -it vibe-coder vibe-doctor
 ```
 
@@ -56,29 +58,107 @@ docker exec -it vibe-coder vibe-doctor
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
-| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:0.6.3` | pull 할 이미지 태그 |
+| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:0.7.0` | pull 할 이미지 태그 |
 | `PUID` / `PGID` | `1000` / `1000` | 호스트 UID/GID 매칭. `id -u` / `id -g` 로 확인 |
 | `VIBE_PORT` | `17880` | 호스트 노출 포트 |
-| `VIBE_WORKSPACE` | `./workspace` | 프로젝트 소스/빌드 산출물 디렉토리 |
-| `VIBE_DATA` | `./vibe-data` | 서버 메타데이터 (SQLite 등) |
-| `VIBE_CLAUDE_DIR` | `~/.claude` | Claude 인증 디렉토리 (호스트와 공유 권장) |
+| `VIBE_DATA_ROOT` | `./vibe-coder-data` | **모든 영구 데이터가 들어가는 통합 디렉토리** |
+| `VIBE_CLAUDE_DIR` | `${VIBE_DATA_ROOT}/claude` | Claude 인증 디렉토리 — 호스트와 공유하려면 `~/.claude` |
 | `VIBECODER_ADMIN_USERNAME` | (미설정) | 첫 부팅 시 admin 자동 생성용 |
 | `VIBECODER_ADMIN_PASSWORD` | (미설정) | 위와 한 쌍. 부팅 직후 변경 권장 |
 | `JAVA_OPTS` | `-Xmx2g …` | JVM 힙. 호스트 RAM 보고 조정 |
 
-### 볼륨 마운트 구조
+### 볼륨 구조 (v0.7.0 통합)
+
+모든 영구 데이터는 **호스트 한 디렉토리** (`./vibe-coder-data`) 안에 모입니다.
+이 디렉토리만 백업하면 워크스페이스 + DB + Android SDK + Gradle 캐시 + MCP
++ Playwright + Claude 인증까지 전부 보존됩니다.
 
 ```
-호스트                            컨테이너
-────────                          ─────────────
-${VIBE_WORKSPACE}              →  /workspace          (소스/APK)
-${VIBE_DATA}                   →  /data               (DB/로그)
-${VIBE_CLAUDE_DIR}             →  /home/vibe/.claude  (인증)
-named: vibe-android-sdk        →  /opt/android-sdk    (SDK)
-named: vibe-gradle-cache       →  /home/vibe/.gradle  (의존성 캐시)
+${VIBE_DATA_ROOT}/                          컨테이너
+─────────────────                           ─────────────
+├── workspace/                  →  /workspace
+├── server/                     →  /data                              (SQLite/로그)
+├── dev-tools/
+│   ├── android-sdk/            →  /opt/android-sdk                   (3~4GB)
+│   ├── gradle/                 →  /home/vibe/.gradle                 (1~2GB)
+│   ├── npm-global/             →  /home/vibe/.local                  (MCP `npm -g`)
+│   ├── npm-cache/              →  /home/vibe/.npm                    (npx 캐시)
+│   ├── playwright/             →  /home/vibe/.cache/ms-playwright    (선택)
+│   └── config/                 →  /home/vibe/.config                 (도구 설정)
+└── claude/                     →  /home/vibe/.claude                 (OAuth/MCP 등록)
 ```
 
-호스트 bind mount는 호스트 IDE/에디터에서 직접 접근 가능, named volume은 Docker가 관리(컨테이너 삭제와 분리됨).
+`dev-tools/` 안의 6개 디렉토리는 모두 "한 번 다운로드 → 영구 보존" 도구
+캐시입니다. **이미지 업그레이드(`docker compose pull && up -d`) 후에도
+절대 사라지지 않습니다.**
+
+### 백업 / 이전
+
+```bash
+# 백업
+docker compose stop
+tar czf vibe-coder-data-$(date +%F).tar.gz vibe-coder-data/
+
+# 다른 PC로 이전
+scp vibe-coder-data-*.tar.gz user@newhost:~/vibe-coder/
+ssh user@newhost
+cd ~/vibe-coder
+tar xzf vibe-coder-data-*.tar.gz
+docker compose up -d   # 기존 데이터 그대로 복원됨
+```
+
+### v0.7.0 마이그레이션 (이전 사용자)
+
+`v0.6.x` 까지 사용하던 사용자는 **Android SDK 와 Gradle 캐시가 named volume
+(`vibe-android-sdk`, `vibe-gradle-cache`) 에 저장**되어 있고, MCP 는 시스템
+디렉토리에 있어 이미지 업그레이드 시 사라졌습니다. v0.7.0 부터는 모두 bind
+mount 로 통일됩니다.
+
+**옵션 1 — 깔끔하게 새로 시작 (권장, 5~15분):**
+
+```bash
+# 1) 기존 컨테이너 중지 (named volume 은 보존됨)
+docker compose down
+
+# 2) compose.yml + .env 를 새 버전으로 교체
+curl -fsSL .../compose.yml -o compose.yml
+curl -fsSL .../.env.example -o .env
+
+# 3) 부팅 → 빌드환경 페이지에서 "모두 설치/업데이트" 클릭
+docker compose up -d
+# → 브라우저: http://<IP>:17880/env-setup
+```
+
+**옵션 2 — 기존 named volume 데이터 복사 (대역폭 절약):**
+
+```bash
+docker compose down
+
+# Android SDK
+docker run --rm \
+    -v vibe-coder_vibe-android-sdk:/from \
+    -v "$(pwd)/vibe-coder-data/dev-tools/android-sdk":/to \
+    alpine sh -c 'cp -a /from/. /to/'
+
+# Gradle 캐시
+docker run --rm \
+    -v vibe-coder_vibe-gradle-cache:/from \
+    -v "$(pwd)/vibe-coder-data/dev-tools/gradle":/to \
+    alpine sh -c 'cp -a /from/. /to/'
+
+# Claude 인증 (호스트 ~/.claude 마운트였다면 그대로 두면 됨)
+# 통합 디렉토리로 옮기려면:
+cp -a ~/.claude vibe-coder-data/claude
+
+docker compose up -d
+# 확인 후 named volume 삭제 (선택)
+docker volume rm vibe-coder_vibe-android-sdk vibe-coder_vibe-gradle-cache
+```
+
+> ⚠ **MCP 는 옵션 1, 2 어느 쪽이든 재설치 필요합니다.** 이전엔 시스템
+> 디렉토리(`/usr/local/lib/node_modules`)에 깔려서 이미지 layer 안에만
+> 존재했기 때문입니다. v0.7.0 부터는 `/home/vibe/.local` (bind mount) 에
+> 떨어지므로 한 번 설치 후 영구 보존됩니다.
 
 ---
 

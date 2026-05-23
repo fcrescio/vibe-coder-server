@@ -163,10 +163,12 @@ class ClaudeSessionManager(
         log.info { "[$projectId] spawning: ${args.joinToString(" ")} (cwd=$projectRoot)" }
 
         val proc = try {
-            ProcessBuilder(args)
+            val pb = ProcessBuilder(args)
                 .directory(projectRoot.toFile())
                 .redirectErrorStream(false)
-                .start()
+            // v0.7.0 — API 키 모드(.env.api-key 등록 시) 면 ANTHROPIC_API_KEY 주입.
+            com.siamakerlab.vibecoder.server.env.ClaudeProcessEnv.applyApiKey(pb.environment())
+            pb.start()
         } catch (e: IOException) {
             emitSystem(projectId, "claude_unavailable", "Failed to spawn Claude: ${e.message}")
             throw e

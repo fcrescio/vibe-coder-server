@@ -38,11 +38,34 @@ fi
 
 # ─── 2. 볼륨 소유권 정리 ─────────────────────────────────────────────────────
 # 매번 chown -R 하면 느리므로, 디렉토리만 1회 chown + 새 파일은 vibe가 만들도록.
-for dir in /workspace /data /opt/android-sdk /home/vibe/.gradle /home/vibe/.claude /home/vibe/.config; do
+# v0.7.0 — 다음을 추가했다 (이미지 업그레이드 시 사라지던 도구들의 영구 위치):
+#   /home/vibe/.npm                  npx 캐시 (MCP 자주 사용)
+#   /home/vibe/.cache/ms-playwright  Playwright 브라우저
+#   /home/vibe/.local                vibe 의 npm 글로벌 prefix (MCP 영구 설치)
+for dir in \
+    /workspace \
+    /data \
+    /opt/android-sdk \
+    /home/vibe/.gradle \
+    /home/vibe/.claude \
+    /home/vibe/.config \
+    /home/vibe/.npm \
+    /home/vibe/.cache \
+    /home/vibe/.cache/ms-playwright \
+    /home/vibe/.local \
+; do
     if [[ -d "$dir" ]]; then
         chown vibe:vibe "$dir" 2>/dev/null || true
     fi
 done
+
+# v0.7.0 — 빈 .local 볼륨이 마운트된 케이스 대비: .npmrc 가 home 에 있고 .local
+# 이 비어 있으면 prefix 가 무효화될 수 있어, idempotent 재생성.
+if [[ ! -f /home/vibe/.npmrc ]]; then
+    printf 'prefix=/home/vibe/.local\nfund=false\nupdate-notifier=false\n' \
+        > /home/vibe/.npmrc
+    chown vibe:vibe /home/vibe/.npmrc
+fi
 
 # ─── 3. Admin 부트스트랩 (있으면 서버 sys-prop으로 전달) ──────────────────────
 JAVA_OPTS="${JAVA_OPTS:-}"
