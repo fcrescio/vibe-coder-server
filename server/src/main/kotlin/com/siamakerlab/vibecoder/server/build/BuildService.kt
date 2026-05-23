@@ -115,8 +115,13 @@ class BuildService(
         }
     }
 
-    fun cancel(buildId: String) {
-        kotlinx.coroutines.runBlocking { queue.cancel(buildId) }
+    /**
+     * v0.12.4 — 이전엔 `runBlocking` 으로 큐 cancel 을 호출해 Ktor 요청 스레드가
+     * cancel 완료까지 블락됐다. suspend 로 노출하고 호출자(`SuspendableRoute`)에서
+     * 일시 정지하도록 변경.
+     */
+    suspend fun cancel(buildId: String) {
+        queue.cancel(buildId)
     }
 
     fun list(projectId: String): List<BuildDto> =

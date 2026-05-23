@@ -73,6 +73,9 @@ class ClaudeAuthService(
         } catch (e: Throwable) {
             throw ApiException(400, "encoding", "UTF-8 디코딩 실패: ${e.message}")
         }
+        // v0.12.4 — credential bytes 는 디코딩 후엔 더 이상 필요 없으므로 즉시 zero out.
+        // text 는 String 이라 JVM 이 GC 할 때까지 잔존하지만, 적어도 직접 받은 byte 표면은 축소.
+        bytes.fill(0)
 
         val root: JsonObject = try {
             Json.parseToJsonElement(text) as? JsonObject

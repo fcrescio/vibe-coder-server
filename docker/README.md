@@ -8,25 +8,33 @@
 
 ```bash
 # 1) 이미지 받기 (또는 로컬 빌드)
-docker pull siamakerlab/vibe-coder-server:0.7.0
+docker pull siamakerlab/vibe-coder-server:0.14.0
+docker pull postgres:17-alpine    # v0.14.0+ 신규 의존
 
 # 2) compose 파일과 .env 복사
 mkdir -p ~/vibe-coder && cd ~/vibe-coder
 curl -fsSL https://raw.githubusercontent.com/siamakerlab/vibe-coder/main/docker/compose.yml -o compose.yml
 curl -fsSL https://raw.githubusercontent.com/siamakerlab/vibe-coder/main/docker/.env.example -o .env
-# .env 를 편집기로 열어 PUID/PGID/포트 조정
 
-# 3) 부팅 — ./vibe-coder-data/ 가 자동 생성됩니다
+# 3) .env 편집 — VIBECODER_DB_PASSWORD **반드시** 강력한 값으로 변경 (v0.14.0+).
+#    이 값이 비어 있으면 compose 가 부팅을 거절합니다.
+${EDITOR:-nano} .env
+
+# 4) 부팅 — postgres 컨테이너 + server 가 같이 뜨고 ./vibe-coder-data/ 자동 생성
 docker compose up -d
 
-# 4) admin 웹 셋업 (브라우저)
-#    http://<PC IP>:17880/admin → 첫 비밀번호 설정 → 빌드환경 페이지
+# 5) admin 웹 셋업 (브라우저)
+#    http://<PC IP>:17880/ → 첫 비밀번호 설정 → 빌드환경 페이지
 
-# 5) 빌드 환경 다운로드 (Android SDK 등)
+# 6) 빌드 환경 다운로드 (Android SDK 등)
 #    웹 UI 의 "⚡ 모두 설치/업데이트" 버튼이 표준입니다.
 #    터미널로 진행하려면:
 docker exec -it vibe-coder-server vibe-doctor
 ```
+
+> **v0.13.x → v0.14.0 업그레이드**: SQLite → PostgreSQL 전환으로 fresh start 가
+> 필요합니다 (admin / 프로젝트 재등록). 워크스페이스 파일은 보존됩니다. 절차는
+> 상위 디렉토리의 [CHANGELOG.md](../CHANGELOG.md) v0.14.0 entry 를 참고하세요.
 
 이후 Android 앱에서 같은 서버 URL + username/password로 로그인.
 
@@ -58,7 +66,13 @@ docker exec -it vibe-coder-server vibe-doctor
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
-| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:0.7.0` | pull 할 이미지 태그 |
+| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:0.14.0` | pull 할 이미지 태그 |
+| `VIBECODER_POSTGRES_IMAGE` | `postgres:17-alpine` | PG 컨테이너 이미지 (v0.14.0+) |
+| **`VIBECODER_DB_PASSWORD`** | (필수) | **반드시 강력한 값으로 변경.** 비면 compose 가 부팅 거절 |
+| `VIBECODER_DB_HOST` | `postgres` | DB 호스트. 외부 PG 인스턴스면 host:port 로 |
+| `VIBECODER_DB_NAME` | `vibecoder` | DB 이름 |
+| `VIBECODER_DB_USER` | `vibecoder` | DB 사용자 |
+| `VIBECODER_DB_SSLMODE` | `disable` | `prefer`/`require`/`verify-ca`/`verify-full` |
 | `PUID` / `PGID` | `1000` / `1000` | 호스트 UID/GID 매칭. `id -u` / `id -g` 로 확인 |
 | `VIBE_PORT` | `17880` | 호스트 노출 포트 |
 | `VIBE_DATA_ROOT` | `./vibe-coder-data` | **모든 영구 데이터가 들어가는 통합 디렉토리** |
@@ -76,8 +90,9 @@ docker exec -it vibe-coder-server vibe-doctor
 ```
 ${VIBE_DATA_ROOT}/                          컨테이너
 ─────────────────                           ─────────────
-├── workspace/                  →  /workspace
-├── server/                     →  /data                              (SQLite/로그)
+├── workspace/                  →  /workspace                         (소스/APK)
+├── postgres/                   →  vibe-coder-postgres 의 /var/lib/postgresql/data  (v0.14.0+)
+├── server/                     →  /data                              (로그/빌드 메타)
 ├── dev-tools/
 │   ├── android-sdk/            →  /opt/android-sdk                   (3~4GB)
 │   ├── gradle/                 →  /home/vibe/.gradle                 (1~2GB)
@@ -94,10 +109,16 @@ ${VIBE_DATA_ROOT}/                          컨테이너
 
 ### 백업 / 이전
 
+PostgreSQL 데이터 일관성을 보장하려면 백업 전 컨테이너를 정지하세요.
+
 ```bash
-# 백업
+# 백업 (postgres stop 으로 데이터 파일 일관성 보장)
 docker compose stop
 tar czf vibe-coder-data-$(date +%F).tar.gz vibe-coder-data/
+docker compose up -d
+
+# 또는 pg_dump 단독 백업 (server 는 계속 실행)
+docker exec vibe-coder-postgres pg_dump -U vibecoder -F c vibecoder > vibe-pg-$(date +%F).pgdump
 
 # 다른 PC로 이전
 scp vibe-coder-data-*.tar.gz user@newhost:~/vibe-coder/

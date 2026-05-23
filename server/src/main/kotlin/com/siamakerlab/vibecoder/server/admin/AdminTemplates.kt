@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.repo.DeviceRow
 import com.siamakerlab.vibecoder.shared.dto.ServerStatusDto
 
@@ -21,20 +22,33 @@ object AdminTemplates {
             .replace("\"", "&quot;")
             .replace("'", "&#39;")
 
+    /** JS 문자열 literal context 전용. csrf 토큰 (base64-url 문자 + 영숫자) 안전. */
+    private fun jsLitString(s: String): String =
+        "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
     internal fun shell(
         title: String,
         body: String,
         username: String? = null,
         currentPath: String = "/",
         showNav: Boolean = true,
+        /** v0.12.4 — 인증된 페이지에서 nav 의 logout 폼 등에 박을 CSRF 토큰. */
+        csrf: String? = null,
     ): String {
-        val nav = if (showNav) navHtml(currentPath, username) else ""
+        val nav = if (showNav) navHtml(currentPath, username, csrf) else ""
         val layoutCls = if (showNav) "layout" else "layout no-nav"
+        // v0.12.4 — JS 가 ajax POST 시 CSRF 토큰을 첨부할 수 있도록 meta + global.
+        // body 가 아닌 head 에 있어야 inline script 보다 먼저 실행됨.
+        val csrfMeta = if (csrf != null)
+            """<meta name="csrf-token" content="${esc(csrf)}">
+  <script>window.__VIBE_CSRF__ = ${jsLitString(csrf)};</script>"""
+        else ""
         return """<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  $csrfMeta
   <title>${esc(title)} · Vibe Coder</title>
   <link rel="icon" type="image/png" href="/static/icon.png">
   <link rel="stylesheet" href="/static/admin.css">
@@ -51,7 +65,7 @@ object AdminTemplates {
 """
     }
 
-    private fun navHtml(currentPath: String, username: String?): String {
+    private fun navHtml(currentPath: String, username: String?, csrf: String?): String {
         fun link(href: String, label: String, key: String): String {
             // 루트("/") 는 정확히 일치할 때만 active. 그 외는 prefix 매칭.
             val cls = when {
@@ -71,6 +85,8 @@ object AdminTemplates {
   <div class="nav-links">
     ${link("/", "대시보드", "dashboard")}
     ${link("/projects", "프로젝트", "projects")}
+    ${link("/chat", "Chat", "chat")}
+    ${link("/prompts", "프롬프트", "prompts")}
     ${link("/env-setup", "빌드환경", "env-setup")}
     ${link("/settings", "설정", "settings")}
     ${link("/devices", "디바이스", "devices")}
@@ -79,6 +95,7 @@ object AdminTemplates {
   <div class="user-box">
     ${if (username != null) "<div class=\"user\">${esc(username)}</div>" else ""}
     <form method="post" action="/logout">
+      ${CsrfTokens.hiddenInput(csrf)}
       <button type="submit" class="logout">로그아웃</button>
     </form>
   </div>
@@ -157,6 +174,7 @@ object AdminTemplates {
         deviceCount: Int,
         runningBuilds: Int,
         claudeAuth: com.siamakerlab.vibecoder.shared.dto.CheckItemDto? = null,
+        csrf: String? = null,
     ): String {
         val claudeBadge = if (status.claudeAvailable) "<span class=\"ok\">✓ OK</span>" else "<span class=\"warn\">✗ 미설치</span>"
         val sdkBadge = if (status.androidSdkAvailable) "<span class=\"ok\">✓ OK</span>" else "<span class=\"warn\">✗ doctor 실행 필요</span>"
@@ -174,6 +192,7 @@ object AdminTemplates {
             title = "대시보드",
             username = username,
             currentPath = "/",
+            csrf = csrf,
             body = """
 <header><h1>대시보드</h1></header>
 
@@ -222,6 +241,7 @@ object AdminTemplates {
         settings: SettingsView,
         flashOk: String? = null,
         flashErr: String? = null,
+        csrf: String? = null,
     ): String {
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
@@ -229,11 +249,13 @@ object AdminTemplates {
             title = "설정",
             username = username,
             currentPath = "/settings",
+            csrf = csrf,
             body = """
 <header><h1>운영 설정</h1></header>
 $okHtml
 $errHtml
 <form method="post" action="/settings" class="settings-form">
+  ${CsrfTokens.hiddenInput(csrf)}
 
   <fieldset>
     <legend>서버 (재시작 필요)</legend>
@@ -262,7 +284,7 @@ $errHtml
   </fieldset>
 
   <button type="submit" class="primary">저장</button>
-  <p class="hint">저장 시 server.yml은 백업(<code>.bak.&lt;ts&gt;</code>) 후 교체됩니다. 일부 항목(포트/호스트/이름)은 서버 재시작 후 적용됩니다.</p>
+  <p class="hint">저장 시 외부 <code>server.yml</code> 이 atomic 갱신되고 이전 파일은 <code>.bak.&lt;ts&gt;</code> 로 백업됩니다 (최근 5개 유지). <strong>일부 항목(host/port/name)은 컨테이너 재시작 후 적용</strong>됩니다. 경로는 <code>${'$'}VIBECODER_CONFIG_DIR/server.yml</code> 또는 <code>./config/server.yml</code>.</p>
 </form>
 """
         )
@@ -276,6 +298,7 @@ $errHtml
         username: String,
         flashOk: String? = null,
         flashErr: String? = null,
+        csrf: String? = null,
     ): String {
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
@@ -283,11 +306,13 @@ $errHtml
             title = "비밀번호 변경",
             username = username,
             currentPath = "/password",
+            csrf = csrf,
             body = """
 <header><h1>비밀번호 변경</h1></header>
 $okHtml
 $errHtml
 <form method="post" action="/password" class="auth-card narrow">
+  ${CsrfTokens.hiddenInput(csrf)}
   <label>현재 비밀번호
     <input name="currentPassword" type="password" required>
   </label>
@@ -312,6 +337,7 @@ $errHtml
         devices: List<DeviceRow>,
         currentDeviceId: String,
         flashOk: String? = null,
+        csrf: String? = null,
     ): String {
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
         val rows = devices.joinToString("\n") { d ->
@@ -320,6 +346,7 @@ $errHtml
                 """<span class="dim">(현재 세션)</span>"""
             } else {
                 """<form method="post" action="/devices/${esc(d.id)}/revoke" style="display:inline">
+                     ${CsrfTokens.hiddenInput(csrf)}
                      <button type="submit" class="danger">revoke</button>
                    </form>"""
             }
@@ -335,6 +362,7 @@ $errHtml
             title = "디바이스",
             username = username,
             currentPath = "/devices",
+            csrf = csrf,
             body = """
 <header><h1>연결된 디바이스</h1></header>
 $okHtml

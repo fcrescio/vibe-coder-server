@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.env.ClaudeLoginService
 import com.siamakerlab.vibecoder.server.env.ComponentState
 import com.siamakerlab.vibecoder.server.env.ComponentStatus
@@ -24,19 +25,26 @@ object EnvSetupTemplates {
             .replace("\"", "&quot;")
             .replace("'", "&#39;")
 
-    fun envSetupPage(username: String, states: List<ComponentState>, claudeFlash: String? = null): String {
-        val cards = states.joinToString("\n") { renderCard(it) }
+    fun envSetupPage(
+        username: String,
+        states: List<ComponentState>,
+        claudeFlash: String? = null,
+        csrf: String? = null,
+    ): String {
+        val cards = states.joinToString("\n") { renderCard(it, csrf) }
         val flashHtml = claudeFlashBlurb(claudeFlash)
         return AdminTemplates.shell(
             title = "빌드환경",
             username = username,
             currentPath = "/env-setup",
+            csrf = csrf,
             body = """
 <header>
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
     <h1 style="margin:0">빌드환경</h1>
     <form method="post" action="/env-setup/install-all" style="display:inline"
           onsubmit="return confirm('자동 설치 가능한 모든 컴포넌트(Android SDK / MCP 등)를 순차로 설치/업데이트합니다. 진행 페이지로 이동합니다. 계속할까요?')">
+      ${CsrfTokens.hiddenInput(csrf)}
       <button type="submit" class="primary" style="width:auto;padding:8px 18px">⚡ 모두 설치/업데이트</button>
     </form>
   </div>
@@ -73,11 +81,11 @@ docker compose up -d --force-recreate</pre>
         )
     }
 
-    private fun renderCard(s: ComponentState): String {
+    private fun renderCard(s: ComponentState, csrf: String?): String {
         val c = s.component
         // CLAUDE_AUTH 만 "로그인됨/로그인 필요" 로 표기, 나머지는 설치됨/미설치.
         val (badgeCls, badgeText) = badgeFor(c, s.status)
-        val actionHtml = renderAction(c, s.status)
+        val actionHtml = renderAction(c, s.status, csrf)
         return """<div class="card">
   <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
     <h2 style="margin-bottom:8px">${esc(c.displayName)}</h2>
@@ -107,7 +115,7 @@ docker compose up -d --force-recreate</pre>
             }
         }
 
-    private fun renderAction(c: SetupComponent, status: ComponentStatus): String {
+    private fun renderAction(c: SetupComponent, status: ComponentStatus, csrf: String?): String {
         return when (c) {
             // 이미지 내장 — 진단 실패 시에만 경고. 정상이면 액션 없음.
             SetupComponent.JAVA,
@@ -123,7 +131,7 @@ docker compose up -d --force-recreate</pre>
             //  3) ANTHROPIC_API_KEY 등록 (OAuth 미사용 / API 키 사용자).
             // v0.7.0 — terminal 접근 불가능한 운영 환경 (외부 호스팅 / 모바일) 에서도
             // 100% 웹으로 인증 완료 가능. raw-shell UI 미사용 (CLAUDE.md §3 정책 준수).
-            SetupComponent.CLAUDE_AUTH -> renderClaudeAuthActions(status)
+            SetupComponent.CLAUDE_AUTH -> renderClaudeAuthActions(status, csrf)
 
             // Android SDK — 원클릭 설치 + 진행 페이지.
             SetupComponent.ANDROID_SDK -> {
@@ -134,6 +142,7 @@ docker compose up -d --force-recreate</pre>
                 }
                 """<form method="post" action="/env-setup/${esc(c.id)}/install" style="margin-top:10px"
                         onsubmit="return confirm('Android SDK 설치를 시작합니다 (3~4GB, 5~15분). 진행 페이지로 이동합니다. 계속할까요?')">
+                  ${CsrfTokens.hiddenInput(csrf)}
                   <button type="submit" class="primary" style="width:auto;padding:8px 16px">${esc(label)}</button>
                 </form>
                 <details style="margin-top:8px"><summary class="dim" style="cursor:pointer;font-size:12px">CLI 로 직접 실행하려면</summary>
@@ -157,6 +166,7 @@ docker compose up -d --force-recreate</pre>
                 }
                 """<form method="post" action="/env-setup/${esc(c.id)}/install" style="margin-top:10px"
                        onsubmit="return confirm('Gradle 최신 stable 을 다운로드해 /home/vibe/.local/gradle 에 설치합니다 (~130MB). 신규 프로젝트의 wrapper bootstrap 에 사용됩니다. 계속할까요?')">
+                  ${CsrfTokens.hiddenInput(csrf)}
                   <button type="submit" class="primary" style="width:auto;padding:8px 16px">${esc(label)}</button>
                 </form>
                 <p class="hint" style="margin-top:8px;font-size:12px">Wrapper bootstrap 도구. 한 번 설치 후엔 사용자 build.gradle.kts 의 wrapper 버전이 실제 빌드에 사용됨. 영구 보존 (bind mount).</p>"""
@@ -180,7 +190,7 @@ docker compose up -d --force-recreate</pre>
         """<div class="card" style="margin-bottom:12px;background:rgba(105,219,124,0.08);border-color:var(--$cls)">
         <p style="margin:0;color:var(--$cls)">${esc(text)}</p></div>"""
 
-    private fun renderClaudeAuthActions(status: ComponentStatus): String {
+    private fun renderClaudeAuthActions(status: ComponentStatus, csrf: String?): String {
         val statusHint = when (status) {
             ComponentStatus.INSTALLED -> """<p class="hint" style="margin-top:8px">이미 인증되어 있습니다. 토큰을 교체하거나 인증 방식을 바꾸려면 아래를 사용하세요.</p>"""
             else -> ""
@@ -203,7 +213,8 @@ $statusHint
   <summary class="dim" style="cursor:pointer;font-size:13px">옵션 2 — 다른 머신에서 받은 <code>.credentials.json</code> 업로드</summary>
   <p class="hint" style="margin-top:6px">먼저 터미널이 있는 머신(노트북/데스크톱) 에서 <code>claude login</code> 으로 인증을 완료한 뒤,
   그 머신의 <code>~/.claude/.credentials.json</code> 을 아래에 업로드하세요. 컨테이너 터미널 접근이 불가능한 환경(원격 호스팅 / 모바일 운영)에서 사용.</p>
-  <form method="post" action="/env-setup/claude-auth/upload" enctype="multipart/form-data"
+  <!-- multipart 라 _csrf 를 query string 으로 전달 -->
+  <form method="post" action="/env-setup/claude-auth/upload?_csrf=${esc(csrf)}" enctype="multipart/form-data"
         style="margin-top:8px;display:flex;flex-direction:column;gap:8px"
         onsubmit="return confirm('업로드한 파일이 vibe 홈의 .credentials.json 을 덮어씁니다 (기존 파일은 자동 백업). 계속할까요?')">
     <input type="file" name="credentials" accept=".json,application/json" required
@@ -221,6 +232,7 @@ $statusHint
   <form method="post" action="/env-setup/claude-auth/api-key"
         style="margin-top:8px;display:flex;flex-direction:column;gap:8px"
         onsubmit="return confirm('API 키를 vibe 홈의 .env.api-key 파일에 저장합니다. 등록 후엔 OAuth 자격증명보다 API 키가 우선합니다. 계속할까요?')">
+    ${CsrfTokens.hiddenInput(csrf)}
     <input type="password" name="apiKey" placeholder="sk-ant-..." required minlength="20" autocomplete="off"
            style="font-size:13px;padding:6px 8px">
     <button type="submit" class="primary" style="width:auto;padding:8px 16px;align-self:flex-start">API 키 등록</button>
@@ -228,6 +240,7 @@ $statusHint
   <form method="post" action="/env-setup/claude-auth/api-key/delete"
         style="margin-top:6px"
         onsubmit="return confirm('API 키를 삭제하면 OAuth 자격증명 모드로 돌아갑니다. 계속할까요?')">
+    ${CsrfTokens.hiddenInput(csrf)}
     <button type="submit" style="width:auto;padding:6px 12px;font-size:12px">API 키 모드 해제</button>
   </form>
   <p class="hint" style="font-size:11px;margin-top:6px">⚠ API 키는 OAuth 와 빌링이 다릅니다 (Pro/Max 구독이 아니라 API 종량제). 본인의 결제 상황을 확인하세요.</p>
@@ -246,7 +259,11 @@ $statusHint
      * 서버 내부 디테일이며 브라우저에는 노출되지 않는다 (CLAUDE.md §3 정책 준수).
      * 1초마다 `/env-setup/claude-login/status.json` 을 폴링해 상태를 갱신.
      */
-    fun claudeLoginPage(username: String, state: ClaudeLoginService.SessionDto?): String {
+    fun claudeLoginPage(
+        username: String,
+        state: ClaudeLoginService.SessionDto?,
+        csrf: String? = null,
+    ): String {
         val (statusText, statusCls) = stateLabel(state?.state)
         val urlBlock = if (state?.url != null) {
             """<div class="card" style="margin-top:12px;background:rgba(80,150,255,0.08)">
@@ -267,6 +284,7 @@ $statusHint
               <strong>3. 받은 코드를 paste 후 제출</strong>
               <form method="post" action="/env-setup/claude-login/submit" id="code-form"
                     style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+                ${CsrfTokens.hiddenInput(csrf)}
                 <input type="text" name="code" id="code-input"
                        placeholder="여기에 authorization code 를 paste" required autofocus
                        autocomplete="off" autocapitalize="off" spellcheck="false"
@@ -294,12 +312,14 @@ $statusHint
               <p style="margin-top:6px">${esc(state.errorMessage ?: "원인 미상")}</p>
               <p class="hint" style="margin-top:8px">웹 로그인이 실패하면 옵션 B(자격증명 업로드) 또는 옵션 C(API 키)를 사용하세요. <a href="/env-setup">빌드환경으로 돌아가기</a>.</p>
               <form method="post" action="/env-setup/claude-login/start" style="margin-top:8px">
+                ${CsrfTokens.hiddenInput(csrf)}
                 <button type="submit" class="primary" style="padding:8px 14px">다시 시도</button>
               </form>
             </div>"""
             "CANCELED" -> """<div class="card" style="margin-top:12px;background:rgba(160,160,160,0.05)">
               <strong class="dim">취소됨</strong>
               <form method="post" action="/env-setup/claude-login/start" style="margin-top:8px">
+                ${CsrfTokens.hiddenInput(csrf)}
                 <button type="submit" class="primary" style="padding:8px 14px">새 세션 시작</button>
               </form>
             </div>"""
@@ -308,6 +328,7 @@ $statusHint
 
         val startForm = if (state == null || state.state in listOf("DONE", "FAILED", "CANCELED")) {
             """<form method="post" action="/env-setup/claude-login/start" style="margin-top:8px">
+              ${CsrfTokens.hiddenInput(csrf)}
               <button type="submit" class="primary" style="padding:10px 20px">▶ 1. 로그인 시작</button>
             </form>"""
         } else ""
@@ -323,6 +344,7 @@ $statusHint
             title = "Claude 웹 로그인",
             username = username,
             currentPath = "/env-setup",
+            csrf = csrf,
             body = """
 <header>
   <h1>Claude 웹 로그인 <small class="dim" style="font-size:14px;font-weight:400">반자동 OAuth</small></h1>

@@ -46,7 +46,8 @@ dependencies {
     implementation(libs.exposed.dao)
     implementation(libs.exposed.jdbc)
     implementation(libs.exposed.java.time)
-    implementation(libs.sqlite.jdbc)
+    // v0.14.0 — PostgreSQL 전환. SQLite 는 P6 (legacy migration) 시 추가.
+    implementation(libs.postgresql.jdbc)
     implementation(libs.hikari)
 
     // Config

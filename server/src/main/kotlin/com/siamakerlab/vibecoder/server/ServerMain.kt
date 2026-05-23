@@ -111,8 +111,8 @@ fun main(args: Array<String>) {
     val workspaceRoot = Path.of(config.workspace.root).toAbsolutePath().normalize()
     val workspace = WorkspacePath(workspaceRoot)
 
-    val dbFile = workspaceRoot.resolve(".vibecoder").resolve("vibecoder.db")
-    VibeDb.init(dbFile)
+    // v0.14.0 — PostgreSQL connection. compose 의 postgres 컨테이너 또는 외부 PG.
+    VibeDb.init(config.database)
 
     val clock = SystemClock()
     val deviceRepo = DeviceRepository(clock)
@@ -140,13 +140,18 @@ fun main(args: Array<String>) {
     val keystoreGen = KeystoreGenerator(workspace)
     val gitCredentials = GitCredentialStore()
     val gitClone = GitCloneService(gitCredentials)
-    val projects = ProjectService(workspace, projectRepo, buildRepo, keystoreGen, gitClone)
+    val projects = ProjectService(
+        workspace, projectRepo, buildRepo, keystoreGen, gitClone,
+        artifactRepo = artifactRepo, uploadedFileRepo = uploadedRepo,
+    )
     val sessionManager = ClaudeSessionManager(config, workspace, hub)
     val gradle = GradleBuilder(config)
     val artifacts = ArtifactService(config, workspace, artifactRepo, buildRepo, clock)
     val build = BuildService(config, workspace, projects, buildRepo, queue, gradle, artifacts, clock)
     val git = GitReader()
     val uploads = UploadService(config, workspace, uploadedRepo, clock)
+    val fileBrowser = com.siamakerlab.vibecoder.server.files.ProjectFileBrowser(workspace)
+    val promptStore = com.siamakerlab.vibecoder.server.prompts.PromptTemplateStore(workspace, clock)
     val env = EnvDiagnostics(config)
     val envSetup = EnvSetupService(config, queue, hub, clock)
     val claudeAuth = ClaudeAuthService(clock)
@@ -180,6 +185,8 @@ fun main(args: Array<String>) {
         build = build,
         git = git,
         uploads = uploads,
+        fileBrowser = fileBrowser,
+        promptStore = promptStore,
         status = status,
         env = env,
         envSetup = envSetup,

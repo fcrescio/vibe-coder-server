@@ -14,6 +14,7 @@ import kotlinx.serialization.json.longOrNull
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.io.path.exists
 
 private val log = KotlinLogging.logger {}
@@ -241,12 +242,14 @@ class EnvSetupService(
     private fun probePlatformTools(c: SetupComponent): ComponentState {
         val sdk = androidSdkRoot() ?: return ComponentState(c, ComponentStatus.MISSING, "ANDROID_HOME 미설정")
         val pt = sdk.resolve("platform-tools")
-        return if (pt.exists() && pt.resolve("adb").exists().let { it } || pt.resolve("adb.exe").exists()) {
-            ComponentState(c, ComponentStatus.INSTALLED, "adb @ $pt")
-        } else if (pt.exists()) {
-            ComponentState(c, ComponentStatus.PARTIAL, "디렉토리는 있으나 adb 누락: $pt")
-        } else {
-            ComponentState(c, ComponentStatus.MISSING, "platform-tools 미설치: $pt")
+        // v0.12.4 — 이전엔 `pt.exists() && adb.exists() || adb.exe.exists()` 로
+        // && 가 더 강하게 묶여서 pt 가 없어도 adb.exe 가 있으면 INSTALLED 가 되는
+        // edge 가 있었다. 명시 괄호로 의도 표현.
+        val adbPresent = pt.resolve("adb").exists() || pt.resolve("adb.exe").exists()
+        return when {
+            pt.exists() && adbPresent -> ComponentState(c, ComponentStatus.INSTALLED, "adb @ $pt")
+            pt.exists() -> ComponentState(c, ComponentStatus.PARTIAL, "디렉토리는 있으나 adb 누락: $pt")
+            else -> ComponentState(c, ComponentStatus.MISSING, "platform-tools 미설치: $pt")
         }
     }
 
@@ -288,16 +291,33 @@ class EnvSetupService(
         }
     }
 
-    /** services.gradle.org/versions/current 의 .version 추출. 실패 시 null. */
-    private fun fetchGradleLatest(): String? = try {
-        val conn = java.net.URI("https://services.gradle.org/versions/current").toURL().openConnection()
-        conn.connectTimeout = 5_000
-        conn.readTimeout = 5_000
-        val body = conn.getInputStream().bufferedReader(Charsets.UTF_8).use { it.readText() }
-        Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.getOrNull(1)
-    } catch (_: Throwable) {
-        null
+    /**
+     * services.gradle.org/versions/current 의 .version 추출. 실패 시 null.
+     *
+     * v0.12.4 — 30분 TTL 캐시. 이전엔 매 detect 마다 (대시보드 로드 시점마다)
+     * 외부 HTTP 호출이 최대 10 초 블로킹돼 UX 가 늘어졌다. 캐시 miss / 실패 시만
+     * 네트워크 사용 — 결과가 stale 해도 사용자 영향은 "최신 버전 알림 30분 지연" 정도.
+     */
+    private fun fetchGradleLatest(): String? {
+        val now = System.currentTimeMillis()
+        gradleLatestCache.get()?.let { (ts, ver) ->
+            if (now - ts < GRADLE_LATEST_TTL_MS) return ver
+        }
+        val fetched = try {
+            val conn = java.net.URI("https://services.gradle.org/versions/current").toURL().openConnection()
+            conn.connectTimeout = 5_000
+            conn.readTimeout = 5_000
+            val body = conn.getInputStream().bufferedReader(Charsets.UTF_8).use { it.readText() }
+            Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.getOrNull(1)
+        } catch (_: Throwable) {
+            null
+        }
+        if (fetched != null) gradleLatestCache.set(now to fetched)
+        return fetched
     }
+
+    /** (fetchedAtMs, version) — 성공 결과만 캐싱. 실패는 재시도. */
+    private val gradleLatestCache = AtomicReference<Pair<Long, String>?>(null)
 
     /** SemVer-ish 비교 — `8.7` vs `8.10.2` 등. 같으면 0, current < latest 면 음수. */
     private fun compareGradleVersion(a: String, b: String): Int {
@@ -450,5 +470,10 @@ class EnvSetupService(
         // 도커 이미지 안에서는 entrypoint 가 /usr/local/bin/vibe-doctor symlink 를 만든다.
         // 호스트에서 직접 띄우는 dev 환경은 PATH 에 vibe-doctor 가 없을 수 있다.
         return System.getenv("VIBE_DOCTOR_CMD")?.ifBlank { null } ?: "vibe-doctor"
+    }
+
+    companion object {
+        /** Gradle latest version 캐시 TTL — 30 분. */
+        private const val GRADLE_LATEST_TTL_MS = 30L * 60 * 1000
     }
 }

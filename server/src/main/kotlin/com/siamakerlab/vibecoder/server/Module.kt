@@ -52,6 +52,7 @@ import com.siamakerlab.vibecoder.server.repo.DeviceRepository
 import com.siamakerlab.vibecoder.server.repo.ProjectRepository
 import com.siamakerlab.vibecoder.server.repo.UploadedFileRepository
 import com.siamakerlab.vibecoder.server.tasks.TaskQueue
+import com.siamakerlab.vibecoder.server.prompts.promptRoutes
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.server.ws.wsRoutes
 import com.siamakerlab.vibecoder.shared.ApiPath
@@ -94,6 +95,8 @@ data class ServerContext(
     val build: BuildService,
     val git: GitReader,
     val uploads: UploadService,
+    val fileBrowser: com.siamakerlab.vibecoder.server.files.ProjectFileBrowser,
+    val promptStore: com.siamakerlab.vibecoder.server.prompts.PromptTemplateStore,
     val status: StatusService,
     val env: EnvDiagnostics,
     val envSetup: EnvSetupService,
@@ -209,6 +212,7 @@ fun Application.module(ctx: ServerContext) {
             uploads = ctx.uploads,
             gitReader = ctx.git,
             workspace = ctx.workspace,
+            fileBrowser = ctx.fileBrowser,
         )
         envRoutes(ctx.status, ctx.env)
         projectRoutes(ctx.projects)
@@ -218,6 +222,7 @@ fun Application.module(ctx: ServerContext) {
         artifactRoutes(ctx.artifactRepo, ctx.workspace, ctx.artifacts)
         gitRoutes(ctx.projects, ctx.git)
         fileRoutes(ctx.uploads)
+        promptRoutes(adminDeps, ctx.promptStore)
         wsRoutes(ctx.hub, ctx.deviceRepo, ctx.tokens, ctx.sessionManager,
             ctx.actionRegistry, ctx.actionHandler)
     }

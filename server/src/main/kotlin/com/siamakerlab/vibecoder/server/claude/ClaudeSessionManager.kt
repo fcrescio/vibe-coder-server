@@ -78,7 +78,13 @@ class ClaudeSessionManager(
     /** Send [text] as a user turn. Spawns the session if necessary. */
     suspend fun sendPrompt(projectId: String, text: String) {
         require(text.isNotBlank()) { "prompt text is required" }
-        require(text.length <= MAX_PROMPT_BYTES) { "prompt too large (${text.length} > $MAX_PROMPT_BYTES)" }
+        // 실제 stdin 으로 흘러갈 UTF-8 byte size 기준으로 검증. v0.12.3 까지는
+        // text.length (char count) 였는데 한국어 등 multi-byte 문자에서는 의도와
+        // 다르게 작은 입력이 통과되거나 큰 입력이 거부될 수 있었다.
+        val bytes = text.toByteArray(Charsets.UTF_8).size
+        require(bytes <= MAX_PROMPT_BYTES) {
+            "prompt too large ($bytes bytes UTF-8 > $MAX_PROMPT_BYTES)"
+        }
 
         val session = ensureSession(projectId)
         val envelope = buildJsonObject {
@@ -117,6 +123,28 @@ class ClaudeSessionManager(
         runCatching { sessionIdFile(projectId).deleteIfExists() }
         hub.resetConsole(topic(projectId))
         emitSystem(projectId, "new_session_requested", "Session reset. The next prompt starts a fresh conversation.")
+    }
+
+    /**
+     * v0.13.0 — 진행 중인 turn 강제 중단.
+     *
+     * Claude CLI stdin 으로 인터럽트 envelope 를 보내는 방법이 없어, 현재 자식 프로세스를
+     * SIGTERM 으로 죽이고 session-id 는 보존 (다음 prompt 시 --resume 으로 같은 대화 이어감).
+     * 사용자가 답변 도중 잘못된 방향이라고 판단하면 즉시 stop → 새 prompt 로 방향 전환 가능.
+     *
+     * startNew 와 다른 점: startNew 는 session-id 삭제 → 완전 새 대화. cancel 은 그대로 이어감.
+     */
+    suspend fun cancelTurn(projectId: String) {
+        val existed = sessions[projectId]?.process?.isAlive == true
+        if (!existed) {
+            emitSystem(projectId, "cancel_noop", "진행 중인 Claude turn 이 없습니다.")
+            return
+        }
+        terminateSession(projectId)
+        emitSystem(
+            projectId, "turn_cancelled",
+            "사용자가 turn 을 중단했습니다. 다음 prompt 는 같은 세션 (--resume) 으로 이어집니다.",
+        )
     }
 
     fun isAlive(projectId: String): Boolean =

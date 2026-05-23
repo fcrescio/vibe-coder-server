@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import com.siamakerlab.vibecoder.server.core.Clock
 import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.git.GitCloneService
@@ -37,14 +38,14 @@ fun Routing.gitIntegrationsRoutes(
         val sshPubKey = cloneSvc.getPublicKeyOrNull()
         val flash = call.request.queryParameters["flash"]
         call.respondText(
-            GitIntegrationsTemplates.page(sess.username, tokens, sshPubKey, flash),
+            GitIntegrationsTemplates.page(sess.username, tokens, sshPubKey, flash, csrf = sess.csrf),
             ContentType.Text.Html,
         )
     }
 
     post("/settings/git-integrations") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
-        val form = call.receiveParameters()
+        val form = requireCsrf()
         try {
             credentials.register(
                 provider = form["provider"].orEmpty(),
@@ -67,7 +68,7 @@ fun Routing.gitIntegrationsRoutes(
 
     post("/settings/git-integrations/delete") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
-        val form = call.receiveParameters()
+        val form = requireCsrf()
         val host = form["host"].orEmpty()
         val removed = credentials.delete(host)
         log.info { "git token delete by ${sess.username}: $host (removed=$removed)" }
@@ -76,6 +77,7 @@ fun Routing.gitIntegrationsRoutes(
 
     post("/settings/git-integrations/ssh-keygen") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
         try {
             cloneSvc.ensureSshKeyExists()
         } catch (e: ApiException) {

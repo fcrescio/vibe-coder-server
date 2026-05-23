@@ -65,6 +65,7 @@ fun Routing.authRoutes(
             password = body.password,
             deviceName = body.deviceName ?: "unknown",
             channel = "app",
+            remoteIp = call.request.local.remoteHost,
         )
         call.respond(
             HttpStatusCode.OK,

@@ -23,7 +23,7 @@ fun Routing.corsSettingsRoutes(authDeps: AdminRoutesDeps) {
     get("/settings/cors") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         call.respondText(
-            CorsSettingsTemplates.page(sess.username, authDeps.config.cors),
+            CorsSettingsTemplates.page(sess.username, authDeps.config.cors, csrf = sess.csrf),
             ContentType.Text.Html,
         )
     }
@@ -36,7 +36,7 @@ object CorsSettingsTemplates {
             .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             .replace("\"", "&quot;").replace("'", "&#39;")
 
-    fun page(username: String, cors: CorsSection): String {
+    fun page(username: String, cors: CorsSection, csrf: String? = null): String {
         val hosts = cors.allowedHosts
         val isAnyHost = hosts.contains("*")
         val statusColor = if (isAnyHost) "warn" else "ok"
@@ -55,6 +55,7 @@ object CorsSettingsTemplates {
             title = "CORS 정책",
             username = username,
             currentPath = "/settings/cors",
+            csrf = csrf,
             body = """
 <header>
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">

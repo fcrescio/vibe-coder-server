@@ -11,6 +11,7 @@ data class ServerConfig(
     val build: BuildSection,
     val git: GitSection,
     val cors: CorsSection = CorsSection(),
+    val database: DatabaseSection = DatabaseSection(),
 )
 
 @Serializable
@@ -73,4 +74,35 @@ data class GitSection(
 data class CorsSection(
     val allowedHosts: List<String> = listOf("*"),
     val allowCredentials: Boolean = false,
+)
+
+/**
+ * v0.14.0 — PostgreSQL 연결 설정.
+ *
+ * 기본값은 docker compose 의 postgres 서비스에 맞춤 (host=postgres, port=5432).
+ * 환경변수 override 우선순위:
+ *   - VIBECODER_DB_URL          전체 JDBC URL (jdbc:postgresql://host:port/dbname)
+ *   - VIBECODER_DB_HOST         host 만 (다른 값과 조합)
+ *   - VIBECODER_DB_PORT         port
+ *   - VIBECODER_DB_NAME         database 이름
+ *   - VIBECODER_DB_USER         계정
+ *   - VIBECODER_DB_PASSWORD     비밀번호 (직접)
+ *   - VIBECODER_DB_PASSWORD_FILE  비밀번호가 들어있는 파일 경로 (Docker secret).
+ *                                  존재하면 _PASSWORD 보다 우선.
+ *   - VIBECODER_DB_MAX_POOL     Hikari maximumPoolSize (기본 10)
+ *
+ * 비밀번호 누락 시 startup 실패 (명시적 오류) — production 환경에서 빈 비밀번호로
+ * 우연 connect 되는 일을 막음.
+ */
+@Serializable
+data class DatabaseSection(
+    val host: String = "postgres",
+    val port: Int = 5432,
+    val name: String = "vibecoder",
+    val user: String = "vibecoder",
+    val password: String = "",
+    val passwordFile: String = "",
+    val maxPoolSize: Int = 10,
+    /** SSL 모드 — disable / prefer / require / verify-ca / verify-full. */
+    val sslMode: String = "disable",
 )

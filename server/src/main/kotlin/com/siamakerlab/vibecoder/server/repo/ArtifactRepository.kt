@@ -74,6 +74,11 @@ class ArtifactRepository(private val clock: Clock) {
         Artifacts.deleteWhere { Artifacts.id eq artifactId }
     }
 
+    /** ProjectService.delete cascade — 모든 artifact row 일괄 제거. */
+    fun deleteForProject(projectId: String): Int = transaction {
+        Artifacts.deleteWhere { Artifacts.projectId eq projectId }
+    }
+
     private fun ResultRow.toRow() = ArtifactRow(
         id = this[Artifacts.id],
         projectId = this[Artifacts.projectId],

@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.git.GitCredentialStore
 
 /**
@@ -22,12 +23,14 @@ object GitIntegrationsTemplates {
         tokens: List<GitCredentialStore.TokenView>,
         sshPubKey: String?,
         flash: String?,
+        csrf: String? = null,
     ): String {
         val sshBlock = if (sshPubKey == null) """
 <div style="background:rgba(255,150,80,0.08);padding:10px;border-radius:6px;border:1px solid var(--warn)">
   <p style="margin:0 0 8px">SSH 키가 아직 생성되지 않았습니다.</p>
   <form method="post" action="/settings/git-integrations/ssh-keygen"
         onsubmit="return confirm('vibe 사용자의 ~/.ssh/id_ed25519 키 페어를 자동 생성합니다. 계속할까요?')">
+    ${CsrfTokens.hiddenInput(csrf)}
     <button type="submit" class="primary" style="padding:8px 14px">SSH 키 자동 생성</button>
   </form>
   <p class="hint" style="font-size:12px;margin-top:8px">ed25519 (현대 표준, RSA 4096 보다 짧고 안전).
@@ -62,6 +65,7 @@ object GitIntegrationsTemplates {
   <td>
     <form method="post" action="/settings/git-integrations/delete" style="display:inline"
           onsubmit="return confirm('${esc(t.host)} 의 토큰을 삭제합니다. 계속할까요?')">
+      ${CsrfTokens.hiddenInput(csrf)}
       <input type="hidden" name="host" value="${esc(t.host)}">
       <button type="submit" style="padding:4px 10px;font-size:11px">삭제</button>
     </form>
@@ -73,6 +77,7 @@ object GitIntegrationsTemplates {
             title = "Git 통합",
             username = username,
             currentPath = "/settings/git-integrations",
+            csrf = csrf,
             body = """
 <header>
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -114,6 +119,7 @@ ${flashBlurb(flash)}
   <details ${if (tokens.isEmpty()) "open" else ""}>
     <summary style="cursor:pointer;font-size:13px"><strong>+ 새 토큰 등록</strong></summary>
     <form method="post" action="/settings/git-integrations" style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${CsrfTokens.hiddenInput(csrf)}
       <label>Provider
         <select name="provider" required style="width:100%;padding:6px">
           <option value="github">GitHub</option>
@@ -127,8 +133,8 @@ ${flashBlurb(flash)}
         <input name="host" required placeholder="github.com 또는 gitea.example.com">
       </label>
       <label style="grid-column:1 / -1">Personal Access Token
-        <input type="password" name="token" required minlength="10"
-               placeholder="ghp_... / glpat-... / 등" autocomplete="off">
+        <input type="password" name="token" required minlength="20"
+               placeholder="ghp_... / glpat-... / 등 (20자 이상)" autocomplete="off">
       </label>
       <label>Username (선택, 기본값은 provider 별 표준)
         <input name="username" placeholder="x-access-token / oauth2 / your-username">

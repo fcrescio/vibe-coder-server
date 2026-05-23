@@ -1,9 +1,12 @@
 package com.siamakerlab.vibecoder.server.admin
 
 import com.siamakerlab.vibecoder.server.auth.AuthService
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import com.siamakerlab.vibecoder.server.auth.PasswordPolicy
 import com.siamakerlab.vibecoder.server.auth.SESSION_COOKIE
 import com.siamakerlab.vibecoder.server.auth.UsernamePolicy
+import com.siamakerlab.vibecoder.server.auth.bearerTokenOrNull
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.env.EnvDiagnostics
 import com.siamakerlab.vibecoder.server.env.StatusService
@@ -64,6 +67,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             deviceCount = deviceCount,
             runningBuilds = 0,
             claudeAuth = claudeAuth,
+            csrf = sess.csrf,
         )
         call.respondText(html, ContentType.Text.Html)
     }
@@ -148,6 +152,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
                 password = password,
                 deviceName = browserDeviceName(call),
                 channel = "web",
+                remoteIp = call.request.local.remoteHost,
             )
         }.getOrElse { e ->
             val msg = (e as? ApiException)?.message ?: "로그인 실패"
@@ -164,9 +169,15 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
 
     // ── Logout ────────────────────────────────────────────────────
     post("/logout") {
-        val token = call.request.cookies[SESSION_COOKIE]
+        // v0.12.4 — cookie + Bearer 둘 다 처리, 그리고 SSR(cookie) 의 경우 CSRF 검증.
+        // Bearer 헤더 호출은 Authorization 자체가 SOP/CORS preflight 의 trigger 라
+        // 외부 origin 에서 임의로 못 붙이므로 CSRF 불필요.
+        val cookieToken = call.request.cookies[SESSION_COOKIE]
+        if (!cookieToken.isNullOrBlank()) {
+            requireCsrf()
+        }
+        val token = call.bearerTokenOrNull()
         if (token != null) {
-            // 단일 디바이스 row 삭제로 invalidate
             val hash = com.siamakerlab.vibecoder.server.core.Sha256.hashString(token)
             deps.deviceRepo.findByTokenHash(hash)?.let { deps.deviceRepo.deleteById(it.id) }
         }
@@ -191,35 +202,92 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             buildTimeoutMin = cfg.build.timeoutMinutes,
             defaultDebugTask = cfg.build.defaultDebugTask,
         )
-        val ok = call.request.queryParameters["ok"]?.let { "저장됨." }
+        val ok = call.request.queryParameters["ok"]?.let {
+            "✓ server.yml 에 저장되었습니다. 일부 항목(host/port/name)은 컨테이너 재시작 후 적용됩니다."
+        }
+        val err = call.request.queryParameters["err"]
         call.respondText(
-            AdminTemplates.settingsPage(sess.username, view, flashOk = ok),
+            AdminTemplates.settingsPage(
+                sess.username, view, flashOk = ok, flashErr = err, csrf = sess.csrf,
+            ),
             ContentType.Text.Html,
         )
     }
 
     post("/settings") {
         val sess = requireSessionOrRedirect(deps) ?: return@post
-        // server.yml 직접 편집은 위험 → PoC에서는 폼 데이터만 받아 적용은 보류, UI 동작만 검증
-        // (실제 디스크 쓰기는 후속 사이클에서 백업/롤백 포함 구현)
-        log.info { "settings 저장 시도 by ${sess.username} (PoC: not yet persisted)" }
+        val params = requireCsrf()
+
+        // 파싱 — 부재/빈 값은 기존 값 유지
+        val cur = deps.config
+        val newConfig = try {
+            cur.copy(
+                server = cur.server.copy(
+                    name = params["server.name"]?.trim()?.ifBlank { null } ?: cur.server.name,
+                    port = params["server.port"]?.toIntOrNull()?.also {
+                        require(it in 1..65535) { "port must be in 1..65535 (got $it)" }
+                    } ?: cur.server.port,
+                    host = params["server.host"]?.trim()?.ifBlank { null } ?: cur.server.host,
+                ),
+                workspace = cur.workspace.copy(
+                    maxUploadSizeMb = params["workspace.maxUploadSizeMb"]?.toLongOrNull()?.also {
+                        require(it in 1..10240) { "maxUploadSizeMb must be in 1..10240 (got $it)" }
+                    } ?: cur.workspace.maxUploadSizeMb,
+                    artifactKeepCount = params["workspace.artifactKeepCount"]?.toIntOrNull()?.also {
+                        require(it in 1..1000) { "artifactKeepCount must be in 1..1000 (got $it)" }
+                    } ?: cur.workspace.artifactKeepCount,
+                ),
+                claude = cur.claude.copy(
+                    enabled = params["claude.enabled"] != null,  // checkbox: 존재 → true
+                    path = params["claude.path"]?.trim()?.ifBlank { null } ?: cur.claude.path,
+                    timeoutMinutes = params["claude.timeoutMinutes"]?.toIntOrNull()?.also {
+                        require(it in 1..600) { "claude.timeoutMinutes must be in 1..600 (got $it)" }
+                    } ?: cur.claude.timeoutMinutes,
+                ),
+                build = cur.build.copy(
+                    timeoutMinutes = params["build.timeoutMinutes"]?.toIntOrNull()?.also {
+                        require(it in 1..600) { "build.timeoutMinutes must be in 1..600 (got $it)" }
+                    } ?: cur.build.timeoutMinutes,
+                    defaultDebugTask = params["build.defaultDebugTask"]?.trim()?.ifBlank { null }
+                        ?: cur.build.defaultDebugTask,
+                ),
+            )
+        } catch (e: IllegalArgumentException) {
+            call.respondRedirect("/settings?err=${java.net.URLEncoder.encode(e.message ?: "invalid", "UTF-8")}")
+            return@post
+        }
+
+        val result = try {
+            com.siamakerlab.vibecoder.server.config.ConfigPersistence.save(newConfig)
+        } catch (e: Throwable) {
+            log.error(e) { "config persist failed" }
+            call.respondRedirect("/settings?err=${java.net.URLEncoder.encode("저장 실패: ${e.message}", "UTF-8")}")
+            return@post
+        }
+        log.info { "settings persisted by ${sess.username} → ${result.targetPath} (backup=${result.backupPath})" }
         call.respondRedirect("/settings?ok=1")
     }
 
     get("/password") {
         val sess = requireSessionOrRedirect(deps) ?: return@get
-        call.respondText(AdminTemplates.passwordPage(sess.username), ContentType.Text.Html)
+        call.respondText(
+            AdminTemplates.passwordPage(sess.username, csrf = sess.csrf),
+            ContentType.Text.Html,
+        )
     }
 
     post("/password") {
         val sess = requireSessionOrRedirect(deps) ?: return@post
-        val params = call.receiveParameters()
+        val params = requireCsrf()
         val current = params["currentPassword"].orEmpty()
         val new = params["newPassword"].orEmpty()
         val confirm = params["newPasswordConfirm"].orEmpty()
         if (new != confirm) {
             call.respondText(
-                AdminTemplates.passwordPage(sess.username, flashErr = "새 비밀번호 확인이 일치하지 않습니다."),
+                AdminTemplates.passwordPage(
+                    sess.username, csrf = sess.csrf,
+                    flashErr = "새 비밀번호 확인이 일치하지 않습니다.",
+                ),
                 ContentType.Text.Html,
                 HttpStatusCode.BadRequest,
             )
@@ -232,14 +300,17 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             val msg = (result.exceptionOrNull() as? ApiException)?.message
                 ?: "비밀번호 변경 실패"
             call.respondText(
-                AdminTemplates.passwordPage(sess.username, flashErr = msg),
+                AdminTemplates.passwordPage(sess.username, csrf = sess.csrf, flashErr = msg),
                 ContentType.Text.Html,
                 HttpStatusCode.BadRequest,
             )
             return@post
         }
         call.respondText(
-            AdminTemplates.passwordPage(sess.username, flashOk = "비밀번호가 변경되었습니다."),
+            AdminTemplates.passwordPage(
+                sess.username, csrf = sess.csrf,
+                flashOk = "비밀번호가 변경되었습니다.",
+            ),
             ContentType.Text.Html,
         )
     }
@@ -249,13 +320,17 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
         val devices = deps.deviceRepo.listAll()
         val ok = call.request.queryParameters["ok"]?.let { "디바이스 토큰이 무효화되었습니다." }
         call.respondText(
-            AdminTemplates.devicesPage(sess.username, devices, sess.deviceId, flashOk = ok),
+            AdminTemplates.devicesPage(
+                sess.username, devices, sess.deviceId,
+                flashOk = ok, csrf = sess.csrf,
+            ),
             ContentType.Text.Html,
         )
     }
 
     post("/devices/{id}/revoke") {
         val sess = requireSessionOrRedirect(deps) ?: return@post
+        requireCsrf()
         val id = call.parameters["id"]
         if (id == null || id == sess.deviceId) {
             call.respondText(
@@ -285,6 +360,12 @@ internal data class WebSession(
     val userId: String,
     val username: String,
     val deviceId: String,
+    /**
+     * v0.12.4 — 같은 cookie token 으로부터 HMAC-derive 한 CSRF 토큰. 모든 SSR
+     * 폼에 hidden `_csrf` input 으로 박아 보내고 POST 핸들러가 CsrfTokens.requireCsrf
+     * 로 검증한다.
+     */
+    val csrf: String,
 )
 
 /** 세션 유효 시 WebSession, 아니면 적절한 곳으로 redirect 후 null 반환. */
@@ -311,7 +392,10 @@ internal suspend fun io.ktor.server.routing.RoutingContext.requireSessionOrRedir
         return null
     }
     deps.deviceRepo.touchLastSeen(device.id)
-    return WebSession(token, user.id, user.username, device.id)
+    return WebSession(
+        token = token, userId = user.id, username = user.username, deviceId = device.id,
+        csrf = com.siamakerlab.vibecoder.server.auth.CsrfTokens.tokenFor(token),
+    )
 }
 
 private fun setSessionCookie(call: ApplicationCall, token: String) {

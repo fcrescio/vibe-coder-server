@@ -1,0 +1,155 @@
+package com.siamakerlab.vibecoder.server.prompts
+
+import com.siamakerlab.vibecoder.server.core.Clock
+import com.siamakerlab.vibecoder.server.core.Ids
+import com.siamakerlab.vibecoder.server.core.WorkspacePath
+import com.siamakerlab.vibecoder.server.error.ApiException
+import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
+import kotlin.io.path.exists
+
+private val log = KotlinLogging.logger {}
+
+/**
+ * 프롬프트 템플릿 관리 — v0.13.0.
+ *
+ * 단일 admin 환경이라 사용자 분리 없이 한 곳에 저장.
+ *   - 위치: `<workspace>/.vibecoder/prompt-templates.json`
+ *   - 단일 JSON 배열 (id/category/title/body/createdAt).
+ *   - 콘솔 페이지의 "Templates" 드롭다운에서 즉시 prompt 영역에 paste.
+ *   - 카테고리는 자유 텍스트 (사용자가 입력). 비우면 "General".
+ *
+ * 동시성: 한 admin 만 변경 → ReentrantReadWriteLock 으로 충분.
+ */
+class PromptTemplateStore(
+    private val workspace: WorkspacePath,
+    private val clock: Clock,
+) {
+
+    @Serializable
+    data class Template(
+        val id: String,
+        val title: String,
+        val category: String,
+        val body: String,
+        val createdAt: String,
+        val updatedAt: String,
+    )
+
+    @Serializable
+    private data class Storage(
+        val templates: MutableList<Template> = mutableListOf(),
+    )
+
+    private val lock = ReentrantReadWriteLock()
+
+    private fun path(): Path =
+        workspace.root.resolve(".vibecoder").resolve("prompt-templates.json")
+
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; prettyPrintIndent = "  " }
+
+    fun listAll(): List<Template> = lock.read { read().templates.toList() }
+
+    fun get(id: String): Template? = lock.read {
+        read().templates.firstOrNull { it.id == id }
+    }
+
+    /** 카테고리 → 알파벳 정렬된 템플릿 리스트. UI 의 drop-down grouping 에 사용. */
+    fun grouped(): Map<String, List<Template>> = lock.read {
+        read().templates
+            .sortedWith(compareBy({ it.category.lowercase() }, { it.title.lowercase() }))
+            .groupBy { it.category }
+    }
+
+    fun create(title: String, category: String, body: String): Template {
+        val cleanTitle = title.trim()
+        val cleanBody = body.trim()
+        if (cleanTitle.isEmpty()) throw ApiException(400, "empty_title", "제목이 비어 있습니다.")
+        if (cleanBody.isEmpty()) throw ApiException(400, "empty_body", "본문이 비어 있습니다.")
+        if (cleanTitle.length > MAX_TITLE_LEN)
+            throw ApiException(400, "title_too_long", "제목은 ${MAX_TITLE_LEN}자 이하.")
+        if (cleanBody.length > MAX_BODY_LEN)
+            throw ApiException(400, "body_too_long", "본문은 ${MAX_BODY_LEN}자 이하.")
+        val cleanCat = category.trim().ifBlank { "General" }
+        val now = clock.nowIso()
+        val t = Template(Ids.taskId(), cleanTitle, cleanCat, cleanBody, now, now)
+        lock.write {
+            val s = read()
+            if (s.templates.size >= MAX_TOTAL)
+                throw ApiException(400, "limit_reached", "최대 $MAX_TOTAL 개까지 저장 가능합니다.")
+            s.templates.add(t)
+            persist(s)
+        }
+        log.info { "prompt template created: ${t.id} title='${t.title}'" }
+        return t
+    }
+
+    fun update(id: String, title: String, category: String, body: String): Template {
+        val cleanTitle = title.trim()
+        val cleanBody = body.trim()
+        if (cleanTitle.isEmpty()) throw ApiException(400, "empty_title", "제목이 비어 있습니다.")
+        if (cleanBody.isEmpty()) throw ApiException(400, "empty_body", "본문이 비어 있습니다.")
+        if (cleanTitle.length > MAX_TITLE_LEN)
+            throw ApiException(400, "title_too_long", "제목은 ${MAX_TITLE_LEN}자 이하.")
+        if (cleanBody.length > MAX_BODY_LEN)
+            throw ApiException(400, "body_too_long", "본문은 ${MAX_BODY_LEN}자 이하.")
+        val cleanCat = category.trim().ifBlank { "General" }
+        return lock.write {
+            val s = read()
+            val idx = s.templates.indexOfFirst { it.id == id }
+            if (idx < 0) throw ApiException(404, "template_not_found", "id=$id")
+            val updated = s.templates[idx].copy(
+                title = cleanTitle, category = cleanCat, body = cleanBody,
+                updatedAt = clock.nowIso(),
+            )
+            s.templates[idx] = updated
+            persist(s)
+            updated
+        }
+    }
+
+    fun delete(id: String): Boolean = lock.write {
+        val s = read()
+        val removed = s.templates.removeAll { it.id == id }
+        if (removed) persist(s)
+        removed
+    }
+
+    private fun read(): Storage {
+        val p = path()
+        if (!p.exists()) return Storage()
+        return try {
+            val text = Files.readString(p, Charsets.UTF_8)
+            json.decodeFromString(Storage.serializer(), text)
+        } catch (e: Throwable) {
+            log.warn(e) { "prompt-templates.json 파싱 실패 → 빈 storage" }
+            Storage()
+        }
+    }
+
+    private fun persist(s: Storage) {
+        val p = path()
+        Files.createDirectories(p.parent)
+        val tmp = p.resolveSibling("${p.fileName}.tmp")
+        Files.writeString(
+            tmp, json.encodeToString(Storage.serializer(), s), Charsets.UTF_8,
+            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
+        )
+        Files.move(tmp, p, StandardCopyOption.REPLACE_EXISTING)
+    }
+
+    companion object {
+        const val MAX_TITLE_LEN = 200
+        const val MAX_BODY_LEN = 16_000
+        const val MAX_TOTAL = 500
+    }
+}

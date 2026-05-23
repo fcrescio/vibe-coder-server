@@ -192,16 +192,20 @@ class GitCloneService(
 
     private fun validateUrl(url: String) {
         if (url.isEmpty()) throw ApiException(400, "empty_url", "clone URL 이 비어 있습니다.")
+        // scheme 비교는 대소문자 무관 (git 의 transport 매칭과 동일).
+        val lower = url.lowercase()
         when {
-            url.startsWith("https://") -> { /* ok */ }
-            url.startsWith("http://") -> { /* ok — 신뢰는 사용자 책임 */ }
-            url.startsWith("git@") && url.contains(':') -> { /* SSH form */ }
-            url.startsWith("ssh://") -> { /* ok */ }
+            lower.startsWith("https://") -> { /* ok */ }
+            lower.startsWith("http://") -> { /* ok — 신뢰는 사용자 책임 */ }
+            lower.startsWith("git@") && url.contains(':') -> { /* SSH form */ }
+            lower.startsWith("ssh://") -> { /* ok */ }
             else -> throw ApiException(400, "bad_url_scheme",
                 "지원하지 않는 URL 형식. https:// / http:// / git@host:owner/repo / ssh:// 만 허용.")
         }
-        // file:// / 로컬 경로 차단 (워크스페이스 탈출 방지)
-        if (url.contains("file://") || url.contains("..")) {
+        // file://, local-file://, ..(traversal) 모두 case-insensitive 차단.
+        // 이전 v0.12.3 까지 substring 검사가 case-sensitive 라 `FILE://` 가 통과해
+        // git 의 file transport 가 동작했다 (워크스페이스 탈출 가능성).
+        if (lower.contains("file://") || url.contains("..")) {
             throw ApiException(400, "unsafe_url", "안전하지 않은 URL 패턴입니다.")
         }
     }

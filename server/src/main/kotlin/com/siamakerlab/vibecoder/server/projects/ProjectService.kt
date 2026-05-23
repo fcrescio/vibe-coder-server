@@ -3,9 +3,11 @@ package com.siamakerlab.vibecoder.server.projects
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.git.GitCloneService
+import com.siamakerlab.vibecoder.server.repo.ArtifactRepository
 import com.siamakerlab.vibecoder.server.repo.BuildRepository
 import com.siamakerlab.vibecoder.server.repo.ProjectRepository
 import com.siamakerlab.vibecoder.server.repo.ProjectRow
+import com.siamakerlab.vibecoder.server.repo.UploadedFileRepository
 import com.siamakerlab.vibecoder.shared.dto.ProjectDto
 import com.siamakerlab.vibecoder.shared.dto.RegisterProjectRequestDto
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -25,6 +27,13 @@ class ProjectService(
     private val keystoreGen: KeystoreGenerator,
     /** v0.9.0 — null 이면 clone 기능 비활성 (테스트 등). 운영에선 항상 주입. */
     private val gitClone: GitCloneService? = null,
+    /**
+     * v0.12.4 — 프로젝트 삭제 시 자식 row cascade 정리용. SQLite 의 foreign_keys
+     * 가 활성화되면서 명시적 정리가 없으면 FK violation 으로 삭제 자체가 실패한다.
+     * 테스트 컨텍스트에서는 null 로 두고 cascade 없이 호출 (자식 row 없는 환경).
+     */
+    private val artifactRepo: ArtifactRepository? = null,
+    private val uploadedFileRepo: UploadedFileRepository? = null,
 ) {
 
     /**
@@ -38,8 +47,11 @@ class ProjectService(
      */
     fun register(body: RegisterProjectRequestDto): ProjectDto {
         require(body.projectId.isNotBlank()) { "projectId required" }
-        require(!body.projectId.contains('/') && !body.projectId.contains('\\') && !body.projectId.contains("..")) {
-            "projectId must not contain path separators"
+        // v0.12.4 — 클라이언트 폼 regex 와 동일한 패턴을 서버에서도 강제.
+        // 이전엔 path separator 만 차단해 공백/대문자/특수문자 입력이 통과돼서
+        // 폴더 이름이 OS 마다 다르게 처리되거나 UI 표기와 불일치하는 문제가 있었다.
+        require(PROJECT_ID_PATTERN.matches(body.projectId)) {
+            "projectId must match $PROJECT_ID_PATTERN (소문자/숫자로 시작, [a-z0-9._-] 만 허용, 1~64자)"
         }
         require(body.appName.isNotBlank()) { "appName required" }
         require(body.packageName.isNotBlank()) { "packageName required" }
@@ -115,10 +127,49 @@ class ProjectService(
 
     fun list(): List<ProjectDto> {
         val rows = repo.list()
-        return rows.map { row ->
-            val last = buildRepo.lastForProject(row.id)
-            row.toDto(false, last?.status?.name)
+        // v0.13.0 — scratch "ghost" project (/chat 페이지용) 는 일반 목록에서 숨김.
+        return rows
+            .filter { it.id != SCRATCH_ID }
+            .map { row ->
+                val last = buildRepo.lastForProject(row.id)
+                row.toDto(false, last?.status?.name)
+            }
+    }
+
+    /**
+     * v0.13.0 — General Chat 용 ghost 프로젝트.
+     *
+     * `/chat` 진입 시 호출되어 워크스페이스 폴더 + CLAUDE.md + .claude/settings.json
+     * + DB row 가 모두 존재함을 보장. 사용자가 직접 만들 수 없는 ID (`__scratch__` 는
+     * PROJECT_ID_PATTERN 의 first-char `[a-z0-9]` 검증을 통과 못 함).
+     *
+     * 일반 list() / register() / delete() 에서는 차단/필터링.
+     */
+    fun ensureScratchProject(): ProjectDto {
+        val existing = repo.findById(SCRATCH_ID)
+        if (existing != null) {
+            ensureScratchDirsExist(existing.sourcePath)
+            return existing.toDto(false, null)
         }
+        val srcRoot = workspace.root.resolve(SCRATCH_ID)
+        Files.createDirectories(srcRoot)
+        ProjectScaffolder.ensureClaudeFiles(srcRoot)
+        val row = repo.insert(
+            id = SCRATCH_ID,
+            name = "General Chat",
+            packageName = "scratch",
+            sourcePath = srcRoot.toString(),
+            moduleName = DEFAULT_MODULE,
+            debugTask = DEFAULT_DEBUG_TASK,
+        )
+        log.info { "scratch project bootstrapped at $srcRoot" }
+        return row.toDto(false, null)
+    }
+
+    private fun ensureScratchDirsExist(sourcePath: String) {
+        val p = java.nio.file.Path.of(sourcePath)
+        if (p.notExists()) Files.createDirectories(p)
+        ProjectScaffolder.ensureClaudeFiles(p)
     }
 
     fun get(id: String): ProjectDto {
@@ -136,7 +187,25 @@ class ProjectService(
     fun rowOrThrow(id: String): ProjectRow =
         repo.findById(id) ?: throw ApiException(404, "project_not_found", id)
 
-    fun delete(id: String): Boolean = repo.delete(id) > 0
+    /**
+     * 프로젝트 + 의존 row 모두 삭제. 디스크 파일은 보존 (UI 약속).
+     *
+     * v0.12.4 — SQLite foreign_keys 활성 후 cascade 정리 필수. 순서:
+     *   1. uploaded_files (Projects.id 참조)
+     *   2. artifacts      (Projects.id 참조)
+     *   3. builds         (Projects.id 참조)
+     *   4. projects       (root)
+     */
+    fun delete(id: String): Boolean {
+        // v0.13.0 — scratch ghost 프로젝트는 삭제 거부.
+        if (id == SCRATCH_ID) {
+            throw ApiException(403, "scratch_protected", "General Chat 워크스페이스는 삭제할 수 없습니다.")
+        }
+        uploadedFileRepo?.deleteForProject(id)
+        artifactRepo?.deleteForProject(id)
+        buildRepo.deleteForProject(id)
+        return repo.delete(id) > 0
+    }
 
     private fun buildProjectYml(
         req: RegisterProjectRequestDto,
@@ -164,5 +233,14 @@ class ProjectService(
     companion object {
         const val DEFAULT_MODULE = "app"
         const val DEFAULT_DEBUG_TASK = "assembleDebug"
+
+        /**
+         * v0.12.4 — 폼/REST 모두에서 받는 projectId 의 유효 패턴.
+         * 클라이언트 regex `[a-z0-9][a-z0-9._-]*{,63}` 와 서버 검증을 일원화.
+         */
+        val PROJECT_ID_PATTERN = Regex("^[a-z0-9][a-z0-9._-]{0,63}$")
+
+        /** v0.13.0 — General Chat ghost 프로젝트 ID. 사용자 입력으로는 만들 수 없는 형태. */
+        const val SCRATCH_ID = "__scratch__"
     }
 }

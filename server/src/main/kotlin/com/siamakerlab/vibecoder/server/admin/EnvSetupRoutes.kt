@@ -1,5 +1,7 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import com.siamakerlab.vibecoder.server.env.ClaudeAuthService
 import com.siamakerlab.vibecoder.server.env.ClaudeLoginService
 import com.siamakerlab.vibecoder.server.env.EnvSetupService
@@ -45,13 +47,14 @@ fun Routing.envSetupRoutes(
         val states = setupService.detectAll()
         val claudeFlash = call.request.queryParameters["claude"]
         call.respondText(
-            EnvSetupTemplates.envSetupPage(sess.username, states, claudeFlash),
+            EnvSetupTemplates.envSetupPage(sess.username, states, claudeFlash, csrf = sess.csrf),
             ContentType.Text.Html,
         )
     }
 
     post("/env-setup/install-all") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
         val taskId = setupService.spawnInstallAll()
         log.info { "env-setup install-all: $taskId by ${sess.username}" }
         call.respondRedirect("/env-setup/tasks/$taskId")
@@ -59,6 +62,7 @@ fun Routing.envSetupRoutes(
 
     post("/env-setup/{componentId}/install") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
         val id = call.parameters["componentId"]!!
         val comp = SetupComponent.byId(id)
             ?: throw ApiException(404, "unknown_component", "Unknown component: $id")
@@ -94,6 +98,7 @@ fun Routing.envSetupRoutes(
      */
     post("/env-setup/claude-auth/upload") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        CsrfTokens.verifyCsrfFromQueryOrHeader(call)
         val multipart = call.receiveMultipart()
         var bytes: ByteArray? = null
         var fileName: String? = null
@@ -150,7 +155,7 @@ fun Routing.envSetupRoutes(
      */
     post("/env-setup/claude-auth/api-key") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
-        val form = call.receiveParameters()
+        val form = requireCsrf()
         val key = form["apiKey"].orEmpty()
         try {
             claudeAuth.registerApiKey(key)
@@ -175,6 +180,7 @@ fun Routing.envSetupRoutes(
     /** API 키 모드 해제 → OAuth 자격증명 모드로 복귀. */
     post("/env-setup/claude-auth/api-key/delete") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
         claudeAuth.deleteApiKey()
         log.info { "API key deleted by ${sess.username}" }
         call.respondRedirect("/env-setup?claude=api-key-deleted")
@@ -192,13 +198,14 @@ fun Routing.envSetupRoutes(
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val state = claudeLogin.status()
         call.respondText(
-            EnvSetupTemplates.claudeLoginPage(sess.username, state),
+            EnvSetupTemplates.claudeLoginPage(sess.username, state, csrf = sess.csrf),
             ContentType.Text.Html,
         )
     }
 
     post("/env-setup/claude-login/start") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
         try {
             val s = claudeLogin.start()
             log.info { "claude login started by ${sess.username}: ${s.id}" }
@@ -214,7 +221,7 @@ fun Routing.envSetupRoutes(
 
     post("/env-setup/claude-login/submit") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
-        val form = call.receiveParameters()
+        val form = requireCsrf()
         val code = form["code"].orEmpty()
         try {
             claudeLogin.submitCode(code)
@@ -231,6 +238,7 @@ fun Routing.envSetupRoutes(
 
     post("/env-setup/claude-login/cancel") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
         claudeLogin.cancel()
         log.info { "claude login canceled by ${sess.username}" }
         call.respondRedirect("/env-setup/claude-login")

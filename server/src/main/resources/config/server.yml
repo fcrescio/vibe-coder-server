@@ -2,7 +2,7 @@ server:
   name: Vibe Coder Server
   host: 0.0.0.0
   port: 17880
-  version: 0.12.3
+  version: 0.14.0
 
 workspace:
   # Each project lives at <root>/<projectId>/.
@@ -52,3 +52,19 @@ cors:
   allowedHosts:
     - "*"
   allowCredentials: false
+
+# v0.14.0 — PostgreSQL 연결.
+# 운영에서는 비밀번호를 server.yml 에 직접 쓰지 말고 환경변수 또는 secret 파일로:
+#   VIBECODER_DB_PASSWORD       (compose .env)
+#   VIBECODER_DB_PASSWORD_FILE  (Docker secret, 우선)
+# host/port/name 도 env override 가능 (VIBECODER_DB_HOST 등).
+# sslMode: disable | prefer | require | verify-ca | verify-full
+database:
+  host: postgres
+  port: 5432
+  name: vibecoder
+  user: vibecoder
+  password: ""
+  passwordFile: ""
+  maxPoolSize: 10
+  sslMode: disable

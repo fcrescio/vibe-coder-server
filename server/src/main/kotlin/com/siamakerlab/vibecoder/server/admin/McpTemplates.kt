@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.env.McpCatalog
 import com.siamakerlab.vibecoder.server.env.McpService
 
@@ -31,6 +32,7 @@ object McpTemplates {
         username: String,
         states: Map<String, McpService.EntryState>,
         flash: String?,
+        csrf: String? = null,
     ): String {
         val total = McpCatalog.size
         val recommended = McpCatalog.recommendedIds.size
@@ -38,12 +40,13 @@ object McpTemplates {
 
         val flashHtml = flashBlurb(flash)
         val categoriesHtml = McpCatalog.byCategory.entries.joinToString("\n") { (cat, list) ->
-            renderCategory(cat, list, states)
+            renderCategory(cat, list, states, csrf)
         }
         return AdminTemplates.shell(
             title = "MCP 카탈로그",
             username = username,
             currentPath = "/env-setup",
+            csrf = csrf,
             body = """
 <header>
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -74,6 +77,7 @@ $flashHtml
 </div>
 
 <form method="post" id="mcp-form" action="/env-setup/mcp/install">
+  ${CsrfTokens.hiddenInput(csrf)}
   $categoriesHtml
 
   <div class="card" style="margin-top:16px;position:sticky;bottom:0;background:var(--card-bg,#1a1a1a);border:2px solid var(--ok);padding:14px">
@@ -194,8 +198,10 @@ JSON</pre>
       statusEl.textContent = '⏳ 업로드 중... (' + (f.size / 1024).toFixed(1) + ' KB)';
       var fd = new FormData();
       fd.append('file', f);
-      fetch('/env-setup/mcp/' + encodeURIComponent(mcpId) + '/file/' + encodeURIComponent(fieldKey), {
+      fetch('/env-setup/mcp/' + encodeURIComponent(mcpId) + '/file/' + encodeURIComponent(fieldKey) +
+            '?_csrf=' + encodeURIComponent(window.__VIBE_CSRF__ || ''), {
         method: 'POST', body: fd, credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': window.__VIBE_CSRF__ || '' },
       }).then(function(r) {
         if (!r.ok) return r.text().then(function(t) { throw new Error('HTTP ' + r.status + ': ' + t.slice(0, 200)); });
         return r.json();
@@ -247,8 +253,9 @@ JSON</pre>
         category: McpCatalog.Category,
         entries: List<McpCatalog.McpEntry>,
         states: Map<String, McpService.EntryState>,
+        csrf: String?,
     ): String {
-        val cards = entries.joinToString("\n") { renderEntry(it, states[it.id]) }
+        val cards = entries.joinToString("\n") { renderEntry(it, states[it.id], csrf) }
         return """
 <section style="margin-top:18px">
   <h2 style="margin-bottom:10px;font-size:16px;border-bottom:1px solid #333;padding-bottom:6px">${esc(category.label)}</h2>
@@ -258,7 +265,7 @@ JSON</pre>
 </section>"""
     }
 
-    private fun renderEntry(entry: McpCatalog.McpEntry, state: McpService.EntryState?): String {
+    private fun renderEntry(entry: McpCatalog.McpEntry, state: McpService.EntryState?, csrf: String?): String {
         val checked = state?.status == McpService.Status.INSTALLED ||
                       state?.status == McpService.Status.REGISTERED_ONLY
         val recClass = if (entry.recommended) "recommended" else ""

@@ -1,9 +1,12 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import com.siamakerlab.vibecoder.server.build.BuildService
 import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.error.ApiException
+import com.siamakerlab.vibecoder.server.files.ProjectFileBrowser
 import com.siamakerlab.vibecoder.server.files.UploadService
 import com.siamakerlab.vibecoder.server.git.GitReader
 import com.siamakerlab.vibecoder.server.projects.ProjectService
@@ -51,6 +54,7 @@ fun Routing.webProjectRoutes(
     uploads: UploadService,
     gitReader: GitReader,
     workspace: WorkspacePath,
+    fileBrowser: ProjectFileBrowser,
 ) {
 
     // ── 목록 + 등록 폼 ────────────────────────────────────────────────
@@ -60,14 +64,16 @@ fun Routing.webProjectRoutes(
         val err = call.request.queryParameters["err"]
         val ok = call.request.queryParameters["ok"]?.let { "프로젝트가 생성되었습니다." }
         call.respondText(
-            WebProjectTemplates.projectsPage(sess.username, list, flashErr = err, flashOk = ok),
+            WebProjectTemplates.projectsPage(
+                sess.username, list, flashErr = err, flashOk = ok, csrf = sess.csrf,
+            ),
             ContentType.Text.Html,
         )
     }
 
     post("/projects") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
-        val params = call.receiveParameters()
+        val params = requireCsrf()
         val projectId = params["projectId"]?.trim().orEmpty()
         val appName = params["appName"]?.trim().orEmpty()
         val packageName = params["packageName"]?.trim().orEmpty()
@@ -87,7 +93,9 @@ fun Routing.webProjectRoutes(
         if (basicErr != null) {
             val list = projects.list()
             call.respondText(
-                WebProjectTemplates.projectsPage(sess.username, list, flashErr = basicErr),
+                WebProjectTemplates.projectsPage(
+                    sess.username, list, flashErr = basicErr, csrf = sess.csrf,
+                ),
                 ContentType.Text.Html,
                 HttpStatusCode.BadRequest,
             )
@@ -113,7 +121,9 @@ fun Routing.webProjectRoutes(
             log.warn(e) { "project register failed: $projectId by ${sess.username}" }
             val list = projects.list()
             call.respondText(
-                WebProjectTemplates.projectsPage(sess.username, list, flashErr = msg),
+                WebProjectTemplates.projectsPage(
+                    sess.username, list, flashErr = msg, csrf = sess.csrf,
+                ),
                 ContentType.Text.Html,
                 HttpStatusCode.BadRequest,
             )
@@ -142,13 +152,16 @@ fun Routing.webProjectRoutes(
         val err = call.request.queryParameters["err"]
         val ok = call.request.queryParameters["ok"]
         call.respondText(
-            WebProjectTemplates.projectDetailPage(sess.username, p, recent, flashErr = err, flashOk = ok),
+            WebProjectTemplates.projectDetailPage(
+                sess.username, p, recent, flashErr = err, flashOk = ok, csrf = sess.csrf,
+            ),
             ContentType.Text.Html,
         )
     }
 
     post("/projects/{id}/delete") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
         val id = call.parameters["id"]!!
         val removed = projects.delete(id)
         log.info { "project delete: id=$id removed=$removed by ${sess.username}" }
@@ -173,6 +186,7 @@ fun Routing.webProjectRoutes(
                 sess.username, p, sid, alive,
                 claudeCli = env.claude,
                 claudeAuth = env.claudeAuth,
+                csrf = sess.csrf,
             ),
             ContentType.Text.Html,
         )
@@ -180,11 +194,14 @@ fun Routing.webProjectRoutes(
 
     post("/projects/{id}/console/new") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
         val id = call.parameters["id"]!!
         runCatching { sessionManager.startNew(id) }
             .onFailure { log.warn(it) { "console reset failed for $id" } }
         log.info { "console reset: $id by ${sess.username}" }
-        call.respondRedirect("/projects/$id/console")
+        // v0.13.0 — scratch 는 /chat 으로 redirect (전용 페이지 유지).
+        val target = if (id == ProjectService.SCRATCH_ID) "/chat" else "/projects/$id/console"
+        call.respondRedirect(target)
     }
 
     // ── 빌드 ──────────────────────────────────────────────────────────
@@ -209,7 +226,7 @@ fun Routing.webProjectRoutes(
         call.respondText(
             WebProjectTemplates.buildsPage(
                 sess.username, p, buildDtos, artifacts,
-                flashErr = err, flashOk = ok,
+                flashErr = err, flashOk = ok, csrf = sess.csrf,
             ),
             ContentType.Text.Html,
         )
@@ -217,6 +234,7 @@ fun Routing.webProjectRoutes(
 
     post("/projects/{id}/builds") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
         val id = call.parameters["id"]!!
         val row = runCatching { builds.enqueueDebug(id, hub) }.getOrElse { e ->
             val msg = (e as? ApiException)?.message ?: e.message ?: "빌드 큐 등록 실패"
@@ -254,17 +272,21 @@ fun Routing.webProjectRoutes(
         val replay = if (isTerminal) loadBuildLog(workspace, id, buildId, row.logPath) else null
 
         call.respondText(
-            WebProjectTemplates.buildDetailPage(sess.username, p, dto, artifact, replay),
+            WebProjectTemplates.buildDetailPage(sess.username, p, dto, artifact, replay, csrf = sess.csrf),
             ContentType.Text.Html,
         )
     }
 
     post("/projects/{id}/builds/{buildId}/cancel") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
         val id = call.parameters["id"]!!
         val buildId = call.parameters["buildId"]!!
-        runCatching { builds.cancel(buildId) }
-            .onFailure { log.warn(it) { "build cancel failed: $buildId" } }
+        try {
+            builds.cancel(buildId)
+        } catch (e: Throwable) {
+            log.warn(e) { "build cancel failed: $buildId" }
+        }
         log.info { "build cancel: $buildId project=$id by ${sess.username}" }
         call.respondRedirect("/projects/$id/builds/$buildId")
     }
@@ -281,13 +303,17 @@ fun Routing.webProjectRoutes(
         val err = call.request.queryParameters["err"]
         val ok = call.request.queryParameters["ok"]
         call.respondText(
-            WebProjectTemplates.filesPage(sess.username, p, files, flashErr = err, flashOk = ok),
+            WebProjectTemplates.filesPage(
+                sess.username, p, files, flashErr = err, flashOk = ok, csrf = sess.csrf,
+            ),
             ContentType.Text.Html,
         )
     }
 
     post("/projects/{id}/files/upload") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        // multipart 라 receiveParameters 못 씀 → query string `?_csrf=...` 또는 헤더로 받음.
+        CsrfTokens.verifyCsrfFromQueryOrHeader(call)
         val id = call.parameters["id"]!!
         val multipart = call.receiveMultipart()
         var saved: String? = null
@@ -349,6 +375,7 @@ fun Routing.webProjectRoutes(
 
     post("/projects/{id}/files/{fileId}/delete") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
         val id = call.parameters["id"]!!
         val fileId = call.parameters["fileId"]!!
         val result = runCatching { uploads.delete(id, fileId) }
@@ -360,6 +387,74 @@ fun Routing.webProjectRoutes(
         }
         log.info { "file deleted: $fileId project=$id by ${sess.username}" }
         call.respondRedirect("/projects/$id/files?ok=${"파일이 삭제되었습니다.".encodeUrl()}")
+    }
+
+    // ── 파일 트리 / 보기 / 편집 (v0.13.0) ─────────────────────────────
+    get("/projects/{id}/tree") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@get
+        val id = call.parameters["id"]!!
+        val p = runCatching { projects.get(id) }.getOrElse {
+            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            return@get
+        }
+        val subPath = call.request.queryParameters["path"].orEmpty()
+        val entries = runCatching { fileBrowser.list(id, subPath) }.getOrElse {
+            val msg = (it as? ApiException)?.message ?: it.message ?: "listing 실패"
+            call.respondText(
+                WebProjectTemplates.fileTreePage(
+                    sess.username, p, subPath, emptyList(),
+                    flashErr = msg, csrf = sess.csrf,
+                ),
+                ContentType.Text.Html, HttpStatusCode.BadRequest,
+            )
+            return@get
+        }
+        call.respondText(
+            WebProjectTemplates.fileTreePage(sess.username, p, subPath, entries, csrf = sess.csrf),
+            ContentType.Text.Html,
+        )
+    }
+
+    get("/projects/{id}/view") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@get
+        val id = call.parameters["id"]!!
+        val relPath = call.request.queryParameters["path"].orEmpty()
+        val p = runCatching { projects.get(id) }.getOrElse {
+            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            return@get
+        }
+        val view = runCatching { fileBrowser.read(id, relPath) }.getOrElse {
+            val msg = (it as? ApiException)?.message ?: it.message ?: "파일 열기 실패"
+            call.respondText(
+                WebProjectTemplates.fileViewPage(
+                    sess.username, p, relPath, null,
+                    flashErr = msg, csrf = sess.csrf,
+                ),
+                ContentType.Text.Html, HttpStatusCode.BadRequest,
+            )
+            return@get
+        }
+        call.respondText(
+            WebProjectTemplates.fileViewPage(sess.username, p, relPath, view, csrf = sess.csrf),
+            ContentType.Text.Html,
+        )
+    }
+
+    post("/projects/{id}/edit") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        val params = requireCsrf()
+        val id = call.parameters["id"]!!
+        val relPath = params["path"].orEmpty()
+        val content = params["content"].orEmpty()
+        try {
+            fileBrowser.write(id, relPath, content)
+        } catch (e: Throwable) {
+            val msg = (e as? ApiException)?.message ?: e.message ?: "저장 실패"
+            call.respondRedirect("/projects/$id/view?path=${relPath.encodeUrl()}&err=${msg.encodeUrl()}")
+            return@post
+        }
+        log.info { "file saved by ${sess.username}: $id :: $relPath" }
+        call.respondRedirect("/projects/$id/view?path=${relPath.encodeUrl()}&ok=saved")
     }
 
     // ── Git ───────────────────────────────────────────────────────────
@@ -382,6 +477,26 @@ fun Routing.webProjectRoutes(
                 sess.username, p,
                 status = status, diff = diff, log = gitLog,
                 unavailable = unavailable,
+                csrf = sess.csrf,
+            ),
+            ContentType.Text.Html,
+        )
+    }
+
+    // ── /chat — General Chat (프로젝트 무관, ghost project) v0.13.0 ───
+    get("/chat") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@get
+        val p = projects.ensureScratchProject()
+        val alive = sessionManager.isAlive(p.id)
+        val sid = sessionManager.currentSessionId(p.id)
+        val env = authDeps.envDiagnostics.run()
+        call.respondText(
+            WebProjectTemplates.consolePage(
+                sess.username, p, sid, alive,
+                claudeCli = env.claude,
+                claudeAuth = env.claudeAuth,
+                csrf = sess.csrf,
+                isChat = true,
             ),
             ContentType.Text.Html,
         )
@@ -391,7 +506,7 @@ fun Routing.webProjectRoutes(
     post("/projects/{id}/console/slash") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
         val id = call.parameters["id"]!!
-        val params = call.receiveParameters()
+        val params = requireCsrf()
         val cmd = params["command"]?.trim().orEmpty()
 
         if (cmd.isBlank() || cmd !in CONSOLE_SLASH_WHITELIST) {
@@ -401,7 +516,8 @@ fun Routing.webProjectRoutes(
         runCatching { sessionManager.sendPrompt(id, "/$cmd") }
             .onFailure { log.warn(it) { "slash chip failed: $cmd project=$id" } }
         log.info { "slash chip: /$cmd project=$id by ${sess.username}" }
-        call.respondRedirect("/projects/$id/console")
+        val target = if (id == ProjectService.SCRATCH_ID) "/chat" else "/projects/$id/console"
+        call.respondRedirect(target)
     }
 }
 

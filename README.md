@@ -18,7 +18,7 @@ browser alone.
 ```
 vibe-coder-server/
 ├─ shared/              # JVM library — @Serializable DTOs / ApiPath / WsFrame
-├─ server/              # Ktor server (Netty), SQLite (Exposed),
+├─ server/              # Ktor server (Netty), PostgreSQL via Exposed,
 │                       # Claude/Gradle/Git child processes, WS log hub,
 │                       # Admin web UI (SSR HTML)
 └─ docker/              # Slim Docker image + compose + vibe-doctor
@@ -47,8 +47,11 @@ mkdir -p ~/vibe-coder && cd ~/vibe-coder
 curl -fsSL https://raw.githubusercontent.com/siamakerlab/vibe-coder-server/main/docker/compose.yml -o compose.yml
 curl -fsSL https://raw.githubusercontent.com/siamakerlab/vibe-coder-server/main/docker/.env.example -o .env
 
-# Edit .env to set PUID/PGID (id -u; id -g) and host port — defaults work too.
-docker compose up -d
+# Edit .env — REQUIRED: set VIBECODER_DB_PASSWORD to a strong value (v0.14.0+).
+# Also: PUID/PGID (id -u; id -g), host port — defaults work for the rest.
+${EDITOR:-nano} .env
+
+docker compose up -d            # starts postgres + vibe-coder-server
 
 # 1. Open http://<PC IP>:17880/setup in a browser to create the admin user.
 # 2. Go to "Build environment" → click "Install/update all".
@@ -56,20 +59,50 @@ docker compose up -d
 # 3. Build environment → "Claude login" card → pick option 0/1/2/3.
 ```
 
+> **v0.14.0+** ships a sidecar PostgreSQL container (`postgres:17-alpine`). The
+> `VIBECODER_DB_PASSWORD` env var is mandatory — compose refuses to start with an
+> empty value. Upgrading from v0.13.x is a fresh start (admin / projects
+> re-created; workspace files preserved on disk). See the v0.14.0 entry in
+> [CHANGELOG.md](CHANGELOG.md) for the exact steps.
+
 ## Minimum `docker-compose.yaml` (write your own)
 
 ```yaml
 name: vibe-coder
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: vibe-coder-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vibecoder
+      POSTGRES_USER: vibecoder
+      POSTGRES_PASSWORD: ${VIBECODER_DB_PASSWORD:?VIBECODER_DB_PASSWORD must be set}
+    volumes:
+      - ./vibe-coder-data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibecoder -d vibecoder"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
   vibe-coder-server:
-    image: siamakerlab/vibe-coder-server:0.10.0
+    image: siamakerlab/vibe-coder-server:0.14.0
     container_name: vibe-coder-server
     restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
     environment:
       PUID: "1000"       # id -u
       PGID: "1000"       # id -g
       TZ: "Asia/Seoul"
       JAVA_OPTS: "-Xmx2g -XX:+UseG1GC -Dfile.encoding=UTF-8"
+      # PostgreSQL connection (v0.14.0+)
+      VIBECODER_DB_HOST: postgres
+      VIBECODER_DB_NAME: vibecoder
+      VIBECODER_DB_USER: vibecoder
+      VIBECODER_DB_PASSWORD: ${VIBECODER_DB_PASSWORD:?VIBECODER_DB_PASSWORD must be set}
       # First-boot admin auto-create (optional; otherwise /setup screen)
       # VIBECODER_ADMIN_USERNAME: "admin"
       # VIBECODER_ADMIN_PASSWORD: "ChangeMe123"
@@ -77,7 +110,7 @@ services:
       - "17880:17880"
     volumes:
       # All persistent data lives under one host directory. tar this and
-      # you've backed up everything: workspace + DB + Android SDK + Gradle +
+      # you've backed up everything: workspace + PG data + Android SDK + Gradle +
       # MCP packages + Playwright + Claude auth.
       - ./vibe-coder-data/workspace:/workspace
       - ./vibe-coder-data/server:/data
@@ -92,7 +125,7 @@ services:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:17880/health"]
       interval: 30s
       timeout: 5s
-      start_period: 20s
+      start_period: 60s
       retries: 3
 ```
 
@@ -119,7 +152,8 @@ your SDK, Gradle cache, MCP servers, Playwright browsers, or Claude auth.
 | Data                              | Host path                                           | Container path                  | On recreate |
 |---|---|---|---|
 | Project sources + APKs            | `./vibe-coder-data/workspace/`                      | `/workspace`                    | ✅ kept |
-| SQLite DB + server logs           | `./vibe-coder-data/server/`                         | `/data`                         | ✅ kept |
+| **PostgreSQL data (v0.14.0+)**    | `./vibe-coder-data/postgres/`                       | `/var/lib/postgresql/data` (PG container) | ✅ kept |
+| Server logs + build metadata      | `./vibe-coder-data/server/`                         | `/data`                         | ✅ kept |
 | Android SDK (3-4 GB)              | `./vibe-coder-data/dev-tools/android-sdk/`          | `/opt/android-sdk`              | ✅ kept |
 | Gradle dependency cache (1-2 GB)  | `./vibe-coder-data/dev-tools/gradle/`               | `/home/vibe/.gradle`            | ✅ kept |
 | MCP server packages (`npm -g`)    | `./vibe-coder-data/dev-tools/npm-global/`           | `/home/vibe/.local`             | ✅ kept |
@@ -214,15 +248,29 @@ lock the account for 15 min. Timing-attack-safe dummy verify on missing users.
 | Kotlin | 2.2.20 |
 | Ktor | 3.1.2 |
 | Exposed | 0.55.0 |
-| SQLite JDBC | 3.46.1.3 |
+| PostgreSQL JDBC | 42.7.4 |
+| PostgreSQL server | 17-alpine (sidecar container) |
 | JDK toolchain | 17 |
 
 ## Build / run locally (without Docker)
 
+You need a reachable PostgreSQL instance (host installation, separate Docker
+container, or a remote PG). Point the server at it via env vars:
+
 ```bash
 ./gradlew :server:installDist
+
+export VIBECODER_DB_HOST=127.0.0.1
+export VIBECODER_DB_PORT=5432
+export VIBECODER_DB_NAME=vibecoder
+export VIBECODER_DB_USER=vibecoder
+export VIBECODER_DB_PASSWORD=your-strong-password
+
 ./server/build/install/server/bin/server --workspace ./workspace
 ```
+
+The bundled compose file already provides a `postgres` container — running
+`docker compose up -d postgres` and using the same `.env` is the easiest path.
 
 ```
 >>> Vibe Coder Server started

@@ -13,9 +13,10 @@
   <https://github.com/siamakerlab/vibe-coder-server/wiki>
 - **Issues**: <https://github.com/siamakerlab/vibe-coder-server/issues>
 - **Architectures**: `linux/amd64`, `linux/arm64`
-- **Latest tags**: `0.10.0`, `latest`
+- **Latest tags**: `0.14.0`, `latest`
 - **Image size**: ~600 MB (Android SDK / Gradle / MCP packages live in
-  bind-mounted volumes — see below)
+  bind-mounted volumes — see below). v0.14.0+ runs alongside a small
+  `postgres:17-alpine` sidecar container.
 - **License**: AGPL-3.0
 
 ## Quick start (3 minutes)
@@ -26,8 +27,11 @@ mkdir -p ~/vibe-coder && cd ~/vibe-coder
 curl -fsSL https://raw.githubusercontent.com/siamakerlab/vibe-coder-server/main/docker/compose.yml -o compose.yml
 curl -fsSL https://raw.githubusercontent.com/siamakerlab/vibe-coder-server/main/docker/.env.example -o .env
 
-# Edit .env: PUID/PGID (id -u; id -g) and host port. Defaults work too.
-docker compose up -d
+# v0.14.0+: set VIBECODER_DB_PASSWORD in .env — required (compose refuses empty).
+# Also tweak PUID/PGID (id -u; id -g) and host port; defaults work otherwise.
+${EDITOR:-nano} .env
+
+docker compose up -d            # boots postgres + vibe-coder-server
 
 # 1. Browser → http://<PC IP>:17880/setup  (create the first admin user)
 # 2. Build environment → "Install/update all" (Android SDK, ~5-15 min)
@@ -35,7 +39,13 @@ docker compose up -d
 # 4. Projects → New project (empty or git clone) → console / build / download
 ```
 
-## What's in the box (v0.10.0)
+> **Upgrading from v0.13.x?** v0.14.0 swaps SQLite for PostgreSQL — fresh
+> start required (admin / projects re-created; workspace files preserved).
+> See the v0.14.0 entry in
+> [CHANGELOG.md](https://github.com/siamakerlab/vibe-coder-server/blob/main/CHANGELOG.md)
+> for the exact steps.
+
+## What's in the box (v0.14.0)
 
 - **Claude Code CLI orchestration** — one persistent child per project,
   stream-json IO, live console relayed via WebSocket.
@@ -73,7 +83,12 @@ docker compose up -d
 
 | Variable | Default | Description |
 |---|---|---|
-| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:0.10.0` | Image tag to pull |
+| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:0.14.0` | Image tag to pull |
+| `VIBECODER_POSTGRES_IMAGE` | `postgres:17-alpine` | PG sidecar image (v0.14.0+) |
+| **`VIBECODER_DB_PASSWORD`** | (required) | **Must be set.** compose refuses to start with empty value |
+| `VIBECODER_DB_HOST` | `postgres` | DB host. Use `host:port` for an external PG |
+| `VIBECODER_DB_NAME` / `_USER` | `vibecoder` / `vibecoder` | DB name & user |
+| `VIBECODER_DB_SSLMODE` | `disable` | `prefer`/`require`/`verify-ca`/`verify-full` |
 | `PUID` / `PGID` | `1000` / `1000` | Match host UID/GID (`id -u` / `id -g`) |
 | `VIBE_PORT` | `17880` | Host port to expose |
 | `VIBE_DATA_ROOT` | `./vibe-coder-data` | **Unified host directory** holding everything persistent |
@@ -92,7 +107,8 @@ Gradle + MCP + Playwright + Claude auth.
 ${VIBE_DATA_ROOT}/                          container
 ─────────────────                           ─────────
 ├── workspace/                  →  /workspace                       (sources + APKs)
-├── server/                     →  /data                            (SQLite + logs)
+├── postgres/                   →  vibe-coder-postgres : /var/lib/postgresql/data  (v0.14.0+)
+├── server/                     →  /data                            (logs + build metadata)
 ├── dev-tools/
 │   ├── android-sdk/            →  /opt/android-sdk                 (3-4 GB)
 │   ├── gradle/                 →  /home/vibe/.gradle               (1-2 GB)

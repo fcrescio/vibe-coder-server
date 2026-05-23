@@ -61,9 +61,12 @@ fun Routing.consoleRoutes(
             val body = call.receive<PromptRequestDto>()
             val text = body.text.trim()
             if (text.isEmpty()) throw ApiException(400, "bad_request", "text is required")
-            if (text.length > ClaudeSessionManager.MAX_PROMPT_BYTES) {
+            // UTF-8 byte 기준으로 통일 (sendPrompt 내부 검증과 일치). char count 검증은
+            // 한국어 등에서 한 글자가 3 byte 가 되어 의도가 어긋났다.
+            val byteSize = text.toByteArray(Charsets.UTF_8).size
+            if (byteSize > ClaudeSessionManager.MAX_PROMPT_BYTES) {
                 throw ApiException(400, "prompt_too_large",
-                    "prompt exceeds ${ClaudeSessionManager.MAX_PROMPT_BYTES} bytes")
+                    "prompt exceeds ${ClaudeSessionManager.MAX_PROMPT_BYTES} bytes (got $byteSize)")
             }
 
             try {
@@ -82,6 +85,15 @@ fun Routing.consoleRoutes(
                 ?: throw ApiException(400, "bad_request", "projectId is required")
             projects.rowOrThrow(projectId)
             sessionManager.startNew(projectId)
+            call.respond(HttpStatusCode.Accepted)
+        }
+
+        // v0.13.0 — 진행 중인 turn 중단. session-id 는 보존.
+        post("/api/projects/{projectId}/claude/console/cancel") {
+            val projectId = call.parameters["projectId"]
+                ?: throw ApiException(400, "bad_request", "projectId is required")
+            projects.rowOrThrow(projectId)
+            sessionManager.cancelTurn(projectId)
             call.respond(HttpStatusCode.Accepted)
         }
 

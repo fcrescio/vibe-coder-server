@@ -17,7 +17,6 @@ import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
@@ -71,6 +70,31 @@ private suspend fun WebSocketServerSession.authenticateFirstFrame(
     deviceRepo: DeviceRepository,
     tokens: TokenService,
 ): Boolean {
+    // ── v0.12.4: CSWSH 방어 — Origin 헤더 검증 ─────────────────────────────────
+    // WebSocket 은 CORS preflight 미적용. cookie 가 첨부되는 cross-origin WS 가
+    // 시도되면 SameSite=Lax 가 막아주긴 하지만, defense-in-depth 차원에서 Origin
+    // ↔ Host 일치를 확인. Android 앱(쿠키 없음)·도구(curl/postman)는 Origin 가
+    // 비어 있어 통과 — 인증은 어차피 토큰으로.
+    val origin = call.request.headers["Origin"]
+    if (!origin.isNullOrBlank()) {
+        val host = call.request.headers["Host"]
+        val originHost = runCatching { java.net.URI(origin).host }.getOrNull()
+        if (host != null && originHost != null) {
+            // host 는 보통 "vibe.local:17880" 형태. originHost 는 host 만.
+            val hostName = host.substringBefore(':')
+            if (originHost != hostName) {
+                io.github.oshai.kotlinlogging.KotlinLogging.logger {}.warn {
+                    "ws origin mismatch: origin=$origin host=$host — closing"
+                }
+                runCatching {
+                    sendFrame(WsFrame.Error("origin_denied", "WebSocket from unexpected origin"))
+                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "origin_denied"))
+                }
+                return false
+            }
+        }
+    }
+
     // Path 1 — WebSocket handshake 의 cookie 헤더에서 vibe_session 시도.
     //
     // 웹 클라이언트는 SESSION_COOKIE 를 httpOnly 로 받기 때문에 JavaScript 에서

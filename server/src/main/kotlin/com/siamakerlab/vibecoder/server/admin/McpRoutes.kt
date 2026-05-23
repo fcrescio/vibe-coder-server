@@ -1,5 +1,7 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import com.siamakerlab.vibecoder.server.env.McpCatalog
 import com.siamakerlab.vibecoder.server.env.McpService
 import com.siamakerlab.vibecoder.server.error.ApiException
@@ -37,14 +39,14 @@ fun Routing.mcpRoutes(
         val states = mcp.detectAll().associateBy { it.id }
         val flash = call.request.queryParameters["flash"]
         call.respondText(
-            McpTemplates.catalogPage(sess.username, states, flash),
+            McpTemplates.catalogPage(sess.username, states, flash, csrf = sess.csrf),
             ContentType.Text.Html,
         )
     }
 
     post("/env-setup/mcp/install") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
-        val form = call.receiveParameters()
+        val form = requireCsrf()
         // 체크박스: name="select" value="<id>" (multiple)
         val selectedIds = form.getAll("select").orEmpty().distinct()
         if (selectedIds.isEmpty()) {
@@ -74,7 +76,7 @@ fun Routing.mcpRoutes(
 
     post("/env-setup/mcp/unregister") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
-        val form = call.receiveParameters()
+        val form = requireCsrf()
         val ids = form.getAll("select").orEmpty().distinct()
         if (ids.isEmpty()) {
             call.respondRedirect("/env-setup/mcp?flash=no-selection")
@@ -92,6 +94,8 @@ fun Routing.mcpRoutes(
      */
     post("/env-setup/mcp/{mcpId}/file/{fieldKey}") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        // multipart — _csrf 는 query string 또는 X-CSRF-Token 헤더로 받음.
+        CsrfTokens.verifyCsrfFromQueryOrHeader(call)
         val mcpId = call.parameters["mcpId"]!!
         val fieldKey = call.parameters["fieldKey"]!!
         val multipart = call.receiveMultipart()

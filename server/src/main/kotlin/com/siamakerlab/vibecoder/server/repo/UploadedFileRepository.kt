@@ -55,6 +55,11 @@ class UploadedFileRepository(private val clock: Clock) {
         UploadedFiles.deleteWhere { (UploadedFiles.projectId eq projectId) and (UploadedFiles.id eq id) }
     }
 
+    /** ProjectService.delete cascade — 모든 uploaded_files row 일괄 제거. */
+    fun deleteForProject(projectId: String): Int = transaction {
+        UploadedFiles.deleteWhere { UploadedFiles.projectId eq projectId }
+    }
+
     private fun ResultRow.toRow() = UploadedFileRow(
         id = this[UploadedFiles.id],
         projectId = this[UploadedFiles.projectId],

@@ -8,6 +8,7 @@ kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.7.3"
 kotlinx-datetime = "0.6.1"
 exposed = "0.55.0"
+postgresql-jdbc = "42.7.4"
 sqlite-jdbc = "3.46.1.3"
 hikari = "5.1.0"
 kaml = "0.65.0"
@@ -48,6 +49,7 @@ exposed-core = { module = "org.jetbrains.exposed:exposed-core", version.ref = "e
 exposed-dao = { module = "org.jetbrains.exposed:exposed-dao", version.ref = "exposed" }
 exposed-jdbc = { module = "org.jetbrains.exposed:exposed-jdbc", version.ref = "exposed" }
 exposed-java-time = { module = "org.jetbrains.exposed:exposed-java-time", version.ref = "exposed" }
+postgresql-jdbc = { module = "org.postgresql:postgresql", version.ref = "postgresql-jdbc" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
 hikari = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
 

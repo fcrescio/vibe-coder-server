@@ -1,5 +1,7 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens
+import com.siamakerlab.vibecoder.server.files.ProjectFileBrowser
 import com.siamakerlab.vibecoder.server.repo.ArtifactRow
 import com.siamakerlab.vibecoder.shared.dto.BuildDto
 import com.siamakerlab.vibecoder.shared.dto.CheckItemDto
@@ -27,6 +29,45 @@ object WebProjectTemplates {
             .replace(">", "&gt;")
             .replace("\"", "&quot;")
             .replace("'", "&#39;")
+
+    /**
+     * v0.12.4 — JavaScript 문자열 리터럴 컨텍스트 전용 escape.
+     *
+     * HTML escape 만으로는 안전하지 않음: `<script>` 안에서는 HTML 엔티티가
+     * 디코드되지 않으므로 `&quot;` 가 JS 파서에 그대로 노출돼 syntax error 가 나거나,
+     * projectId 검증이 향후 느슨해질 경우 XSS 로 발전 가능. 본 함수는 JS 문자열
+     * 리터럴 안에서 안전한 escape 만 수행 (BOTH " 와 ' 안전).
+     *
+     * 출력값은 항상 따옴표를 포함한 완전한 리터럴이므로 사용 측은
+     *   `var x = ${jsLit(value)};`
+     * 와 같이 따옴표 없이 박는다.
+     */
+    private fun jsLit(s: String?): String {
+        if (s == null) return "null"
+        val sb = StringBuilder(s.length + 2)
+        sb.append('"')
+        for (c in s) {
+            when (c) {
+                '\\' -> sb.append("\\\\")
+                '"' -> sb.append("\\\"")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                '<' -> sb.append("\\u003C")  // </script> 닫힘 차단
+                '>' -> sb.append("\\u003E")
+                '&' -> sb.append("\\u0026")
+                ' ' -> sb.append("\\u2028")  // line separator
+                ' ' -> sb.append("\\u2029")  // paragraph separator
+                else -> if (c.code < 0x20) {
+                    sb.append("\\u%04x".format(c.code))
+                } else {
+                    sb.append(c)
+                }
+            }
+        }
+        sb.append('"')
+        return sb.toString()
+    }
 
     /**
      * Claude CLI / 인증 누락 안내 카드. 콘솔 페이지 상단에 표시되며,
@@ -85,11 +126,12 @@ object WebProjectTemplates {
 
     /**
      * 콘솔 슬래시 chip 1개. 동일 form 안에 hidden command + 버튼.
-     * `danger=true` 면 빨간색 (예: /clear).
+     * `danger=true` 면 빨간색 (예: /clear). v0.12.4 — csrf 토큰 함께 박음.
      */
-    private fun slashChip(projectId: String, command: String, label: String, danger: Boolean = false): String {
+    private fun slashChip(projectId: String, command: String, label: String, csrf: String?, danger: Boolean = false): String {
         val cls = if (danger) "chip chip-danger" else "chip"
         return """<form method="post" action="/projects/${esc(projectId)}/console/slash" style="display:inline">
+          ${CsrfTokens.hiddenInput(csrf)}
           <input type="hidden" name="command" value="${esc(command)}">
           <button type="submit" class="$cls">${esc(label)}</button>
         </form>"""
@@ -104,6 +146,7 @@ object WebProjectTemplates {
         projects: List<ProjectDto>,
         flashErr: String? = null,
         flashOk: String? = null,
+        csrf: String? = null,
     ): String {
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
@@ -132,6 +175,7 @@ object WebProjectTemplates {
             title = "프로젝트",
             username = username,
             currentPath = "/projects",
+            csrf = csrf,
             body = """
 <header><h1>프로젝트</h1></header>
 $okHtml
@@ -153,6 +197,7 @@ $errHtml
   <div class="card">
     <h2>새 프로젝트</h2>
     <form method="post" action="/projects" id="new-project-form">
+      ${CsrfTokens.hiddenInput(csrf)}
       <label>프로젝트 ID (kebab-case)
         <input name="projectId" required pattern="[a-z0-9][a-z0-9._-]*" maxlength="64"
                placeholder="my-android-app">
@@ -213,6 +258,7 @@ $errHtml
         recentBuilds: List<BuildDto>,
         flashErr: String? = null,
         flashOk: String? = null,
+        csrf: String? = null,
     ): String {
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
@@ -233,6 +279,7 @@ $errHtml
             title = esc(p.name),
             username = username,
             currentPath = "/projects",
+            csrf = csrf,
             body = """
 <header>
   <h1>${esc(p.name)} <small class="dim" style="font-size:14px;font-weight:400">${esc(p.id)}</small></h1>
@@ -257,10 +304,12 @@ $errHtml
     <h2>작업</h2>
     <p><a href="/projects/${esc(p.id)}/console" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px">콘솔 / Claude 프롬프트 →</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/builds" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px">빌드 / APK →</a></p>
+    <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/tree" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)">파일 트리 / 편집 →</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/files" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)">파일 업로드 / 다운로드 →</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/git" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)">git status / diff / log →</a></p>
     <form method="post" action="/projects/${esc(p.id)}/delete" style="margin-top:24px"
           onsubmit="return confirm('정말 삭제하시겠습니까? 워크스페이스 폴더는 그대로 남고 DB 항목만 제거됩니다.')">
+      ${CsrfTokens.hiddenInput(csrf)}
       <button type="submit" class="danger" style="width:100%">프로젝트 삭제 (메타데이터만)</button>
     </form>
   </div>
@@ -288,6 +337,9 @@ $errHtml
         isAlive: Boolean,
         claudeCli: CheckItemDto? = null,
         claudeAuth: CheckItemDto? = null,
+        csrf: String? = null,
+        /** v0.13.0 — true 면 nav 의 "프롬프트/Chat" 활성화 + 사이드 링크 (프로젝트로 / 빌드 등) 숨김. */
+        isChat: Boolean = false,
     ): String {
         val statusBadge = when {
             isAlive -> """<span class="ok">running</span>"""
@@ -313,16 +365,28 @@ $errHtml
             )
             else -> ""
         }
-        val projectIdJs = esc(p.id)
+        // v0.12.4 — JS 문자열 컨텍스트는 jsLit() 사용 (HTML escape 만으로는 < / </script>
+        // 차단·따옴표 처리가 충분치 않다). projectId 가 PROJECT_ID_PATTERN 검증을
+        // 통과하긴 하나 defense-in-depth.
+        val projectIdJs = jsLit(p.id)
+
+        val navPath = if (isChat) "/chat" else "/projects"
+        val titleSuffix = if (isChat) "General Chat" else "콘솔"
+        val sideLinks = if (isChat) "" else """
+      <a href="/projects/${esc(p.id)}" class="chip chip-link">← 프로젝트</a>
+      <a href="/projects/${esc(p.id)}/builds" class="chip chip-link">빌드 / APK →</a>
+      <a href="/projects/${esc(p.id)}/files" class="chip chip-link">파일 →</a>
+      <a href="/projects/${esc(p.id)}/git" class="chip chip-link">git →</a>"""
 
         return AdminTemplates.shell(
-            title = "${esc(p.name)} · 콘솔",
+            title = "${esc(p.name)} · $titleSuffix",
             username = username,
-            currentPath = "/projects",
+            currentPath = navPath,
+            csrf = csrf,
             body = """
 <header>
-  <h1>콘솔
-    <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
+  <h1>$titleSuffix
+    <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)}${if (isChat) "" else " (${esc(p.id)})"}</small>
   </h1>
 </header>
 
@@ -335,32 +399,41 @@ $authBannerHtml
       ${if (sessionId != null) """ <span class="dim">${esc(sessionId.take(12))}…</span>""" else ""}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <a href="/projects/${esc(p.id)}" class="chip chip-link">← 프로젝트</a>
-      <a href="/projects/${esc(p.id)}/builds" class="chip chip-link">빌드 / APK →</a>
-      <a href="/projects/${esc(p.id)}/files" class="chip chip-link">파일 →</a>
-      <a href="/projects/${esc(p.id)}/git" class="chip chip-link">git →</a>
+      $sideLinks
+      <button type="button" id="stop-btn" class="chip chip-danger" style="display:none"
+              title="현재 turn 을 즉시 중단 (같은 세션으로 다음 prompt 가능)">■ 중지</button>
       <form method="post" action="/projects/${esc(p.id)}/console/new" style="display:inline"
             onsubmit="return confirm('현재 세션을 종료하고 새 대화를 시작할까요?')">
+        ${CsrfTokens.hiddenInput(csrf)}
         <button type="submit" class="chip chip-danger">새 세션</button>
       </form>
     </div>
   </div>
   <div class="chip-row" style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
     <small class="dim" style="margin-right:4px">슬래시:</small>
-    ${slashChip(p.id, "status", "/status")}
-    ${slashChip(p.id, "cost", "/cost")}
-    ${slashChip(p.id, "model", "/model")}
-    ${slashChip(p.id, "memory", "/memory")}
-    ${slashChip(p.id, "plan", "/plan")}
-    ${slashChip(p.id, "compact", "/compact")}
-    ${slashChip(p.id, "clear", "/clear", danger = true)}
+    ${slashChip(p.id, "status", "/status", csrf)}
+    ${slashChip(p.id, "cost", "/cost", csrf)}
+    ${slashChip(p.id, "model", "/model", csrf)}
+    ${slashChip(p.id, "memory", "/memory", csrf)}
+    ${slashChip(p.id, "plan", "/plan", csrf)}
+    ${slashChip(p.id, "compact", "/compact", csrf)}
+    ${slashChip(p.id, "clear", "/clear", csrf, danger = true)}
   </div>
 </div>
 
 <div id="console-log" class="console-log" aria-live="polite"></div>
 
+<div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+  <select id="template-picker" style="font-size:12px;padding:4px 8px;background:#1a1a1a;color:var(--text);border:1px solid #333">
+    <option value="">▼ 프롬프트 템플릿 가져오기 …</option>
+  </select>
+  <a href="/prompts" class="chip chip-link" style="font-size:11px;margin-left:6px">관리</a>
+</div>
+
 <form id="prompt-form" class="prompt-form" autocomplete="off">
-  <textarea id="prompt-input" rows="3" maxlength="65536"
+  <!-- maxlength 는 char 단위라 ASCII 기준 32K. 한국어 등 multi-byte 입력은
+       실제 UTF-8 byte 가 32K 를 넘으면 서버에서 prompt_too_large (400) 로 거절. -->
+  <textarea id="prompt-input" rows="3" maxlength="32768"
             placeholder="${if (blocking) "Claude 인증을 완료한 뒤 사용할 수 있습니다." else "Claude 에게 보낼 프롬프트를 입력하세요. Ctrl+Enter 로 전송.&#10;예) Android 빈 프로젝트를 생성하고 Compose 로 'Hello' 화면을 띄워줘."}"
             ${if (blocking) "disabled" else "required"}></textarea>
   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
@@ -371,7 +444,7 @@ $authBannerHtml
 
 <script>
 (function() {
-  var projectId = "$projectIdJs";
+  var projectId = $projectIdJs;
   var logEl = document.getElementById('console-log');
   var form = document.getElementById('prompt-form');
   var input = document.getElementById('prompt-input');
@@ -418,6 +491,62 @@ $authBannerHtml
     if (btn) btn.disabled = true;
   }
 
+  // v0.13.0 — tool_use 도구별 친화적 렌더링. raw JSON 대신 읽기 쉬운 한 줄.
+  function clip(s, n) {
+    s = String(s == null ? '' : s);
+    return s.length > n ? s.slice(0, n) + ' …(+' + (s.length - n) + ')' : s;
+  }
+  function renderToolUse(name, input) {
+    var i = input || {};
+    switch (name) {
+      case 'Bash': {
+        var cmd = i.command || '';
+        var desc = i.description ? ' — ' + i.description : '';
+        return { label: '$', body: clip(cmd, 400) + desc };
+      }
+      case 'Read': {
+        var p = i.file_path || i.path || '';
+        var range = (i.offset != null || i.limit != null)
+          ? ' [' + (i.offset || 0) + ', +' + (i.limit || '?') + ']' : '';
+        return { label: '📄 Read', body: p + range };
+      }
+      case 'Write': {
+        var p2 = i.file_path || i.path || '';
+        var sz = (i.content || '').length;
+        return { label: '✏️ Write', body: p2 + ' (' + sz + ' chars)' };
+      }
+      case 'Edit': {
+        var p3 = i.file_path || i.path || '';
+        var oldS = clip(i.old_string || '', 80);
+        var newS = clip(i.new_string || '', 80);
+        var ra = i.replace_all ? ' [all]' : '';
+        return { label: '✎ Edit' + ra, body: p3 + '\n  - ' + oldS + '\n  + ' + newS };
+      }
+      case 'Glob':
+        return { label: '🔍 Glob', body: (i.pattern || '') + (i.path ? ' in ' + i.path : '') };
+      case 'Grep':
+        return { label: '🔎 Grep', body: '"' + clip(i.pattern || '', 80) + '"' +
+          (i.path ? ' in ' + i.path : '') + (i.glob ? ' (' + i.glob + ')' : '') };
+      case 'TaskCreate':
+        return { label: '📋 TaskCreate', body: i.subject || i.description || '' };
+      case 'TaskUpdate':
+        return { label: '📋 TaskUpdate',
+          body: 'id=' + (i.taskId || '?') + (i.status ? ' status=' + i.status : '') +
+                (i.subject ? ' "' + i.subject + '"' : '') };
+      case 'TodoWrite':
+        var n = (i.todos || []).length;
+        return { label: '📋 TodoWrite', body: n + ' todo(s)' };
+      case 'WebSearch':
+        return { label: '🌐 WebSearch', body: '"' + clip(i.query || '', 200) + '"' };
+      case 'WebFetch':
+        return { label: '🌐 WebFetch', body: i.url || '' };
+      default: {
+        var raw = typeof input === 'string' ? input : JSON.stringify(input || {});
+        return { label: name || 'tool', body: clip(raw, 500) };
+      }
+    }
+  }
+
   function renderFrame(f) {
     var t = f.type;
     if (t === 'console_session_started') {
@@ -426,19 +555,25 @@ $authBannerHtml
       append('assistant', 'assistant', f.text || '');
       detectAuthFailure(f.text);
     } else if (t === 'console_tool_use') {
-      var inp = typeof f.input === 'string' ? f.input : JSON.stringify(f.input);
-      append('tool', f.toolName || 'tool', inp.length > 500 ? inp.slice(0,500) + '…' : inp);
+      var rendered = renderToolUse(f.toolName, f.input);
+      append('tool', rendered.label, rendered.body);
     } else if (t === 'console_tool_result') {
       var out = typeof f.output === 'string' ? f.output : JSON.stringify(f.output);
-      append(f.isError ? 'tool-err' : 'tool-out', f.isError ? 'tool-err' : 'tool-out',
-             out.length > 500 ? out.slice(0,500) + '…' : out);
+      var resultLabel = f.isError ? 'tool-err' : '✓ result';
+      append(f.isError ? 'tool-err' : 'tool-out', resultLabel,
+             out.length > 500 ? out.slice(0,500) + ' …(+' + (out.length - 500) + ')' : out);
       detectAuthFailure(out);
     } else if (t === 'console_error') {
       append('err', 'error', (f.code || '') + ': ' + (f.message || ''));
       detectAuthFailure(f.message);
     } else if (t === 'console_done') {
       append('sys', 'done', f.reason || 'end_turn');
+      setInFlight(false);
     } else if (t === 'console_system') {
+      // 'turn_cancelled' / 'process_crashed' 등 종료 신호 — stop 버튼 숨김
+      if (f.code === 'turn_cancelled' || f.code === 'process_crashed' || f.code === 'idle_terminated') {
+        setInFlight(false);
+      }
       append('sys', f.code || 'system', f.message || '');
       detectAuthFailure(f.message);
     } else if (t === 'console_replay_begin') {
@@ -485,8 +620,31 @@ $authBannerHtml
 
   connect();
 
+  // v0.13.0 — 진행 중 turn cancel 버튼
+  var stopBtn = document.getElementById('stop-btn');
+  var inFlight = false;
+  function setInFlight(on) {
+    inFlight = on;
+    if (stopBtn) stopBtn.style.display = on ? 'inline-block' : 'none';
+  }
+  async function cancelTurn() {
+    if (!inFlight) return;
+    try {
+      await fetch('/api/projects/' + projectId + '/claude/console/cancel', {
+        method: 'POST', credentials: 'same-origin',
+      });
+      append('sys', 'cancel', '사용자 중단 요청 전송됨');
+    } catch (e) {
+      append('err', 'cancel', String(e));
+    } finally {
+      setInFlight(false);
+    }
+  }
+  if (stopBtn) stopBtn.addEventListener('click', cancelTurn);
+
   async function sendPrompt(text) {
     sendBtn.disabled = true;
+    setInFlight(true);
     try {
       var res = await fetch('/api/projects/' + projectId + '/claude/console/prompt', {
         method: 'POST',
@@ -497,12 +655,14 @@ $authBannerHtml
       if (!res.ok) {
         var msg = await res.text();
         append('err', 'send', res.status + ' ' + msg);
+        setInFlight(false);
       } else {
         append('user', 'user', text);
         input.value = '';
       }
     } catch (e) {
       append('err', 'send', String(e));
+      setInFlight(false);
     } finally {
       sendBtn.disabled = false;
       input.focus();
@@ -521,6 +681,48 @@ $authBannerHtml
       form.requestSubmit();
     }
   });
+
+  // v0.13.0 — 프롬프트 템플릿 드롭다운 채우기. JSON API → optgroup by category.
+  var picker = document.getElementById('template-picker');
+  if (picker) {
+    fetch('/api/prompt-templates', { credentials: 'same-origin' })
+      .then(function(r) { return r.ok ? r.json() : { templates: [] }; })
+      .then(function(d) {
+        var byCat = {};
+        (d.templates || []).forEach(function(t) {
+          if (!byCat[t.category]) byCat[t.category] = [];
+          byCat[t.category].push(t);
+        });
+        var cats = Object.keys(byCat).sort();
+        cats.forEach(function(cat) {
+          var og = document.createElement('optgroup');
+          og.label = cat;
+          byCat[cat].sort(function(a, b) { return a.title.localeCompare(b.title); }).forEach(function(t) {
+            var opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.title;
+            opt.dataset.body = t.body;
+            og.appendChild(opt);
+          });
+          picker.appendChild(og);
+        });
+      })
+      .catch(function() { /* 빈 채로 두기 */ });
+
+    picker.addEventListener('change', function() {
+      var opt = picker.options[picker.selectedIndex];
+      if (!opt || !opt.value) return;
+      var body = opt.dataset.body || '';
+      // 기존 입력이 있으면 줄바꿈 후 append, 없으면 그대로 채움.
+      if (input.value && input.value.trim().length > 0) {
+        input.value = input.value.replace(/\s+$/,'') + '\n\n' + body;
+      } else {
+        input.value = body;
+      }
+      input.focus();
+      picker.selectedIndex = 0;
+    });
+  }
 })();
 </script>
 """
@@ -538,6 +740,7 @@ $authBannerHtml
         artifactsByBuild: Map<String, ArtifactRow>,
         flashErr: String? = null,
         flashOk: String? = null,
+        csrf: String? = null,
     ): String {
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
@@ -573,6 +776,7 @@ $authBannerHtml
             title = "${esc(p.name)} · 빌드",
             username = username,
             currentPath = "/projects",
+            csrf = csrf,
             body = """
 <header>
   <h1>빌드
@@ -590,6 +794,7 @@ $errHtml
     <div style="display:flex;gap:8px">
       <a href="/projects/${esc(p.id)}" class="primary-link" style="width:auto;display:inline-block;padding:6px 12px;background:transparent;border:1px solid var(--border);color:var(--text-dim)">← 프로젝트로</a>
       <form method="post" action="/projects/${esc(p.id)}/builds" style="display:inline">
+        ${CsrfTokens.hiddenInput(csrf)}
         <button type="submit" class="primary" style="width:auto;padding:8px 16px">Debug 빌드 큐 등록</button>
       </form>
     </div>
@@ -617,6 +822,7 @@ $errHtml
         b: BuildDto,
         artifact: ArtifactRow?,
         replay: BuildLogReplay? = null,
+        csrf: String? = null,
     ): String {
         val statusCls = when (b.status.name) {
             "SUCCESS" -> "ok"
@@ -642,12 +848,14 @@ $errHtml
         val cancelHtml = if (!isTerminal) {
             """<form method="post" action="/projects/${esc(p.id)}/builds/${esc(b.id)}/cancel" style="display:inline"
                     onsubmit="return confirm('이 빌드를 취소할까요? 진행 중인 Gradle 작업이 즉시 종료됩니다.')">
+               ${CsrfTokens.hiddenInput(csrf)}
                <button type="submit" class="chip chip-danger">빌드 취소</button>
                </form>"""
         } else ""
 
-        val projectIdJs = esc(p.id)
-        val buildIdJs = esc(b.id)
+        // v0.12.4 — JS 문자열 컨텍스트 전용 escape. esc() 는 HTML 컨텍스트용.
+        val projectIdJs = jsLit(p.id)
+        val buildIdJs = jsLit(b.id)
         // 종료 상태이면 JS가 connect 안 함 (로그는 이미 stdout 으로 흘러갔고 ring 에서 evicted).
         // PENDING/RUNNING 이면 WS 연결.
         val attachWs = !isTerminal
@@ -656,6 +864,7 @@ $errHtml
             title = "${esc(p.name)} · 빌드 ${esc(b.id.take(8))}",
             username = username,
             currentPath = "/projects",
+            csrf = csrf,
             body = """
 <header>
   <h1>빌드 <code style="font-size:0.7em">${esc(b.id.take(12))}</code>
@@ -696,8 +905,8 @@ $errHtml
 ${if (attachWs) """
 <script>
 (function() {
-  var projectId = "$projectIdJs";
-  var buildId = "$buildIdJs";
+  var projectId = $projectIdJs;
+  var buildId = $buildIdJs;
   var logEl = document.getElementById('build-log');
 
   function escHtml(s) {
@@ -769,6 +978,7 @@ ${if (attachWs) """
         files: List<FileEntryDto>,
         flashErr: String? = null,
         flashOk: String? = null,
+        csrf: String? = null,
     ): String {
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
@@ -787,6 +997,7 @@ ${if (attachWs) """
                       <a href="/projects/${esc(p.id)}/files/${esc(f.id)}/download" class="chip chip-link">다운로드</a>
                       <form method="post" action="/projects/${esc(p.id)}/files/${esc(f.id)}/delete" style="display:inline"
                             onsubmit="return confirm('정말 삭제하시겠습니까?')">
+                        ${CsrfTokens.hiddenInput(csrf)}
                         <button type="submit" class="chip chip-danger">삭제</button>
                       </form>
                     </td>
@@ -798,6 +1009,7 @@ ${if (attachWs) """
             title = "${esc(p.name)} · 파일",
             username = username,
             currentPath = "/projects",
+            csrf = csrf,
             body = """
 <header>
   <h1>파일
@@ -809,7 +1021,8 @@ $errHtml
 
 <div class="card" style="margin-bottom:16px">
   <h2>파일 업로드</h2>
-  <form method="post" action="/projects/${esc(p.id)}/files/upload" enctype="multipart/form-data">
+  <!-- multipart 업로드는 receiveParameters 가 불가능하므로 _csrf 를 query string 으로 -->
+  <form method="post" action="/projects/${esc(p.id)}/files/upload?_csrf=${esc(csrf)}" enctype="multipart/form-data">
     <input type="file" name="file" required>
     <button type="submit" class="primary" style="width:auto;padding:8px 16px;margin-left:8px">업로드</button>
   </form>
@@ -843,6 +1056,7 @@ $errHtml
         diff: GitDiffDto?,
         log: GitLogDto?,
         unavailable: Boolean,
+        csrf: String? = null,
     ): String {
         val unavailableHtml = if (unavailable) {
             """<div class="error">이 프로젝트 폴더는 git repository 가 아니거나 git CLI 실행이 실패했습니다.
@@ -898,6 +1112,7 @@ $errHtml
             title = "${esc(p.name)} · git",
             username = username,
             currentPath = "/projects",
+            csrf = csrf,
             body = """
 <header>
   <h1>git
@@ -922,5 +1137,182 @@ $unavailableHtml
 """
         )
     }
+
+    // ────────────────────────────────────────────────────────────────────
+    // /projects/{id}/tree — 디렉토리 listing (v0.13.0)
+    // ────────────────────────────────────────────────────────────────────
+
+    fun fileTreePage(
+        username: String,
+        p: ProjectDto,
+        subPath: String,
+        entries: List<ProjectFileBrowser.Entry>,
+        flashErr: String? = null,
+        csrf: String? = null,
+    ): String {
+        val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
+        val crumbs = renderBreadcrumbs(p.id, subPath)
+        val rowsHtml = if (entries.isEmpty()) {
+            """<tr><td colspan="3" class="dim">비어 있습니다.</td></tr>"""
+        } else {
+            entries.joinToString("\n") { e ->
+                val sizeKb = if (e.isDirectory) "-" else "${(e.sizeBytes + 512L) / 1024L}KB"
+                val icon = if (e.isDirectory) "📁" else "📄"
+                val href = if (e.isDirectory)
+                    "/projects/${esc(p.id)}/tree?path=${e.relPath.encodeUrl()}"
+                else
+                    "/projects/${esc(p.id)}/view?path=${e.relPath.encodeUrl()}"
+                """<tr>
+                    <td><a href="$href">$icon ${esc(e.name)}</a></td>
+                    <td class="dim">$sizeKb</td>
+                    <td class="dim" style="font-size:11px">${esc(e.modifiedAt)}</td>
+                  </tr>"""
+            }
+        }
+        return AdminTemplates.shell(
+            title = "${esc(p.name)} · 파일트리",
+            username = username,
+            currentPath = "/projects",
+            csrf = csrf,
+            body = """
+<header>
+  <h1>파일트리
+    <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
+  </h1>
+</header>
+$errHtml
+
+<div class="card" style="margin-bottom:14px">
+  <div style="font-size:13px">$crumbs</div>
+</div>
+
+<table class="devices">
+  <thead><tr><th>이름</th><th>크기</th><th>수정</th></tr></thead>
+  <tbody>$rowsHtml</tbody>
+</table>
+
+<p class="hint" style="margin-top:16px">
+  <a href="/projects/${esc(p.id)}" class="chip chip-link">← 프로젝트로</a>
+  <a href="/projects/${esc(p.id)}/console" class="chip chip-link">콘솔로</a>
+</p>
+<p class="hint" style="font-size:12px">읽기 + 가벼운 편집만 지원. 이진 파일/1MB 초과/심볼릭 링크는 차단.
+.vibecoder / .gradle / build / node_modules 는 숨김.</p>
+"""
+        )
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // /projects/{id}/view — 단일 파일 read-only view + 편집 (v0.13.0)
+    // ────────────────────────────────────────────────────────────────────
+
+    fun fileViewPage(
+        username: String,
+        p: ProjectDto,
+        relPath: String,
+        view: ProjectFileBrowser.FileView?,
+        flashErr: String? = null,
+        csrf: String? = null,
+    ): String {
+        val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
+        val crumbs = renderBreadcrumbs(p.id, relPath, isFile = true)
+
+        val bodyHtml = if (view == null) {
+            errHtml.ifEmpty { """<p class="dim">파일을 열 수 없습니다.</p>""" }
+        } else {
+            val sizeKb = (view.sizeBytes + 512L) / 1024L
+            """
+<div class="card" style="margin-bottom:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <div><strong><code>${esc(view.relPath)}</code></strong>
+      <span class="dim" style="font-size:12px;margin-left:8px">${sizeKb}KB · ${esc(view.mimeGuess)}</span>
+    </div>
+    <a href="/projects/${esc(p.id)}/tree?path=${parentOf(relPath).encodeUrl()}" class="chip chip-link">← 상위 폴더</a>
+  </div>
+</div>
+
+<form method="post" action="/projects/${esc(p.id)}/edit" id="file-form">
+  ${CsrfTokens.hiddenInput(csrf)}
+  <input type="hidden" name="path" value="${esc(view.relPath)}">
+  <textarea name="content" id="file-content" rows="28" spellcheck="false"
+            style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:13px;tab-size:2;padding:8px;background:#0e0e0e;color:#e8e8e8;border:1px solid #333;border-radius:4px"
+  >${esc(view.content)}</textarea>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px">
+    <small class="dim">Ctrl+S 로 저장. 이진/심볼릭/1MB 초과는 서버에서 차단.</small>
+    <div style="display:flex;gap:8px">
+      <a href="/projects/${esc(p.id)}/tree?path=${parentOf(relPath).encodeUrl()}" class="chip chip-link">취소</a>
+      <button type="submit" class="primary" style="width:auto;padding:8px 18px">저장</button>
+    </div>
+  </div>
+</form>
+
+<script>
+(function() {
+  var ta = document.getElementById('file-content');
+  var form = document.getElementById('file-form');
+  if (!ta || !form) return;
+  ta.addEventListener('keydown', function(ev) {
+    if ((ev.ctrlKey || ev.metaKey) && ev.key === 's') {
+      ev.preventDefault();
+      form.requestSubmit();
+    }
+    // Tab 키는 indent 로 (form submit 방지).
+    if (ev.key === 'Tab' && !ev.shiftKey) {
+      ev.preventDefault();
+      var s = ta.selectionStart, e = ta.selectionEnd;
+      ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(e);
+      ta.selectionStart = ta.selectionEnd = s + 2;
+    }
+  });
+})();
+</script>
+"""
+        }
+
+        val ok = "" // 라우트가 ok=saved query 를 붙이긴 하지만 본 view 에서는 별도 처리 안 함
+        return AdminTemplates.shell(
+            title = "${esc(p.name)} · ${esc(relPath)}",
+            username = username,
+            currentPath = "/projects",
+            csrf = csrf,
+            body = """
+<header>
+  <h1>파일 보기 / 편집
+    <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
+  </h1>
+</header>
+
+<div class="card" style="margin-bottom:12px">
+  <div style="font-size:13px">$crumbs</div>
+</div>
+
+$ok
+$bodyHtml
+"""
+        )
+    }
+
+    private fun renderBreadcrumbs(projectId: String, subPath: String, isFile: Boolean = false): String {
+        val parts = subPath.split('/').filter { it.isNotEmpty() }
+        val sb = StringBuilder()
+        sb.append("""<a href="/projects/${esc(projectId)}/tree">📁 ${esc(projectId)}</a>""")
+        var acc = ""
+        for ((idx, part) in parts.withIndex()) {
+            acc = if (acc.isEmpty()) part else "$acc/$part"
+            val isLast = idx == parts.size - 1
+            sb.append(" / ")
+            if (isLast && isFile) {
+                sb.append("<strong>${esc(part)}</strong>")
+            } else {
+                sb.append("""<a href="/projects/${esc(projectId)}/tree?path=${acc.encodeUrl()}">${esc(part)}</a>""")
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun parentOf(relPath: String): String =
+        relPath.substringBeforeLast('/', missingDelimiterValue = "")
+
+    private fun String.encodeUrl(): String =
+        java.net.URLEncoder.encode(this, Charsets.UTF_8).replace("+", "%20")
 }
 

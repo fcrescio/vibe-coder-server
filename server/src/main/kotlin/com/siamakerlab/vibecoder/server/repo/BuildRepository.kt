@@ -5,6 +5,8 @@ import com.siamakerlab.vibecoder.server.db.Builds
 import com.siamakerlab.vibecoder.shared.dto.TaskStatus
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.selectAll
@@ -75,6 +77,11 @@ class BuildRepository(private val clock: Clock) {
     }
 
     fun lastForProject(projectId: String): BuildRow? = listForProject(projectId, 1).firstOrNull()
+
+    /** ProjectService.delete cascade — 모든 build row 일괄 제거. */
+    fun deleteForProject(projectId: String): Int = transaction {
+        Builds.deleteWhere { Builds.projectId eq projectId }
+    }
 
     /** Number of builds currently in PENDING or RUNNING state across the whole server. */
     fun countRunning(): Int = transaction {

@@ -12,8 +12,6 @@ import com.siamakerlab.vibecoder.shared.dto.FileEntryDto
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.time.LocalDate
 
 class UploadService(
     private val config: ServerConfig,
@@ -36,7 +34,9 @@ class UploadService(
         if (sizeHint != null && sizeHint > config.workspace.maxUploadSizeMb * 1024L * 1024L) {
             throw ApiException(413, "file_too_large", "max ${config.workspace.maxUploadSizeMb} MB")
         }
-        val day = LocalDate.now().toString().replace("-", "")
+        // v0.12.4 — clock 의존성 사용 (이전엔 LocalDate.now() 직접 호출, 테스트 어려움).
+        // clock.nowIso() 는 "2026-05-23T14:30:00Z" 형태 → 앞 10 자에서 날짜 추출.
+        val day = clock.nowIso().take(10).replace("-", "")
         val uploadsDir = workspace.uploadsDir(projectId).resolve(day).also { Files.createDirectories(it) }
         val id = Ids.fileId()
         val target = uploadsDir.resolve("${id}_$safeName")

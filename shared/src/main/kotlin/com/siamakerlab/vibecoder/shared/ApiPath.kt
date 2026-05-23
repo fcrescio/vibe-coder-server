@@ -38,6 +38,9 @@ object ApiPath {
         "/api/projects/$projectId/claude/console/prompt"
     fun claudeConsoleNew(projectId: String) =
         "/api/projects/$projectId/claude/console/new"
+    /** v0.13.0 — 현재 진행 중인 Claude turn 강제 중단 (process SIGTERM + 즉시 respawn). */
+    fun claudeConsoleCancel(projectId: String) =
+        "/api/projects/$projectId/claude/console/cancel"
     fun claudeStatus(projectId: String) =
         "/api/projects/$projectId/claude/status"
 

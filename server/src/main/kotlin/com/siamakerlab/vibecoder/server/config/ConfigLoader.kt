@@ -54,6 +54,22 @@ object ConfigLoader {
             current = current.copy(cors = current.cors.copy(allowCredentials = it.equals("true", true)))
         }
 
+        // v0.14.0 — Database 설정 env override
+        current = current.copy(database = applyDatabaseEnvOverrides(current.database))
+
         return current
+    }
+
+    private fun applyDatabaseEnvOverrides(db: DatabaseSection): DatabaseSection {
+        var d = db
+        System.getenv("VIBECODER_DB_HOST")?.takeIf { it.isNotBlank() }?.let { d = d.copy(host = it) }
+        System.getenv("VIBECODER_DB_PORT")?.takeIf { it.isNotBlank() }?.toIntOrNull()?.let { d = d.copy(port = it) }
+        System.getenv("VIBECODER_DB_NAME")?.takeIf { it.isNotBlank() }?.let { d = d.copy(name = it) }
+        System.getenv("VIBECODER_DB_USER")?.takeIf { it.isNotBlank() }?.let { d = d.copy(user = it) }
+        System.getenv("VIBECODER_DB_PASSWORD")?.takeIf { it.isNotBlank() }?.let { d = d.copy(password = it) }
+        System.getenv("VIBECODER_DB_PASSWORD_FILE")?.takeIf { it.isNotBlank() }?.let { d = d.copy(passwordFile = it) }
+        System.getenv("VIBECODER_DB_MAX_POOL")?.takeIf { it.isNotBlank() }?.toIntOrNull()?.let { d = d.copy(maxPoolSize = it) }
+        System.getenv("VIBECODER_DB_SSLMODE")?.takeIf { it.isNotBlank() }?.let { d = d.copy(sslMode = it) }
+        return d
     }
 }

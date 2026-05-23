@@ -127,7 +127,11 @@ class ClaudeLoginService(
         s.toDto()
     }
 
-    fun cancel(): SessionDto? {
+    /**
+     * v0.12.4 — start / submitCode 와 동일하게 mutex 로 직렬화 (이전엔 lock 밖에서
+     * session 상태 변경 → start 와 race 가능). suspend 로 시그니처 변경.
+     */
+    suspend fun cancel(): SessionDto? = mutex.withLock {
         val s = session ?: return null
         runCatching { s.process.destroy() }
         runCatching { s.stdin.close() }
@@ -136,7 +140,7 @@ class ClaudeLoginService(
             s.updatedAt = clock.nowIso()
         }
         log.info { "claude login session canceled: ${s.id}" }
-        return s.toDto()
+        s.toDto()
     }
 
     // ─────────────────────────────────────────────────────────────────
