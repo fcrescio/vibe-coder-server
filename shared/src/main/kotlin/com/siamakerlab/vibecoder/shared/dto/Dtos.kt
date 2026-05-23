@@ -330,6 +330,8 @@ data class McpEntryDto(
     val status: String,
     /** 현재 등록된 config 값 (보안: secret 도 마스킹 없이 그대로 — 운영자가 자기 토큰 확인용). */
     val configValues: Map<String, String> = emptyMap(),
+    /** v0.12.1 — 브라우저 OAuth 콜백 필수라 비인터랙티브 환경 미지원. UI 가 '준비중' 표시 + 설치 비활성. */
+    val comingSoon: Boolean = false,
 )
 
 @Serializable

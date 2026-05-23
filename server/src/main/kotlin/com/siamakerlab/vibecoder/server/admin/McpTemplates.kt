@@ -274,21 +274,32 @@ JSON</pre>
             else -> ""
         }
         val starHtml = if (entry.recommended) """<span title="추천" style="color:#ffd700">★</span>""" else ""
-        val configHtml = renderConfigFields(entry, state?.configValues.orEmpty())
+        val configHtml = if (entry.comingSoon) "" else renderConfigFields(entry, state?.configValues.orEmpty())
         val homepageLink = entry.homepage?.let {
             """<a href="${esc(it)}" target="_blank" rel="noreferrer" class="dim" style="font-size:11px">↗ 문서</a>"""
         }.orEmpty()
 
+        // v0.12.1 — comingSoon 항목은 checkbox disabled + "준비중" 배지 + 카드 흐리게.
+        val comingSoonChip = if (entry.comingSoon) {
+            """<span class="dim" style="font-size:10px;padding:2px 6px;border-radius:3px;border:1px solid var(--text-dim)">⏳ 준비중</span>"""
+        } else ""
+        val cardStyle = if (entry.comingSoon) "padding:12px;opacity:0.55;cursor:not-allowed" else "padding:12px"
+        val cbDisabled = if (entry.comingSoon) "disabled" else ""
+        val cbTitle = if (entry.comingSoon) {
+            "title=\"브라우저 OAuth 콜백이 필수라 현재 환경에서 미지원\""
+        } else ""
+
         return """
-<div class="card mcp-entry $recClass" style="padding:12px">
-  <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
-    <input type="checkbox" name="select" value="${esc(entry.id)}" ${if (checked) "checked" else ""}
+<div class="card mcp-entry $recClass" style="$cardStyle">
+  <label style="display:flex;gap:10px;align-items:flex-start;cursor:${if (entry.comingSoon) "not-allowed" else "pointer"}">
+    <input type="checkbox" name="select" value="${esc(entry.id)}" ${if (checked) "checked" else ""} $cbDisabled $cbTitle
            style="margin-top:4px;width:18px;height:18px;flex-shrink:0">
     <div style="flex:1;min-width:0">
       <div style="display:flex;justify-content:space-between;gap:6px;align-items:start;flex-wrap:wrap">
         <strong style="font-size:14px">$starHtml ${esc(entry.displayName)}</strong>
-        <div style="display:flex;gap:4px;align-items:center">
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
           <span class="$badgeCls" style="font-size:10px;padding:2px 6px;border-radius:3px">${esc(badgeText)}</span>
+          $comingSoonChip
           $statusChip
         </div>
       </div>

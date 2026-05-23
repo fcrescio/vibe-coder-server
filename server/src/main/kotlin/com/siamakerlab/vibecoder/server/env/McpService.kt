@@ -96,10 +96,14 @@ class McpService(
         if (selections.isEmpty()) {
             throw ApiException(400, "no_selection", "선택된 MCP 가 없습니다.")
         }
-        // 카탈로그에 없는 id 거부
+        // 카탈로그에 없는 id 거부, comingSoon 항목도 거부.
         selections.keys.forEach { id ->
-            if (McpCatalog.get(id) == null) {
-                throw ApiException(400, "unknown_mcp", "알 수 없는 MCP id: $id")
+            val entry = McpCatalog.get(id)
+                ?: throw ApiException(400, "unknown_mcp", "알 수 없는 MCP id: $id")
+            if (entry.comingSoon) {
+                throw ApiException(400, "coming_soon",
+                    "${entry.displayName} 은 아직 vibe-coder 비인터랙티브 환경에서 지원되지 않습니다 " +
+                        "(브라우저 OAuth 콜백 필수). 카탈로그에서 '준비중' 으로 표시되어 있습니다.")
             }
         }
         // 필수 config 누락 검사

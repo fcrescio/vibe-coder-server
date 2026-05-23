@@ -71,6 +71,12 @@ object McpCatalog {
         val argsTemplate: List<String> = listOf("-y", "@PKG@"),
         /** Claude 가 spawn 할 command — `npx` 기본. binary 가 따로 PATH 에 있으면 override. */
         val command: String = "npx",
+        /**
+         * v0.12.1 — true 면 카탈로그에 노출하되 "준비중" 라벨 + 설치 비활성화.
+         * 브라우저 OAuth 콜백 흐름이 필수라 PAT/키파일만으로는 동작 불가한 MCP.
+         * 예: Google Drive (OAuth client.json 받은 후 첫 호출에서 브라우저 인증 필요).
+         */
+        val comingSoon: Boolean = false,
     )
 
     /** 전체 카탈로그 — 항목 추가 시 ID 중복 주의. */
@@ -509,8 +515,9 @@ object McpCatalog {
             id = "google-drive",
             displayName = "Google Drive",
             pkg = "@modelcontextprotocol/server-gdrive",
-            description = "Google Drive 파일 검색/read. OAuth 흐름 필요.",
+            description = "Google Drive 파일 검색/read. OAuth 클라이언트 JSON 업로드 후 첫 호출 시 브라우저 인증 필요 — vibe-coder 의 비인터랙티브 환경과 호환 안 됨.",
             category = Category.PRODUCTIVITY, trust = Trust.VERIFIED,
+            comingSoon = true,
             configFields = listOf(
                 ConfigField("GDRIVE_CREDENTIALS_PATH", "OAuth credentials.json 파일",
                     isFile = true, acceptMime = ".json,application/json",

@@ -167,6 +167,7 @@ fun Routing.envSetupApiRoutes(
                     },
                     status = st?.status?.name ?: "UNKNOWN",
                     configValues = st?.configValues.orEmpty(),
+                    comingSoon = e.comingSoon,
                 )
             }
             call.respond(McpCatalogResponseDto(entries))
