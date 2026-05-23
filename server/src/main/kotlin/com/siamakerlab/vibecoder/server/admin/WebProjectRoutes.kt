@@ -157,8 +157,14 @@ fun Routing.webProjectRoutes(
         }
         val alive = sessionManager.isAlive(id)
         val sid = sessionManager.currentSessionId(id)
+        // Claude CLI 인증 상태 진단. CLI 자체와 자격증명 파일 둘 다 검사.
+        val env = authDeps.envDiagnostics.run()
         call.respondText(
-            WebProjectTemplates.consolePage(sess.username, p, sid, alive),
+            WebProjectTemplates.consolePage(
+                sess.username, p, sid, alive,
+                claudeCli = env.claude,
+                claudeAuth = env.claudeAuth,
+            ),
             ContentType.Text.Html,
         )
     }

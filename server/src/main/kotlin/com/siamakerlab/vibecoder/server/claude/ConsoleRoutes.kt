@@ -1,9 +1,11 @@
 package com.siamakerlab.vibecoder.server.claude
 
 import com.siamakerlab.vibecoder.server.auth.AUTH_BEARER
+import com.siamakerlab.vibecoder.server.env.EnvDiagnostics
 import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.projects.ProjectService
 import com.siamakerlab.vibecoder.server.ws.LogHub
+import com.siamakerlab.vibecoder.shared.dto.CheckStatus
 import com.siamakerlab.vibecoder.shared.dto.PromptAcceptedDto
 import com.siamakerlab.vibecoder.shared.dto.PromptRequestDto
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -35,6 +37,7 @@ fun Routing.consoleRoutes(
     sessionManager: ClaudeSessionManager,
     hub: LogHub,
     statusService: ClaudeStatusService,
+    envDiagnostics: EnvDiagnostics,
 ) {
     authenticate(AUTH_BEARER) {
         post("/api/projects/{projectId}/claude/console/prompt") {
@@ -42,6 +45,18 @@ fun Routing.consoleRoutes(
                 ?: throw ApiException(400, "bad_request", "projectId is required")
             // ensure project is registered (404 path matches the rest of the codebase)
             projects.rowOrThrow(projectId)
+
+            // 인증 안 된 상태에서 자식 프로세스를 띄우면 사용자는 의미 없는 stderr 만 보게 된다.
+            // 미리 차단하고 명확한 가이드를 응답으로 돌려준다.
+            val env = envDiagnostics.run()
+            if (env.claude.status != CheckStatus.OK) {
+                throw ApiException(503, "claude_cli_missing",
+                    "Claude CLI 가 설치되지 않았습니다. 컨테이너 안에서 'vibe-doctor claude' 를 실행하세요.")
+            }
+            if (env.claudeAuth?.status == CheckStatus.ERROR) {
+                throw ApiException(503, "claude_auth_required",
+                    "Claude CLI 로그인이 필요합니다. 'docker exec -it vibe-coder claude login' 후 다시 시도하세요.")
+            }
 
             val body = call.receive<PromptRequestDto>()
             val text = body.text.trim()

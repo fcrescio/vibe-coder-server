@@ -56,11 +56,14 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
         val status = deps.statusService.snapshot()
         val deviceCount = deps.deviceRepo.listAll().size
         // running build count는 status에 없으므로 0 표시. (간단함을 위해 PoC에선 보류)
+        // Claude 인증 진단도 같이 — 사용자가 콘솔에서 처음으로 에러를 만나기 전에 대시보드에서 알아채도록.
+        val claudeAuth = runCatching { deps.envDiagnostics.run().claudeAuth }.getOrNull()
         val html = AdminTemplates.dashboardPage(
             username = sess.username,
             status = status,
             deviceCount = deviceCount,
             runningBuilds = 0,
+            claudeAuth = claudeAuth,
         )
         call.respondText(html, ContentType.Text.Html)
     }

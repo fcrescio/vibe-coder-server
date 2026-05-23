@@ -94,6 +94,12 @@ data class EnvironmentCheckDto(
     val git: CheckItemDto,
     val claude: CheckItemDto,
     val workspace: CheckItemDto,
+    /**
+     * Claude CLI 인증(`claude login`) 진단. v0.5.4+ 추가.
+     * `claude` 는 CLI 설치 자체를 보고, 이 필드는 자격증명 파일 존재 여부를 본다.
+     * 기존 클라이언트 호환을 위해 nullable + default null.
+     */
+    val claudeAuth: CheckItemDto? = null,
 )
 
 // endregion

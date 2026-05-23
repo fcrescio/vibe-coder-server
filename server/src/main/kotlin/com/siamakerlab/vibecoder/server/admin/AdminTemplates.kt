@@ -150,9 +150,19 @@ object AdminTemplates {
         status: ServerStatusDto,
         deviceCount: Int,
         runningBuilds: Int,
+        claudeAuth: com.siamakerlab.vibecoder.shared.dto.CheckItemDto? = null,
     ): String {
         val claudeBadge = if (status.claudeAvailable) "<span class=\"ok\">✓ OK</span>" else "<span class=\"warn\">✗ 미설치</span>"
         val sdkBadge = if (status.androidSdkAvailable) "<span class=\"ok\">✓ OK</span>" else "<span class=\"warn\">✗ doctor 실행 필요</span>"
+        val authBadge = when (claudeAuth?.status) {
+            com.siamakerlab.vibecoder.shared.dto.CheckStatus.OK -> "<span class=\"ok\">✓ 로그인됨</span>"
+            com.siamakerlab.vibecoder.shared.dto.CheckStatus.ERROR -> "<span class=\"warn\">✗ 로그인 필요</span>"
+            com.siamakerlab.vibecoder.shared.dto.CheckStatus.WARNING -> "<span class=\"dim\">(비활성)</span>"
+            null -> "<span class=\"dim\">-</span>"
+        }
+        val authHint = if (claudeAuth?.status == com.siamakerlab.vibecoder.shared.dto.CheckStatus.ERROR) {
+            """<p class="hint">로그인: <code>docker exec -it vibe-coder claude login</code></p>"""
+        } else ""
 
         return shell(
             title = "대시보드",
@@ -177,8 +187,10 @@ object AdminTemplates {
     <h2>환경</h2>
     <dl>
       <dt>Claude CLI</dt><dd>$claudeBadge</dd>
+      <dt>Claude 로그인</dt><dd>$authBadge</dd>
       <dt>Android SDK</dt><dd>$sdkBadge</dd>
     </dl>
+    $authHint
     <p class="hint">SDK가 미설치면 컨테이너 안에서 <code>vibe-doctor</code> 를 실행하세요.</p>
   </div>
 

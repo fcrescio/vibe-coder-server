@@ -168,7 +168,7 @@ fun Application.module(ctx: ServerContext) {
         )
         envRoutes(ctx.status, ctx.env)
         projectRoutes(ctx.projects)
-        consoleRoutes(ctx.projects, ctx.sessionManager, ctx.hub, ctx.claudeStatusService)
+        consoleRoutes(ctx.projects, ctx.sessionManager, ctx.hub, ctx.claudeStatusService, ctx.env)
         projectActionRoutes(ctx.projects, ctx.actionRegistry, ctx.actionHandler, ctx.capabilityService)
         buildRoutes(ctx.build, ctx.hub)
         artifactRoutes(ctx.artifactRepo, ctx.workspace, ctx.artifacts)

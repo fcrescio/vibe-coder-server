@@ -2,6 +2,8 @@ package com.siamakerlab.vibecoder.server.admin
 
 import com.siamakerlab.vibecoder.server.repo.ArtifactRow
 import com.siamakerlab.vibecoder.shared.dto.BuildDto
+import com.siamakerlab.vibecoder.shared.dto.CheckItemDto
+import com.siamakerlab.vibecoder.shared.dto.CheckStatus
 import com.siamakerlab.vibecoder.shared.dto.FileEntryDto
 import com.siamakerlab.vibecoder.shared.dto.GitDiffDto
 import com.siamakerlab.vibecoder.shared.dto.GitLogDto
@@ -25,6 +27,28 @@ object WebProjectTemplates {
             .replace(">", "&gt;")
             .replace("\"", "&quot;")
             .replace("'", "&#39;")
+
+    /**
+     * Claude CLI / 인증 누락 안내 카드. 콘솔 페이지 상단에 표시되며,
+     * 사용자가 그대로 복사해 실행할 수 있는 명령 한 줄 + 추가 설명을 노출한다.
+     */
+    private fun renderClaudeBanner(
+        title: String,
+        body: String,
+        cmd: String,
+        detail: String?,
+    ): String {
+        val detailHtml = if (detail.isNullOrBlank()) "" else
+            """<details style="margin-top:8px"><summary class="dim" style="cursor:pointer">자세히</summary>
+               <pre class="diff-block" style="margin-top:8px">${esc(detail)}</pre></details>"""
+        return """<div class="error" style="margin-bottom:16px;padding:16px">
+          <strong style="font-size:14px">${esc(title)}</strong>
+          <p style="margin:6px 0">${esc(body)}</p>
+          <pre class="diff-block" style="margin:8px 0">${esc(cmd)}</pre>
+          <small class="dim">로그인이 끝나면 이 페이지를 새로고침하세요.</small>
+          $detailHtml
+        </div>"""
+    }
 
     /** 로그 라인 1개의 CSS 클래스. WS 라이브 흐름과 동일한 색상 팔레트. */
     private fun classOfLevel(level: String): String = when (level.uppercase()) {
@@ -233,11 +257,32 @@ $errHtml
         p: ProjectDto,
         sessionId: String?,
         isAlive: Boolean,
+        claudeCli: CheckItemDto? = null,
+        claudeAuth: CheckItemDto? = null,
     ): String {
         val statusBadge = when {
             isAlive -> """<span class="ok">running</span>"""
             sessionId != null -> """<span class="dim">idle (will resume)</span>"""
             else -> """<span class="dim">no session</span>"""
+        }
+        // Claude CLI 미설치 또는 인증 누락 시 큰 안내 카드 + 프롬프트 폼 비활성화.
+        val cliMissing = claudeCli != null && claudeCli.status != CheckStatus.OK
+        val authMissing = claudeAuth != null && claudeAuth.status == CheckStatus.ERROR
+        val blocking = cliMissing || authMissing
+        val authBannerHtml = when {
+            cliMissing -> renderClaudeBanner(
+                title = "Claude CLI 가 설치되지 않았습니다",
+                body = "프롬프트를 보내기 전에 컨테이너 안에서 vibe-doctor 로 설치를 마치세요.",
+                cmd = "docker exec -it vibe-coder vibe-doctor claude",
+                detail = claudeCli?.detail,
+            )
+            authMissing -> renderClaudeBanner(
+                title = "Claude CLI 로그인이 필요합니다",
+                body = "Claude Code 자격증명이 없어 새 세션을 시작할 수 없습니다. 도커 컨테이너에서 한 번만 로그인하면 됩니다.",
+                cmd = "docker exec -it vibe-coder claude login",
+                detail = claudeAuth?.detail,
+            )
+            else -> ""
         }
         val projectIdJs = esc(p.id)
 
@@ -251,6 +296,8 @@ $errHtml
     <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
   </h1>
 </header>
+
+$authBannerHtml
 
 <div class="card" style="margin-bottom:16px">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -284,10 +331,12 @@ $errHtml
 <div id="console-log" class="console-log" aria-live="polite"></div>
 
 <form id="prompt-form" class="prompt-form" autocomplete="off">
-  <textarea id="prompt-input" rows="3" maxlength="65536" placeholder="Claude 에게 보낼 프롬프트를 입력하세요. Ctrl+Enter 로 전송.&#10;예) Android 빈 프로젝트를 생성하고 Compose 로 'Hello' 화면을 띄워줘." required></textarea>
+  <textarea id="prompt-input" rows="3" maxlength="65536"
+            placeholder="${if (blocking) "Claude 인증을 완료한 뒤 사용할 수 있습니다." else "Claude 에게 보낼 프롬프트를 입력하세요. Ctrl+Enter 로 전송.&#10;예) Android 빈 프로젝트를 생성하고 Compose 로 'Hello' 화면을 띄워줘."}"
+            ${if (blocking) "disabled" else "required"}></textarea>
   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
-    <small class="dim">전송: Ctrl+Enter · 줄바꿈: Enter</small>
-    <button type="submit" class="primary" id="send-btn" style="width:auto;padding:8px 16px">전송</button>
+    <small class="dim">${if (blocking) "위쪽 안내의 명령을 실행한 뒤 페이지를 새로고침하세요." else "전송: Ctrl+Enter · 줄바꿈: Enter"}</small>
+    <button type="submit" class="primary" id="send-btn" style="width:auto;padding:8px 16px" ${if (blocking) "disabled" else ""}>전송</button>
   </div>
 </form>
 
