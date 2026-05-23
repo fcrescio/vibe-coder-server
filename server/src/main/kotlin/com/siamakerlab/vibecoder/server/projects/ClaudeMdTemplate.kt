@@ -22,6 +22,59 @@ object ClaudeMdTemplate {
 - On Linux/macOS, use ./gradlew.
 - Debug build task is assembleDebug unless the project config says otherwise.
 
+## Installed Build Tools (USE THESE — DO NOT RE-DOWNLOAD)
+
+The vibe-coder host has already downloaded the following tools into bind-mounted
+volumes via the **Build Environment** page (`/env-setup`) or `vibe-doctor`.
+**Use these versions/paths. Do NOT trigger a fresh download of a different
+toolchain version.**
+
+| Tool | Container path | Notes |
+|---|---|---|
+| Gradle (host install) | `/home/vibe/.local/gradle/` (binary on PATH as `gradle`) | Latest stable. Use this for wrapper bootstrap. |
+| Android SDK | `${'$'}ANDROID_HOME` (typically `/opt/android-sdk`) | Includes cmdline-tools, platform-tools (adb), platforms;android-35, build-tools. |
+| JDK | bundled in the server image | OpenJDK 17, on PATH as `java`. |
+| Node.js + Claude CLI | bundled in the server image | Node 20 LTS, `claude` on PATH. |
+| MCP packages | `/home/vibe/.local/` (npm global prefix) | Whatever the user installed via `/env-setup/mcp`. |
+
+### Gradle wrapper alignment policy
+
+When a project's `gradle/wrapper/gradle-wrapper.properties` references a
+**Gradle version different from the one already installed at
+`/home/vibe/.local/gradle/`**, prefer to align the wrapper to the installed
+version rather than letting Gradle download a second copy. Procedure:
+
+1. Check installed version: `gradle --version | grep '^Gradle '`.
+2. Either:
+   - Update `distributionUrl` in `gradle-wrapper.properties` to that version, or
+   - Re-generate the wrapper with the installed gradle:
+     `gradle wrapper --gradle-version <installed-version> --distribution-type bin`.
+
+Reasoning: downloading a second Gradle distribution wastes disk + minutes per
+project + Claude API tokens spent waiting on the download log. The host
+already has the right binary. Stick to it unless the project genuinely
+requires a specific older Gradle for API reasons — in that case state the
+reason in the response.
+
+### When a wrapper is missing
+
+If `gradlew` is absent (e.g., a freshly scaffolded project), use the host
+gradle to generate one with the installed version:
+
+```bash
+gradle wrapper --gradle-version "${'$'}(gradle --version | awk '/^Gradle /{print ${'$'}2; exit}')" --distribution-type bin
+```
+
+`BuildService` also runs this automatically on the first build attempt, but
+generating up front is faster.
+
+### Cache reuse
+
+Don't remove `~/.gradle/caches/` or `${'$'}ANDROID_HOME/build-tools/*` to "clean
+up" — those caches are bind-mounted volumes shared across projects and
+re-downloading them is expensive. If `gradle --refresh-dependencies` is
+truly needed, mention it in the response.
+
 ## Response Rules
 
 - Summarize modified files.
