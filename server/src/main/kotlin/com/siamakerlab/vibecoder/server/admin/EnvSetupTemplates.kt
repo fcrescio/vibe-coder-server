@@ -247,11 +247,14 @@ $statusHint
         } else ""
 
         val codeForm = if (state?.state == "AWAITING_CODE") {
+            // v0.10.1 — id="code-input" / id="code-form" 추가 (JS 가 autofocus + sessionStorage
+            // 복원/백업/clear 에 사용). autofocus 속성도 같이 — JS 비활성 환경 대비.
             """<div class="card" style="margin-top:12px;background:rgba(105,219,124,0.06);border-color:var(--ok)">
               <strong>3. 받은 코드를 paste 후 제출</strong>
-              <form method="post" action="/env-setup/claude-login/submit"
+              <form method="post" action="/env-setup/claude-login/submit" id="code-form"
                     style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
-                <input type="text" name="code" placeholder="여기에 authorization code 를 paste" required
+                <input type="text" name="code" id="code-input"
+                       placeholder="여기에 authorization code 를 paste" required autofocus
                        autocomplete="off" autocapitalize="off" spellcheck="false"
                        style="font-size:13px;padding:8px;font-family:ui-monospace,Menlo,monospace">
                 <div style="display:flex;gap:8px">
@@ -260,6 +263,9 @@ $statusHint
                           formnovalidate style="padding:8px 14px">취소</button>
                 </div>
               </form>
+              <p class="hint" style="font-size:11px;margin-top:6px">
+                ※ 입력 중에는 페이지가 자동 갱신되지 않습니다. 코드 입력 후 "제출" 버튼을 직접 눌러주세요.
+              </p>
             </div>"""
         } else ""
 
@@ -324,10 +330,53 @@ $lastLinesBlock
 
 <script>
 (function() {
-  // 진행 상태가 변할 수 있을 때만 폴링 (DONE/FAILED/CANCELED 면 stop)
+  // v0.10.1 — 사용자 입력 영속성 + 포커스 안정성 fix:
+  //   1) input 값 sessionStorage 자동 백업/복원 — reload 돼도 paste 보존
+  //   2) AWAITING_CODE 에서는 폴링 disable — 사용자 입력 도중 reload 방지
+  //   3) input 자동 focus
+  //   4) submit/cancel 직전 sessionStorage clear
+  // 알려진 trade-off: AWAITING_CODE 에서 child process 가 죽어도 사용자는
+  // 즉시 알 수 없음 → submit 시 wrong_state(409) 에러로 안내 (errorBlurb 가 표시).
+
+  var STORAGE_KEY = 'claude_login_code_buf';
   var initial = ${if (state == null) "null" else "\"${state.state}\""};
-  var terminal = ['DONE', 'FAILED', 'CANCELED'];
-  if (initial && terminal.indexOf(initial) >= 0) return;
+  var POLLING_STATES = ['STARTING', 'VERIFYING'];   // 사용자 액션 대기 외만 폴링
+
+  // ── input 영속성 ─────────────────────────────────────────
+  var input = document.getElementById('code-input');
+  var form = document.getElementById('code-form');
+  if (input) {
+    // 복원
+    try {
+      var saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved && !input.value) input.value = saved;
+    } catch (e) { /* private mode 등 */ }
+
+    // 자동 백업
+    input.addEventListener('input', function() {
+      try { sessionStorage.setItem(STORAGE_KEY, input.value); } catch (e) {}
+    });
+    input.addEventListener('paste', function() {
+      // paste 후 input event 가 발화되지 않는 일부 환경 대비 — 다음 tick 에 save
+      setTimeout(function() {
+        try { sessionStorage.setItem(STORAGE_KEY, input.value); } catch (e) {}
+      }, 0);
+    });
+
+    // 자동 focus (autofocus 속성이 안 먹는 일부 케이스 대비)
+    setTimeout(function() {
+      try { input.focus(); } catch (e) {}
+    }, 50);
+  }
+  if (form) {
+    form.addEventListener('submit', function() {
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    });
+  }
+
+  // ── 폴링 ─────────────────────────────────────────────────
+  // AWAITING_CODE / DONE / FAILED / CANCELED / IDLE 면 폴링 skip.
+  if (!initial || POLLING_STATES.indexOf(initial) < 0) return;
 
   var lastState = initial;
   var timer = setInterval(function() {
@@ -335,7 +384,6 @@ $lastLinesBlock
       .then(function(r) { return r.json(); })
       .then(function(s) {
         if (s == null) { clearInterval(timer); return; }
-        // 상태 변경 시 페이지 reload (폼/카드 다시 그리기 위해)
         if (s.state !== lastState) {
           clearInterval(timer);
           window.location.reload();
