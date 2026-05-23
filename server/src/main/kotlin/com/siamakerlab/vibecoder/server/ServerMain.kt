@@ -141,7 +141,7 @@ fun main(args: Array<String>) {
     val git = GitReader()
     val uploads = UploadService(config, workspace, uploadedRepo, clock)
     val env = EnvDiagnostics(config)
-    val envSetup = EnvSetupService(config)
+    val envSetup = EnvSetupService(config, queue, hub, clock)
     val status = StatusService(config, projectRepo, buildRepo, env)
     val actionRegistry = ProjectActionRegistry(workspace)
     val actionHandler = ServerActionHandler(projects, build, git, hub, sessionManager)

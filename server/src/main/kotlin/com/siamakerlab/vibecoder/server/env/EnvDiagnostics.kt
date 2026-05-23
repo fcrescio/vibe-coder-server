@@ -71,15 +71,18 @@ class EnvDiagnostics(private val config: ServerConfig) {
     }
 
     /**
-     * Claude CLI 인증(`claude login`) 자격증명 파일 존재 여부.
+     * Claude CLI 로그인 상태 — `~/.claude/.credentials.json` (또는
+     * `CLAUDE_CONFIG_DIR` env 가 가리키는 곳) 존재 여부.
      *
-     * `claude` CLI 는 `~/.claude/` (또는 `CLAUDE_CONFIG_DIR` env) 에
-     * `.credentials.json` 또는 `config.json` 을 만들어 인증 정보를 보관한다.
-     * vibe-doctor (`docker/doctor/lib/check.sh`) 와 같은 기준을 따른다.
+     * v0.5.4 까지는 vibe-doctor 와 같이 `.credentials.json` 또는 `config.json`
+     * 중 하나만 있어도 OK 로 판정했으나, 그건 false positive 였다. claude CLI
+     * 는 첫 실행 시 빈 `config.json` 을 항상 만들어두기 때문에 "config.json
+     * 존재 = 로그인됨" 이 아니다. 실제 인증 토큰은 `.credentials.json` 에만
+     * 저장되므로 그 파일만 본다.
      *
-     * - CLI 미설치 → SKIP (애초에 인증할 대상이 없음).
-     * - 자격증명 파일 있음 → OK.
-     * - 디렉토리 자체가 없음 / 파일이 없음 → ERROR + 가이드.
+     * - CLI 미설치 → ERROR.
+     * - `.credentials.json` 있음 → OK.
+     * - 없음 → ERROR + `claude login` 가이드.
      */
     private fun checkClaudeAuth(cli: CheckItemDto): CheckItemDto {
         if (!config.claude.enabled) {
@@ -95,17 +98,13 @@ class EnvDiagnostics(private val config: ServerConfig) {
 
         val cfg = claudeConfigDir()
         val credentials = cfg.resolve(".credentials.json")
-        val cfgJson = cfg.resolve("config.json")
-        return when {
-            credentials.exists() -> CheckItemDto(
-                CheckStatus.OK, "Claude Auth", "credentials 발견",
+        return if (credentials.exists()) {
+            CheckItemDto(
+                CheckStatus.OK, "Claude Auth", "로그인됨",
                 detail = credentials.toString(),
             )
-            cfgJson.exists() -> CheckItemDto(
-                CheckStatus.OK, "Claude Auth", "config.json 발견",
-                detail = cfgJson.toString(),
-            )
-            else -> CheckItemDto(
+        } else {
+            CheckItemDto(
                 CheckStatus.ERROR, "Claude Auth",
                 "Claude CLI 로그인이 필요합니다.",
                 detail = buildClaudeAuthHelp(cfg),

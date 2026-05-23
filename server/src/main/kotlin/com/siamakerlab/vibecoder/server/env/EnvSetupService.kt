@@ -1,9 +1,21 @@
 package com.siamakerlab.vibecoder.server.env
 
 import com.siamakerlab.vibecoder.server.config.ServerConfig
+import com.siamakerlab.vibecoder.server.core.Clock
+import com.siamakerlab.vibecoder.server.core.Ids
+import com.siamakerlab.vibecoder.server.error.ApiException
+import com.siamakerlab.vibecoder.server.tasks.TaskQueue
+import com.siamakerlab.vibecoder.server.ws.LogHub
+import com.siamakerlab.vibecoder.shared.ws.WsFrame
+import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.exists
+
+private val log = KotlinLogging.logger {}
 
 /**
  * 빌드환경 페이지의 컴포넌트 — 사용자가 "원터치 설치" 할 수 있는 단위.
@@ -113,7 +125,19 @@ data class ComponentState(
  */
 class EnvSetupService(
     private val config: ServerConfig,
+    private val queue: TaskQueue,
+    private val hub: LogHub,
+    private val clock: Clock,
 ) {
+
+    /**
+     * 컴포넌트별 마지막으로 실행한 task 의 id 를 캐시.
+     * 진행 중인지 여부는 task 상태가 아니라 단순히 "최근에 실행했는가" 표시용.
+     * (TaskQueue 에 외부에서 들여다볼 status API 가 없어 단순화)
+     */
+    private val lastTask = ConcurrentHashMap<SetupComponent, String>()
+
+    fun lastTaskId(c: SetupComponent): String? = lastTask[c]
 
     /** 모든 컴포넌트의 현재 상태를 한 번에 반환. */
     fun detectAll(): List<ComponentState> = SetupComponent.entries.map { detect(it) }
@@ -141,14 +165,14 @@ class EnvSetupService(
     }
 
     private fun probeClaudeAuth(c: SetupComponent): ComponentState {
+        // `.credentials.json` 만 봄. config.json 은 claude CLI 가 첫 실행 시
+        // 빈 파일을 항상 만들기 때문에 인증 indicator 가 아니다 (false positive).
         val cfg = claudeConfigDir()
         val credentials = cfg.resolve(".credentials.json")
-        val cfgJson = cfg.resolve("config.json")
         return when {
-            credentials.exists() -> ComponentState(c, ComponentStatus.INSTALLED, "자격증명 발견: ${credentials.fileName}")
-            cfgJson.exists() -> ComponentState(c, ComponentStatus.INSTALLED, "자격증명 발견: ${cfgJson.fileName}")
-            !cfg.exists() -> ComponentState(c, ComponentStatus.MISSING, "디렉토리 없음: $cfg")
-            else -> ComponentState(c, ComponentStatus.MISSING, "로그인 필요: $cfg")
+            credentials.exists() -> ComponentState(c, ComponentStatus.INSTALLED, "로그인됨 (${credentials.fileName})")
+            !cfg.exists() -> ComponentState(c, ComponentStatus.MISSING, "디렉토리 없음: $cfg — `claude login` 필요")
+            else -> ComponentState(c, ComponentStatus.MISSING, "로그인 필요: $cfg/.credentials.json 없음")
         }
     }
 
@@ -228,4 +252,103 @@ class EnvSetupService(
         } catch (e: Throwable) {
             Captured(-1, e.message ?: e.javaClass.simpleName)
         }
+
+    // ── 설치 액션 ─────────────────────────────────────────────────────
+
+    /**
+     * 단일 컴포넌트 설치. vibe-doctor <subcmd> 자식 프로세스를 spawn 하고
+     * 라인 단위로 LogHub 의 taskId topic 에 [WsFrame.Log] 를 emit.
+     * 종료 시 [WsFrame.Done] 으로 마무리. 진행 페이지는 그 topic 을 구독한다.
+     *
+     * @return 새 task id. 호출 측은 이걸로 `/env-setup/tasks/{taskId}` 로 redirect.
+     * @throws ApiException 자동 설치가 불가능한 컴포넌트 (예: CLAUDE_AUTH OAuth).
+     */
+    fun spawnInstall(c: SetupComponent): String {
+        val subcmd = c.doctorCmd
+            ?: throw ApiException(400, "manual_install_only",
+                "${c.displayName} 는 자동 설치를 지원하지 않습니다 (OAuth 인터랙티브 등).")
+        val taskId = Ids.taskId()
+        lastTask[c] = taskId
+        submitDoctor(taskId, label = c.displayName, steps = listOf(subcmd))
+        return taskId
+    }
+
+    /**
+     * 자동 설치 가능한 모든 컴포넌트를 순차 실행. 하나의 task id 로 묶여
+     * 한 화면에서 전체 진행을 본다. OAuth 등 인터랙티브 컴포넌트는 skip.
+     */
+    fun spawnInstallAll(): String {
+        val taskId = Ids.taskId()
+        val steps = SetupComponent.entries
+            .mapNotNull { c -> c.doctorCmd?.takeIf { c != SetupComponent.CLAUDE_AUTH }?.let { c to it } }
+        // CLAUDE_AUTH 는 OAuth 라 자동 불가. 나머지 (android / mcp 등) 만.
+        SetupComponent.entries.forEach { c -> if (c.doctorCmd != null) lastTask[c] = taskId }
+        submitDoctor(taskId, label = "모두 설치/업데이트", steps = steps.map { it.second }, displaySteps = steps.map { it.first.displayName })
+        return taskId
+    }
+
+    private fun submitDoctor(
+        taskId: String,
+        label: String,
+        steps: List<String>,
+        displaySteps: List<String>? = null,
+    ) {
+        queue.submit(
+            projectId = "env-setup",
+            taskId = taskId,
+            onStart = { hub.publisher(taskId).emit(WsFrame.Log(taskId, "INFO", "▶ $label 시작", clock.nowIso())) },
+            executor = { _ ->
+                withContext(Dispatchers.IO) {
+                    runDoctorSteps(taskId, steps, displaySteps)
+                }
+            },
+            onSuccess = {
+                hub.publisher(taskId).emit(WsFrame.Log(taskId, "INFO", "✓ $label 완료", clock.nowIso()))
+                hub.publisher(taskId).emit(WsFrame.Done(taskId, "SUCCESS"))
+            },
+            onFailure = { e ->
+                hub.publisher(taskId).emit(WsFrame.Log(taskId, "ERROR", "✗ $label 실패: ${e.message}", clock.nowIso()))
+                hub.publisher(taskId).emit(WsFrame.Done(taskId, "FAILED", e.message))
+            },
+            onCancel = {
+                hub.publisher(taskId).emit(WsFrame.Done(taskId, "CANCELED"))
+            },
+        )
+    }
+
+    private suspend fun runDoctorSteps(taskId: String, steps: List<String>, displaySteps: List<String>?) {
+        for ((i, sub) in steps.withIndex()) {
+            val name = displaySteps?.getOrNull(i) ?: sub
+            hub.publisher(taskId).emit(WsFrame.Log(taskId, "INFO", "── [${i + 1}/${steps.size}] $name (vibe-doctor $sub)", clock.nowIso()))
+            val exit = runDoctor(taskId, sub)
+            if (exit != 0) {
+                throw RuntimeException("vibe-doctor $sub failed with exit $exit")
+            }
+            hub.publisher(taskId).emit(WsFrame.Log(taskId, "INFO", "✓ $name 단계 완료", clock.nowIso()))
+        }
+    }
+
+    /**
+     * `vibe-doctor <sub>` 또는 호환 명령을 spawn 하고 stdout/stderr 라인을 emit.
+     * 컨테이너에서는 `/usr/local/bin/vibe-doctor` (symlink). 로컬 dev 에서는 PATH 의
+     * `vibe-doctor` 가 없을 수 있으며, 그 경우엔 ProcessBuilder 가 IOException 을
+     * 던지므로 호출자에게 그대로 전파해 UI 에 표시.
+     */
+    private suspend fun runDoctor(taskId: String, sub: String): Int = withContext(Dispatchers.IO) {
+        val cmd = listOf(resolveDoctorCmd(), sub)
+        val pb = ProcessBuilder(cmd).redirectErrorStream(true)
+        val process = pb.start()
+        process.inputStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
+            for (line in lines) {
+                hub.publisher(taskId).emit(WsFrame.Log(taskId, "STDOUT", line, clock.nowIso()))
+            }
+        }
+        process.waitFor()
+    }
+
+    private fun resolveDoctorCmd(): String {
+        // 도커 이미지 안에서는 entrypoint 가 /usr/local/bin/vibe-doctor symlink 를 만든다.
+        // 호스트에서 직접 띄우는 dev 환경은 PATH 에 vibe-doctor 가 없을 수 있다.
+        return System.getenv("VIBE_DOCTOR_CMD")?.ifBlank { null } ?: "vibe-doctor"
+    }
 }

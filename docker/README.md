@@ -8,7 +8,7 @@
 
 ```bash
 # 1) 이미지 받기 (또는 로컬 빌드)
-docker pull siamakerlab/vibe-coder-server:0.6.0
+docker pull siamakerlab/vibe-coder-server:0.6.1
 
 # 2) compose 파일과 .env 복사
 mkdir -p ~/vibe-coder && cd ~/vibe-coder
@@ -56,7 +56,7 @@ docker exec -it vibe-coder vibe-doctor
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
-| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:0.6.0` | pull 할 이미지 태그 |
+| `VIBECODER_IMAGE` | `siamakerlab/vibe-coder-server:0.6.1` | pull 할 이미지 태그 |
 | `PUID` / `PGID` | `1000` / `1000` | 호스트 UID/GID 매칭. `id -u` / `id -g` 로 확인 |
 | `VIBE_PORT` | `17880` | 호스트 노출 포트 |
 | `VIBE_WORKSPACE` | `./workspace` | 프로젝트 소스/빌드 산출물 디렉토리 |
@@ -154,7 +154,7 @@ RAM 여유가 있다면 `.env`에서 `JAVA_OPTS=-Xmx8g` 등으로 늘리세요.
 
 ## 빌드 / 푸시 (메인테이너용)
 
-### 일반 commit 푸시 (amd64-only, 빠름 · v0.6.0+ 기본)
+### 일반 commit 푸시 (amd64-only, 빠름 · v0.6.1+ 기본)
 
 ```bash
 docker buildx create --name vibe-builder --driver docker-container --use  # 1회만

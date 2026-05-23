@@ -51,6 +51,11 @@ fun Routing.wsRoutes(
     webSocket("/ws/projects/{projectId}/builds/{buildId}/logs") {
         handleLegacyLogStream(hub, deviceRepo, tokens, topic = call.parameters["buildId"]!!)
     }
+    webSocket("/ws/env-setup/{taskId}/logs") {
+        // 빌드환경 설치 작업 (vibe-doctor) 의 stdout 라인 + 종료 Done 을 흘려보낸다.
+        // 빌드 로그와 동일한 legacy log stream 패턴이므로 그대로 재사용.
+        handleLegacyLogStream(hub, deviceRepo, tokens, topic = call.parameters["taskId"]!!)
+    }
     webSocket("/ws/projects/{projectId}/console/logs") {
         val projectId = call.parameters["projectId"]
             ?: return@webSocket close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "missing projectId"))
