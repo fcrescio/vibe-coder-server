@@ -24,18 +24,53 @@ vibe-coder-server/
 └─ docker/              # Slim Docker image + compose + vibe-doctor
 ```
 
-## What's inside (v0.10.0)
+## What's inside (v0.15.0)
 
-- **Claude Code CLI orchestration** — one persistent child process per
-  project, stream-json on stdin/stdout, console log relayed live over WS.
-- **Three Claude auth options** — terminal, file upload, API key, **plus** a
+### Core orchestration
+- **Claude Code CLI orchestration** — one persistent child process per project,
+  stream-json on stdin/stdout, console log relayed live over WS. Cancel a
+  runaway turn with the ■ stop button (v0.13.0+); session-id is preserved so the
+  next prompt resumes the same conversation.
+- **Friendly tool rendering** — `Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`,
+  `TaskCreate/Update`, `WebSearch/Fetch` etc. each get a one-line readable
+  representation in the console instead of raw JSON.
+- **Four Claude auth options** — terminal, file upload, API key, **plus** a
   semi-automatic web OAuth (`script -q` PTY wrap, no xterm.js).
+- **Prompt template library** (v0.13.0+) — save reusable prompts at `/prompts`,
+  pull them into any console via the ▼ dropdown. JSON-backed, max 500.
+- **General Chat** (v0.13.0+) — `/chat` page runs a project-less Claude
+  session in a synthetic `__scratch__` workspace. Full multi-turn conversation
+  with `--resume`, identical UX to the project console.
+
+### Build & deploy
 - **MCP catalog** — 60+ Model Context Protocol servers in 10 categories,
   checkbox multi-select, per-MCP token form, recommended ★, trust tiers.
-- **Build environment one-click installer** — Android SDK / Gradle cache /
-  Node + Claude CLI / MCP packages, all persisted under one host directory.
-- **Git clone on project register** — public / private (HTTPS PAT or SSH
-  key) with auto-generated ed25519 key pair.
+- **Build environment one-click installer** — Android SDK / Gradle binary &
+  cache / Node + Claude CLI / MCP packages, all persisted under one host
+  directory. New project `CLAUDE.md` is wired to use the installed Gradle to
+  avoid redundant wrapper downloads (v0.14.1+).
+- **Git clone on project register** — public / private (HTTPS PAT or SSH key)
+  with auto-generated ed25519 key pair.
+
+### Project tooling
+- **In-browser file tree + editor** (v0.13.0+) — `/projects/{id}/tree` browses
+  the workspace; `/projects/{id}/view` opens read-only / edit toggle with
+  syntax highlighting via bundled highlight.js (Kotlin / Java / XML / JSON /
+  YAML / Markdown / properties / shell). 1 MB / binary / symlink guards.
+- **Settings persistence** (v0.14.0+) — `/settings` writes `server.yml` with
+  atomic move + `.bak.<ts>` rotation (keeps 5). Restart required for
+  host/port/name; other fields take effect on next read.
+
+### Persistence & security
+- **PostgreSQL backend** (v0.14.0+) — sidecar `postgres:17-alpine` container,
+  Exposed ORM + Hikari pool, JSONB-ready for future history features.
+- **CSRF protection on every SSR POST** (v0.12.4+) — HMAC-SHA256 deterministic
+  derivation from the device cookie. REST API (Bearer header) is exempt.
+- **IP-based brute-force throttling** (v0.12.4+) — account lock at 10 fails /
+  15 min, IP block at 30 fails / 24 h. Timing-safe dummy verify on missing users.
+- **Audit log** (v0.15.0+) — every operational action (login / device revoke /
+  project / build / MCP / settings / git token / console new-cancel) lands in
+  `audit_log` with user, IP, result, ts. `/audit` page with filter + paginate.
 - **JSON API parity** — every admin UI feature is also exposed under `/api/*`
   with Bearer authentication for the Android companion app.
 
@@ -176,30 +211,37 @@ ssh user@newhost 'cd ~/vibe-coder && tar xzf vibe-coder-data-*.tar.gz && docker 
 mounts only (no named volumes by default), but watch out if you mixed
 in legacy state. For regular upgrades, always `up -d --force-recreate`.
 
-## Web routes (v0.10.0)
+## Web routes (v0.15.0)
 
 All routes below sit at the root (no `/admin/*` prefix). Bearer auth or
-session cookie required except `/setup`, `/login`, `/health`.
+session cookie required except `/setup`, `/login`, `/health`. Every SSR POST
+carries a CSRF `_csrf` token (v0.12.4+).
 
 | Path | Purpose |
 |---|---|
 | `/` | Dashboard (server / environment / activity summary) |
 | `/projects` | Project list + register form (empty / clone) |
 | `/projects/{id}` | Project detail, recent builds |
-| `/projects/{id}/console` | Claude prompt input + live log (WebSocket) + slash chips |
+| `/projects/{id}/console` | Claude prompt input + live log (WebSocket) + slash chips + ▼ template dropdown + ■ stop button |
 | `/projects/{id}/builds` | Queue debug build + APK download |
 | `/projects/{id}/builds/{buildId}` | Build detail + live log + cancel |
-| `/projects/{id}/files` | File upload / download / delete |
+| `/projects/{id}/tree` | **v0.13.0** Filesystem browser inside the project workspace |
+| `/projects/{id}/view?path=...` | **v0.13.0** Read-only view (highlight.js) ↔ Edit mode (textarea) |
+| `/projects/{id}/files` | Upload / download / delete (the upload area) |
 | `/projects/{id}/git` | git status / diff / log (read-only) |
+| `/chat` | **v0.13.0** General Chat — project-less Claude session (`__scratch__` workspace) |
+| `/prompts` | **v0.13.0** Prompt template CRUD (used by the ▼ dropdown) |
 | `/env-setup` | Build-environment status + one-click installers |
 | `/env-setup/mcp` | MCP catalog (60+ entries, checkbox multi-select) |
 | `/env-setup/claude-login` | Semi-automatic web OAuth |
 | `/env-setup/tasks/{taskId}` | Live install progress (WS) |
 | `/settings/git-integrations` | PAT tokens + SSH public key |
+| `/settings/cors` | Read-only CORS policy viewer |
+| `/audit` | **v0.15.0** Operational audit log (filter / paginate) |
 | `/settings`, `/devices`, `/password` | Operations |
 | `/login`, `/setup`, `/logout` | Auth |
 
-## JSON API (v0.10.0 — for clients like the Android app)
+## JSON API (v0.15.0 — for clients like the Android app)
 
 Every UI feature has a matching `/api/*` endpoint with Bearer authentication.
 Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
@@ -207,12 +249,18 @@ Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
 - `GET  /api/server/status`, `GET /api/server/environment`, `GET /api/server/environment/check`
 - `GET  /api/projects`, `POST /api/projects/register` (with `sourceType=clone` for git clone)
 - `POST /api/projects/{id}/build/debug`, `GET /api/projects/{id}/builds`
+- `POST /api/projects/{id}/builds/{buildId}/cancel`
+- `POST /api/projects/{id}/claude/console/prompt | new | cancel`
+  (`.../cancel` is **v0.13.0+** — Android `shared/` v0.6.11+ required)
+- `GET  /api/projects/{id}/claude/status`
+- `GET  /api/prompt-templates` (v0.13.0+ — prompt library)
 - `GET  /api/env-setup/components`, `POST /api/env-setup/install-all`,
   `POST /api/env-setup/{componentId}/install`
 - `POST /api/env-setup/claude-auth/upload` (multipart)
 - `POST /api/env-setup/claude-auth/api-key`, `DELETE /api/env-setup/claude-auth/api-key/delete`
 - `POST /api/env-setup/claude-login/start | submit | cancel`, `GET .../status`
 - `GET  /api/env-setup/mcp`, `POST /api/env-setup/mcp/install | unregister`
+- `POST /api/env-setup/mcp/{mcpId}/file/{fieldKey}` (multipart — Service Account JSON / Apple .p8 etc.)
 - `GET  /api/settings/git-integrations`, `POST .../register | delete | ssh-keygen`
 - WebSocket: `/ws/projects/{id}/console/logs`, `/ws/projects/{id}/builds/{buildId}/logs`,
   `/ws/env-setup/{taskId}/logs`
@@ -222,22 +270,39 @@ Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
 - `POST /api/auth/setup` — first-boot admin creation (only when DB has no admin).
 - `POST /api/auth/login` — `{username, password}` → bearer token + `vibe_session` cookie.
 - `POST /api/auth/password` — change password.
+- `POST /api/auth/logout` — invalidate the device row (cookie + Bearer header both work).
 
-Passwords are stored as BCrypt cost-12 hashes only. 10 consecutive failures
-lock the account for 15 min. Timing-attack-safe dummy verify on missing users.
+Passwords are stored as BCrypt cost-12 hashes only. **Brute-force protection**
+(v0.12.4+):
+- Account lock: 10 consecutive failures → 15 min cooldown.
+- IP block: 30 failures from one IP within 24 h → 24 h block (catches
+  credential-stuffing across multiple accounts).
+- Timing-safe dummy verify on missing users (runtime-computed valid BCrypt
+  hash so the response time matches a real verification).
 
-## Security boundaries (MVP)
+## Security boundaries
 
-- Workspace-relative path checks (`PathSafety.normalizeAndCheck`) reject any
-  read/write outside `/workspace`.
-- Bearer tokens hashed; plaintext returned to the client only once at issue.
-- WebSocket auth happens via the first `{"type":"auth","token":"..."}` frame
-  (not via URL query).
-- Upload extension blacklist: `exe`, `bat`, `cmd`, `ps1`, `sh`.
-- No raw-shell UI. No `git push`. No release signing. No automation prompts
-  that wait on stdin (CLAUDE.md non-interactive policy templated into every
-  new project's `.claude/settings.json`).
-- All external commands have hard timeouts; cancellation calls `destroyForcibly`.
+- **CSRF protection** (v0.12.4+) — every SSR POST carries a hidden `_csrf`
+  HMAC-SHA256 token. REST API (Bearer header, not cookie) is exempt.
+  Multipart uploads carry `_csrf` in the query string.
+- **WebSocket Origin check** (v0.12.4+) — handshake rejects mismatched Origin
+  to defend against cross-site WebSocket hijacking.
+- **Workspace path safety** — `PathSafety.normalizeAndCheck` rejects any
+  read/write outside `/workspace`. Symlinks are not followed
+  (`LinkOption.NOFOLLOW_LINKS`).
+- **Bearer tokens** stored hashed only; plaintext returned to the client once
+  at issue.
+- **WebSocket auth** — cookie automatic on same-origin handshake; Android
+  clients send `{"type":"auth","token":"..."}` as the first frame.
+- **Upload extension blacklist**: `exe`, `bat`, `cmd`, `ps1`, `sh`.
+- **No raw-shell UI.** No `git push`. No release signing. No automation
+  prompts that wait on stdin (CLAUDE.md non-interactive policy templated
+  into every new project's `.claude/settings.json`).
+- **External commands** have hard timeouts; cancellation calls
+  `destroyForcibly`. The `claude` child can be SIGTERM'd mid-turn via the
+  ■ stop button while preserving its session-id (`--resume` later).
+- **Audit log** (v0.15.0+) — `/audit` shows every operational action with
+  user / IP / result / detail for post-incident review.
 
 ## Build matrix
 
