@@ -21,6 +21,7 @@ import com.siamakerlab.vibecoder.server.env.ClaudeAuthService
 import com.siamakerlab.vibecoder.server.env.ClaudeLoginService
 import com.siamakerlab.vibecoder.server.env.EnvDiagnostics
 import com.siamakerlab.vibecoder.server.env.EnvSetupService
+import com.siamakerlab.vibecoder.server.env.McpService
 import com.siamakerlab.vibecoder.server.env.StatusService
 import com.siamakerlab.vibecoder.server.files.UploadService
 import com.siamakerlab.vibecoder.server.git.GitReader
@@ -146,6 +147,7 @@ fun main(args: Array<String>) {
     val envSetup = EnvSetupService(config, queue, hub, clock)
     val claudeAuth = ClaudeAuthService(clock)
     val claudeLogin = ClaudeLoginService(clock, claudeAuth)
+    val mcp = McpService(clock, queue, hub)
     val status = StatusService(config, projectRepo, buildRepo, env)
     val actionRegistry = ProjectActionRegistry(workspace)
     val actionHandler = ServerActionHandler(projects, build, git, hub, sessionManager)
@@ -179,6 +181,7 @@ fun main(args: Array<String>) {
         envSetup = envSetup,
         claudeAuth = claudeAuth,
         claudeLogin = claudeLogin,
+        mcp = mcp,
         actionRegistry = actionRegistry,
         actionHandler = actionHandler,
         capabilityService = capabilityService,

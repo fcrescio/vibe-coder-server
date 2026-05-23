@@ -145,10 +145,8 @@ docker compose up -d --force-recreate</pre>
                 """<p class="hint" style="margin-top:8px">Android SDK 설치에 포함됩니다. 위 "Android SDK" 카드의 설치 버튼을 사용하세요.</p>"""
 
             SetupComponent.MCP_DEFAULTS ->
-                """<form method="post" action="/env-setup/${esc(c.id)}/install" style="margin-top:10px"
-                       onsubmit="return confirm('기본 MCP 묶음 설치를 시작합니다. 진행 페이지로 이동합니다. 계속할까요?')">
-                  <button type="submit" class="primary" style="width:auto;padding:8px 16px">MCP 설치</button>
-                </form>"""
+                """<a href="/env-setup/mcp" class="primary chip" style="display:inline-block;padding:8px 16px;margin-top:10px">MCP 카탈로그 열기 (50+) →</a>
+                <p class="hint" style="margin-top:8px;font-size:12px">v0.8.0+: 체크박스 다중 선택 + 토큰 입력 + 추천 별표. 카탈로그에 없는 MCP 도 컨테이너 직접 설치 시 영구 보존.</p>"""
         }
     }
 

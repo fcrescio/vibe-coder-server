@@ -7,6 +7,7 @@ import com.siamakerlab.vibecoder.server.actions.projectActionRoutes
 import com.siamakerlab.vibecoder.server.admin.AdminRoutesDeps
 import com.siamakerlab.vibecoder.server.admin.adminRoutes
 import com.siamakerlab.vibecoder.server.admin.envSetupRoutes
+import com.siamakerlab.vibecoder.server.admin.mcpRoutes
 import com.siamakerlab.vibecoder.server.admin.webProjectRoutes
 import com.siamakerlab.vibecoder.server.artifacts.ArtifactService
 import com.siamakerlab.vibecoder.server.artifacts.artifactRoutes
@@ -30,6 +31,7 @@ import com.siamakerlab.vibecoder.server.env.ClaudeAuthService
 import com.siamakerlab.vibecoder.server.env.ClaudeLoginService
 import com.siamakerlab.vibecoder.server.env.EnvDiagnostics
 import com.siamakerlab.vibecoder.server.env.EnvSetupService
+import com.siamakerlab.vibecoder.server.env.McpService
 import com.siamakerlab.vibecoder.server.env.StatusService
 import com.siamakerlab.vibecoder.server.env.envRoutes
 import com.siamakerlab.vibecoder.server.error.installStatusPages
@@ -92,6 +94,7 @@ data class ServerContext(
     val envSetup: EnvSetupService,
     val claudeAuth: ClaudeAuthService,
     val claudeLogin: ClaudeLoginService,
+    val mcp: McpService,
     val actionRegistry: ProjectActionRegistry,
     val actionHandler: ServerActionHandler,
     val capabilityService: CapabilityService,
@@ -162,6 +165,7 @@ fun Application.module(ctx: ServerContext) {
         )
         adminRoutes(adminDeps)
         envSetupRoutes(adminDeps, ctx.envSetup, ctx.claudeAuth, ctx.claudeLogin)
+        mcpRoutes(adminDeps, ctx.mcp)
         webProjectRoutes(
             authDeps = adminDeps,
             projects = ctx.projects,
