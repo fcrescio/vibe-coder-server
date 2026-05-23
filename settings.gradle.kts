@@ -6,8 +6,8 @@ pluginManagement {
     }
 }
 
-// Auto-provision JDK 21 toolchain via Foojay (Adoptium) when not present locally.
-// Required because AGP 9 / Kotlin 2.2 jvmToolchain(21) needs a real JDK 21 for javac.
+// Auto-provision JDK 17 toolchain via Foojay (Adoptium) when not present locally.
+// 프로젝트 CLAUDE.md §6: JDK 17 (전역 매트릭스 21이지만 로컬 환경 제약).
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
 }
@@ -20,16 +20,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "vibe-coder"
+rootProject.name = "vibe-coder-server"
 
 include(":shared")
 include(":server")
-
-// Android 모듈 포함 여부: -PskipAndroidModule=true 면 제외.
-// Docker 이미지 빌드처럼 :server만 필요한 경우 AGP/Android SDK 의존성을 회피하기 위함.
-val skipAndroid = (providers.gradleProperty("skipAndroidModule").orNull
-    ?: System.getProperty("skipAndroidModule")) == "true"
-if (!skipAndroid) {
-    include(":android-app:app")
-    project(":android-app:app").projectDir = file("android-app/app")
-}

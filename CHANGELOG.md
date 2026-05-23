@@ -1,12 +1,47 @@
-# Changelog
+# Changelog — vibe-coder-server
 
-All notable changes to this project will be documented in this file.
+All notable changes to the server component will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-Version codes follow the global convention `yymmddrrr` (date + run counter).
+
+v0.4.0 까지는 `vibe-coder` 모노레포의 단일 CHANGELOG 였고, v0.4.1 부터
+서버/안드로이드 두 리포로 분리되어 각 리포가 독립 changelog 를 갖는다.
+Android 클라이언트 이력은 `vibe-coder-android` 리포의 CHANGELOG 참고.
 
 ## [Unreleased]
+
+### Infrastructure — 모노레포 → 2 리포 분리
+
+`vibe-coder` 단일 저장소를 `vibe-coder-server` (본 리포) 와
+`vibe-coder-android` (별도 리포) 로 분리. 본 리포는 `:server` /
+`:shared` / `docker/` / `vibe-doctor` / Admin 웹 / docs 만 보유한다.
+
+- `settings.gradle.kts`: `rootProject.name = "vibe-coder-server"`,
+  `:android-app:app` 와 `skipAndroidModule` 옵션 제거. 모듈은
+  `:shared` / `:server` 둘만.
+- `gradle/libs.versions.toml`: Android 전용 라이브러리(Compose BOM,
+  Hilt, AndroidX, Material Icons, DataStore, navigation-compose, Timber,
+  espresso, Truth, Ktor client, KSP, AGP) 와 그 plugin alias 들
+  (`kotlin-compose`, `android-application`, `ksp`, `hilt`, `ktor`) 제거.
+- 루트 `build.gradle.kts`: `kotlin-jvm` / `kotlin-serialization` 만 남김.
+- `:shared` 는 `vibe-coder-android` 리포에 **동일 사본**으로 존재하며
+  wire-level 호환을 유지하기 위해 변경 시 양쪽 함께 갱신한다.
+
+### Known issues at split (회수 예정)
+
+분리 시점에 `:server:compileKotlin` 이 깨진 상태로 확인됨. 별도 PR로
+회수 예정:
+
+- `server/build/ApkFinder.kt:7` `import kotlin.streams.toList` —
+  Kotlin 2.2 에서 제거된 API. `Stream.toList()` (JDK 16+) 또는
+  `Collectors.toList()` 로 대체 필요.
+- `server/actions/ServerActionHandler.kt:55` `submitDebug` 미해결 참조.
+- `server/build/BuildService.kt` 의 위 두 원인 파급 (`findLatestDebug` 등).
+
+v0.4.0 commit 메시지에는 `:server:installDist` 통과로 적혀 있으나
+현재 main 체크아웃에선 재현되지 않는다. 다음 작업으로 root-cause 회수
+및 회귀 테스트 추가.
 
 ## [0.4.0] - 2026-05-21
 
