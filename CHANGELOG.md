@@ -83,7 +83,13 @@ volumes + named volumes 선언) 를 그대로 복사해 쓸 수 있도록 README
 
 ### 배포
 
-- Docker Hub: `siamakerlab/vibe-coder-server:0.6.0` / `:latest`.
+- Docker Hub: `siamakerlab/vibe-coder-server:0.6.0` / `:latest` (linux/amd64).
+- **빌드 정책 변경** — 이번 릴리즈부터 일반 개발 push 는 amd64 only.
+  multi-arch (amd64 + arm64) 빌드는 마일스톤 (v0.7.0, v1.0.0 등) 시점에만
+  진행한다. 사유: arm64 emulation 빌드가 amd64 대비 3~5배 느려 (10~15 분 vs
+  2~3 분) 잦은 commit 흐름을 지연시킴. ARM 호스트 (Apple Silicon / RPi /
+  ARM 클라우드) 사용자는 마일스톤 이미지로 pull 하거나, Docker Desktop 의
+  자동 emulation 으로 amd64 이미지를 실행할 수 있다.
 - 모든 docker 파일 + README 의 태그 동기.
 
 ## [0.5.5] - 2026-05-23

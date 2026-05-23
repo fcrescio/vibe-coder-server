@@ -53,6 +53,21 @@
   `docker/Dockerfile`, `docker/compose.yml`, `docker/.env.example`,
   `docker/README.md`, `docker/HUB_README.md` 의
   `siamakerlab/vibe-coder-server:<version>` 을 동기.
+- **Docker buildx 정책 (v0.6.0+)** — 일반 commit push 는 amd64-only 로 빠르게
+  (2~3분). multi-arch (amd64 + arm64) 빌드는 마일스톤 릴리즈 시점에만 한다.
+  arm64 cross-compile 은 emulation 으로 3~5배 느림.
+
+  ```bash
+  # 개발 push (기본)
+  docker buildx build --platform linux/amd64 \
+      -f docker/Dockerfile \
+      -t siamakerlab/vibe-coder-server:<ver> \
+      -t siamakerlab/vibe-coder-server:latest \
+      --push .
+
+  # 마일스톤 push (v0.7.0 / v1.0.0 등)
+  docker buildx build --platform linux/amd64,linux/arm64 ...
+  ```
 
 ## 5. 문서 / PDCA
 

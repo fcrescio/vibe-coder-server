@@ -152,18 +152,40 @@ RAM 여유가 있다면 `.env`에서 `JAVA_OPTS=-Xmx8g` 등으로 늘리세요.
 
 ---
 
-## 멀티 아키텍처 빌드 (메인테이너용)
+## 빌드 / 푸시 (메인테이너용)
+
+### 일반 commit 푸시 (amd64-only, 빠름 · v0.6.0+ 기본)
 
 ```bash
-docker buildx create --name vibe-builder --use
+docker buildx create --name vibe-builder --driver docker-container --use  # 1회만
 docker buildx build \
-    --platform linux/amd64,linux/arm64 \
+    --platform linux/amd64 \
     -f docker/Dockerfile \
-    -t siamakerlab/vibe-coder-server:0.6.0 \
+    -t siamakerlab/vibe-coder-server:<버전> \
     -t siamakerlab/vibe-coder-server:latest \
     --push \
     .
 ```
+
+amd64-only 는 2~3분 안에 끝납니다. arm64 emulation 빌드를 생략하므로
+잦은 개발 push 에 적합. Apple Silicon Mac / Raspberry Pi 등 ARM 호스트에서도
+Docker Desktop 의 자동 emulation 으로 실행은 가능합니다 (느릴 뿐).
+
+### 마일스톤 multi-arch 푸시 (v0.7.0, v1.0.0 같은 큰 릴리즈)
+
+```bash
+docker buildx build \
+    --platform linux/amd64,linux/arm64 \
+    -f docker/Dockerfile \
+    -t siamakerlab/vibe-coder-server:<버전> \
+    -t siamakerlab/vibe-coder-server:latest \
+    --push \
+    .
+```
+
+cross-compile 이라 10~15분 소요. ARM 호스트에서 native 속도가 필요한 사용자
+대응용. CHANGELOG 의 "## [버전] 배포" 항목에 `linux/amd64 + linux/arm64`
+임을 명시.
 
 ---
 

@@ -7,12 +7,15 @@
 #   - 위 무거운 컴포넌트는 사용자가 컨테이너 부팅 후 `vibe-doctor`로 볼륨에 다운로드.
 #   - 이미지에는 "vibe-coder 서버 본체 + Claude Code CLI + 빌드환경 셋업 도구"만 포함한다.
 #
-# 빌드
-#   docker build -f docker/Dockerfile -t siamakerlab/vibe-coder-server:0.6.0 .
+# 빌드 (메인테이너용)
 #
-# 멀티 아키텍처 (선택)
-#   docker buildx build --platform linux/amd64,linux/arm64 \
-#       -f docker/Dockerfile -t siamakerlab/vibe-coder-server:0.6.0 --push .
+#   일반 commit push (amd64-only · v0.6.0+ 기본):
+#     docker buildx build --platform linux/amd64 \
+#         -f docker/Dockerfile -t siamakerlab/vibe-coder-server:0.6.0 --push .
+#
+#   마일스톤 multi-arch push (v0.7.0 / v1.0.0 등):
+#     docker buildx build --platform linux/amd64,linux/arm64 \
+#         -f docker/Dockerfile -t siamakerlab/vibe-coder-server:0.6.0 --push .
 
 # ------------------------------------------------------------------------------
 # Stage 1: 서버 빌드 (Gradle installDist)
