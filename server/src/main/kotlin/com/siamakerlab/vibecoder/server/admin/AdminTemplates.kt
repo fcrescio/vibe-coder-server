@@ -88,6 +88,7 @@ object AdminTemplates {
     ${link("/chat", "Chat", "chat")}
     ${link("/prompts", "프롬프트", "prompts")}
     ${link("/env-setup", "빌드환경", "env-setup")}
+    ${link("/emulator", "Emulator", "emulator")}
     ${link("/settings", "설정", "settings")}
     ${link("/devices", "디바이스", "devices")}
     ${link("/audit", "감사 로그", "audit")}
