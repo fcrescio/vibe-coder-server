@@ -8,11 +8,11 @@
 #   - 이미지에는 "vibe-coder 서버 본체 + Claude Code CLI + 빌드환경 셋업 도구"만 포함한다.
 #
 # 빌드
-#   docker build -f docker/Dockerfile -t siamakerlab/vibe-coder-server:0.5.2 .
+#   docker build -f docker/Dockerfile -t siamakerlab/vibe-coder-server:0.5.3 .
 #
 # 멀티 아키텍처 (선택)
 #   docker buildx build --platform linux/amd64,linux/arm64 \
-#       -f docker/Dockerfile -t siamakerlab/vibe-coder-server:0.5.2 --push .
+#       -f docker/Dockerfile -t siamakerlab/vibe-coder-server:0.5.3 --push .
 
 # ------------------------------------------------------------------------------
 # Stage 1: 서버 빌드 (Gradle installDist)

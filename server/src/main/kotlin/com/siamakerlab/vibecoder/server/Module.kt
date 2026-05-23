@@ -164,6 +164,7 @@ fun Application.module(ctx: ServerContext) {
             hub = ctx.hub,
             uploads = ctx.uploads,
             gitReader = ctx.git,
+            workspace = ctx.workspace,
         )
         envRoutes(ctx.status, ctx.env)
         projectRoutes(ctx.projects)

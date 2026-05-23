@@ -26,6 +26,39 @@ object WebProjectTemplates {
             .replace("\"", "&quot;")
             .replace("'", "&#39;")
 
+    /** 로그 라인 1개의 CSS 클래스. WS 라이브 흐름과 동일한 색상 팔레트. */
+    private fun classOfLevel(level: String): String = when (level.uppercase()) {
+        "ERROR", "STDERR" -> "err"
+        "WARN" -> "tool"
+        "STDOUT" -> "assistant"
+        "INFO" -> "sys"
+        else -> "sys"
+    }
+
+    /** 종료된 빌드의 파일 로그를 prerender. null 이면 빈 문자열. */
+    private fun renderReplay(replay: BuildLogReplay?): String {
+        if (replay == null) return ""
+        return replay.lines.joinToString("\n") { ln ->
+            val cls = classOfLevel(ln.level)
+            """<div class="log-line $cls"><span class="log-label">${esc(ln.level)}</span><span class="log-body">${esc(ln.message)}</span></div>"""
+        }
+    }
+
+    /** 로그 카드 하단 caption — replay 출처/잘림 안내 또는 라이브 안내. */
+    private fun replayCaption(replay: BuildLogReplay?, attachWs: Boolean): String {
+        if (attachWs) return ""
+        if (replay == null) {
+            return """<p class="hint">로그 파일을 찾을 수 없습니다. 워크스페이스의
+                <code>.vibecoder/&lt;projectId&gt;/logs/&lt;buildId&gt;.log</code> 위치를 확인하세요.</p>"""
+        }
+        val kb = (replay.sizeBytes + 512L) / 1024L
+        val trunc = if (replay.truncated) {
+            """, 화면에 마지막 ${replay.lines.size} / ${replay.totalLines} 줄만 표시 (앞부분 잘림)"""
+        } else ""
+        return """<p class="hint">파일 로그 replay — <code>${esc(replay.sourcePath)}</code>
+            (${kb}KB, ${replay.totalLines}줄$trunc).</p>"""
+    }
+
     /**
      * 콘솔 슬래시 chip 1개. 동일 form 안에 hidden command + 버튼.
      * `danger=true` 면 빨간색 (예: /clear).
@@ -477,6 +510,7 @@ $errHtml
         p: ProjectDto,
         b: BuildDto,
         artifact: ArtifactRow?,
+        replay: BuildLogReplay? = null,
     ): String {
         val statusCls = when (b.status.name) {
             "SUCCESS" -> "ok"
@@ -548,10 +582,9 @@ $errHtml
 </div>
 
 <div class="card">
-  <h2>로그 ${if (attachWs) """<small class="dim" style="font-size:11px;text-transform:none;letter-spacing:0">실시간</small>""" else ""}</h2>
-  <div id="build-log" class="console-log" aria-live="polite"></div>
-  ${if (!attachWs) """<p class="hint">빌드가 종료된 상태입니다. 실시간 로그 ring 은 메모리 상주라 이미 폐기되었을 수 있습니다.
-    파일 로그는 워크스페이스의 <code>.vibecoder/&lt;projectId&gt;/logs/&lt;buildId&gt;.log</code> 에서 확인하세요.</p>""" else ""}
+  <h2>로그 ${if (attachWs) """<small class="dim" style="font-size:11px;text-transform:none;letter-spacing:0">실시간</small>""" else """<small class="dim" style="font-size:11px;text-transform:none;letter-spacing:0">파일 replay</small>"""}</h2>
+  <div id="build-log" class="console-log" aria-live="polite">${renderReplay(replay)}</div>
+  ${replayCaption(replay, attachWs)}
 </div>
 
 ${if (attachWs) """

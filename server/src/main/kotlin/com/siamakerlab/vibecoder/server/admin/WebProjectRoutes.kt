@@ -2,6 +2,7 @@ package com.siamakerlab.vibecoder.server.admin
 
 import com.siamakerlab.vibecoder.server.build.BuildService
 import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
+import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.files.UploadService
 import com.siamakerlab.vibecoder.server.git.GitReader
@@ -11,6 +12,7 @@ import com.siamakerlab.vibecoder.server.repo.BuildRepository
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.dto.BuildDto
 import com.siamakerlab.vibecoder.shared.dto.RegisterProjectRequestDto
+import java.nio.file.Files
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
@@ -48,6 +50,7 @@ fun Routing.webProjectRoutes(
     hub: LogHub,
     uploads: UploadService,
     gitReader: GitReader,
+    workspace: WorkspacePath,
 ) {
 
     // ── 목록 + 등록 폼 ────────────────────────────────────────────────
@@ -230,8 +233,13 @@ fun Routing.webProjectRoutes(
             artifactId = row.artifactId, errorMessage = row.errorMessage,
         )
         val artifact = row.artifactId?.let { artifactRepo.get(id, it) }
+
+        // 종료된 빌드면 디스크 로그 파일을 읽어 prerender. (WS ring 은 evicted 일 수 있음)
+        val isTerminal = row.status.name in setOf("SUCCESS", "FAILED", "CANCELED", "TIMEOUT")
+        val replay = if (isTerminal) loadBuildLog(workspace, id, buildId, row.logPath) else null
+
         call.respondText(
-            WebProjectTemplates.buildDetailPage(sess.username, p, dto, artifact),
+            WebProjectTemplates.buildDetailPage(sess.username, p, dto, artifact, replay),
             ContentType.Text.Html,
         )
     }
@@ -393,3 +401,70 @@ private val CONSOLE_SLASH_WHITELIST: Set<String> =
  */
 private fun String.encodeUrl(): String =
     java.net.URLEncoder.encode(this, Charsets.UTF_8).replace("+", "%20")
+
+/** 종료된 빌드의 디스크 로그를 읽어 화면에 prerender 할 수 있게 가공한 결과. */
+data class BuildLogReplay(
+    val lines: List<BuildLogLine>,
+    val truncated: Boolean,
+    val totalLines: Int,
+    val sizeBytes: Long,
+    val sourcePath: String,
+)
+
+data class BuildLogLine(
+    val ts: String,
+    val level: String,
+    val message: String,
+)
+
+/**
+ * TaskLogger 가 쓴 `[ts] [level] message` 라인 파일을 읽어 [BuildLogReplay] 로 변환.
+ *
+ * - 너무 큰 파일에서 페이지를 OOM 시키지 않도록 마지막 [MAX_REPLAY_LINES] 줄만
+ *   유지. 잘렸으면 `truncated=true` 로 UI 가 안내.
+ * - 보안: 항상 `WorkspacePath.ensureUnderWorkspace` 로 외부 경로 거부.
+ *   `logPath` 가 DB row 에서 왔어도 신뢰하지 않는다.
+ * - 파일 미존재 / IO 실패 → null. 페이지는 정상 렌더되고 안내만 표시.
+ */
+private fun loadBuildLog(
+    workspace: WorkspacePath,
+    projectId: String,
+    buildId: String,
+    storedLogPath: String?,
+): BuildLogReplay? {
+    val pathStr = storedLogPath?.takeIf { it.isNotBlank() } ?: return null
+    val path = runCatching { java.nio.file.Paths.get(pathStr) }.getOrNull() ?: return null
+    val safe = runCatching { workspace.ensureUnderWorkspace(path) }.getOrNull() ?: return null
+    if (!Files.exists(safe) || !Files.isRegularFile(safe)) return null
+
+    // DB row 가 가리키는 path 가 빌드 id 별 logsDir 안에 있는지 한 번 더 검증.
+    val expected = workspace.buildLogFile(projectId, buildId).normalize()
+    if (safe.normalize() != expected) return null
+
+    val sizeBytes = runCatching { Files.size(safe) }.getOrDefault(0L)
+    val all = runCatching { Files.readAllLines(safe, Charsets.UTF_8) }.getOrElse { emptyList() }
+    val truncated = all.size > MAX_REPLAY_LINES
+    val tail = if (truncated) all.subList(all.size - MAX_REPLAY_LINES, all.size) else all
+    val lines = tail.map(::parseLogLine)
+    return BuildLogReplay(
+        lines = lines,
+        truncated = truncated,
+        totalLines = all.size,
+        sizeBytes = sizeBytes,
+        sourcePath = safe.toString(),
+    )
+}
+
+private const val MAX_REPLAY_LINES = 2_000
+
+private val LOG_LINE_REGEX = Regex("""^\[([^]]+)] \[([^]]+)] (.*)$""", RegexOption.DOT_MATCHES_ALL)
+
+/** TaskLogger 가 쓰는 `[ts] [level] message` 포맷을 분해. 포맷 외 라인은 level=RAW. */
+private fun parseLogLine(raw: String): BuildLogLine {
+    val m = LOG_LINE_REGEX.matchEntire(raw)
+    return if (m != null) {
+        BuildLogLine(ts = m.groupValues[1], level = m.groupValues[2], message = m.groupValues[3])
+    } else {
+        BuildLogLine(ts = "", level = "RAW", message = raw)
+    }
+}
