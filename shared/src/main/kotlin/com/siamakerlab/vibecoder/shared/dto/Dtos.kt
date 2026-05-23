@@ -140,6 +140,13 @@ data class RegisterProjectRequestDto(
     val cloneUrl: String? = null,
     /** Optional — 비우면 repo 의 default branch. */
     val cloneBranch: String? = null,
+    /**
+     * v0.18.0 — 사전 정의 템플릿 id. sourceType=="empty" 일 때만 의미.
+     * 비어 있거나 "empty" 면 starter prompt 없음 (기존 동작).
+     * 그 외엔 ProjectTemplates.byId(templateId) 의 starterPrompt 를 후속 console
+     * 입력에 자동 주입 — Claude 가 그 가이드대로 scaffolding 시작.
+     */
+    val templateId: String? = null,
 )
 
 @Serializable

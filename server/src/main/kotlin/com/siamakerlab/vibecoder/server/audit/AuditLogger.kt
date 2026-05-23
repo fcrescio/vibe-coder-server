@@ -188,6 +188,16 @@ class AuditLogger(
         )
     }
 
+    fun gitCommit(userId: String?, projectId: String, ok: Boolean, push: Boolean, ip: String?) = safe {
+        repo.insert(
+            action = Actions.GIT_COMMIT,
+            result = if (ok) Results.OK else Results.FAIL,
+            userId = userId, ip = ip,
+            resourceType = "project", resourceId = projectId,
+            detail = jsonDetail { put("push", push) },
+        )
+    }
+
     object Actions {
         const val AUTH_LOGIN = "auth.login"
         const val AUTH_LOGOUT = "auth.logout"
@@ -205,6 +215,7 @@ class AuditLogger(
         const val SETTINGS_UPDATE = "settings.update"
         const val GIT_TOKEN_REGISTER = "git.token.register"
         const val GIT_TOKEN_DELETE = "git.token.delete"
+        const val GIT_COMMIT = "git.commit"
     }
 
     object Results {

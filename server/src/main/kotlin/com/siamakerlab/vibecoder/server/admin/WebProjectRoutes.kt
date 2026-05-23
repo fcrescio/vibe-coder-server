@@ -9,6 +9,7 @@ import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.files.ProjectFileBrowser
 import com.siamakerlab.vibecoder.server.files.UploadService
 import com.siamakerlab.vibecoder.server.git.GitReader
+import com.siamakerlab.vibecoder.server.git.GitWriter
 import com.siamakerlab.vibecoder.server.projects.ProjectService
 import com.siamakerlab.vibecoder.server.repo.ArtifactRepository
 import com.siamakerlab.vibecoder.server.repo.BuildRepository
@@ -53,6 +54,7 @@ fun Routing.webProjectRoutes(
     hub: LogHub,
     uploads: UploadService,
     gitReader: GitReader,
+    gitWriter: GitWriter,
     workspace: WorkspacePath,
     fileBrowser: ProjectFileBrowser,
 ) {
@@ -81,6 +83,7 @@ fun Routing.webProjectRoutes(
         val sourceType = params["sourceType"]?.trim()?.ifBlank { null } ?: "empty"
         val cloneUrl = params["cloneUrl"]?.trim()?.ifBlank { null }
         val cloneBranch = params["cloneBranch"]?.trim()?.ifBlank { null }
+        val templateId = params["templateId"]?.trim()?.ifBlank { null }
 
         val basicErr = when {
             projectId.isBlank() -> "프로젝트 ID 를 입력하세요."
@@ -112,6 +115,7 @@ fun Routing.webProjectRoutes(
                     sourceType = sourceType,
                     cloneUrl = cloneUrl,
                     cloneBranch = cloneBranch,
+                    templateId = templateId,
                 )
             )
         }
@@ -181,6 +185,8 @@ fun Routing.webProjectRoutes(
         }
         val alive = sessionManager.isAlive(id)
         val sid = sessionManager.currentSessionId(id)
+        // v0.18.0 — 등록 직후 첫 console 진입이면 starter prompt 를 자동 입력 (소비).
+        val starterPrompt = projects.consumeStarterPrompt(id)
         // Claude CLI 인증 상태 진단. CLI 자체와 자격증명 파일 둘 다 검사.
         val env = authDeps.envDiagnostics.run()
         call.respondText(
@@ -189,6 +195,7 @@ fun Routing.webProjectRoutes(
                 claudeCli = env.claude,
                 claudeAuth = env.claudeAuth,
                 csrf = sess.csrf,
+                starterPrompt = starterPrompt,
             ),
             ContentType.Text.Html,
         )
@@ -477,15 +484,47 @@ fun Routing.webProjectRoutes(
         val gitLog = runCatching { gitReader.log(source, count = 10) }.getOrElse { null }
         val unavailable = status == null && diff == null && gitLog == null
 
+        val flash = call.request.queryParameters["flash"]
         call.respondText(
             WebProjectTemplates.gitPage(
                 sess.username, p,
                 status = status, diff = diff, log = gitLog,
                 unavailable = unavailable,
                 csrf = sess.csrf,
+                commitFlash = flash,
             ),
             ContentType.Text.Html,
         )
+    }
+
+    // v0.18.0 — commit / push from the git page form
+    post("/projects/{id}/git/commit") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        val params = requireCsrf()
+        val id = call.parameters["id"]!!
+        val message = params["message"].orEmpty()
+        val push = params["push"] != null
+        val onlyTracked = params["onlyTracked"] != null
+        val source = projects.sourcePathOrThrow(id)
+        val result = try {
+            gitWriter.commitAndPush(source, message, push = push, onlyTracked = onlyTracked)
+        } catch (e: Throwable) {
+            val msg = (e as? ApiException)?.message ?: e.message ?: "commit/push 실패"
+            authDeps.audit.let { /* audit via REST API path only — SSR ignores for noise */ }
+            call.respondRedirect("/projects/$id/git?flash=${msg.take(200).encodeUrl()}")
+            return@post
+        }
+        val flashMsg = buildString {
+            if (result.committed) append("✓ committed ${result.sha?.take(8) ?: ""} on ${result.branch}")
+            else append("(no changes)")
+            if (push) {
+                appendLine()
+                if (result.pushed) append("✓ pushed to origin/${result.branch}")
+                else append("✗ push failed — see log on the page (try again)")
+            }
+        }
+        log.info { "git commit by ${sess.username} on $id: committed=${result.committed} pushed=${result.pushed}" }
+        call.respondRedirect("/projects/$id/git?flash=${flashMsg.encodeUrl()}")
     }
 
     // ── /chat — General Chat (프로젝트 무관, ghost project) v0.13.0 ───

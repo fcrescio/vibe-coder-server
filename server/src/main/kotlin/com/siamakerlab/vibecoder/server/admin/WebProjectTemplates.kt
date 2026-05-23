@@ -198,6 +198,13 @@ $errHtml
     <h2>새 프로젝트</h2>
     <form method="post" action="/projects" id="new-project-form">
       ${CsrfTokens.hiddenInput(csrf)}
+      <label>템플릿 (v0.18.0+)
+        <select name="templateId">
+          ${com.siamakerlab.vibecoder.server.projects.ProjectTemplates.all.joinToString("") {
+              """<option value="${esc(it.id)}">${esc(it.title)}</option>"""
+          }}
+        </select>
+      </label>
       <label>프로젝트 ID (kebab-case)
         <input name="projectId" required pattern="[a-z0-9][a-z0-9._-]*" maxlength="64"
                placeholder="my-android-app">
@@ -341,6 +348,8 @@ $errHtml
         csrf: String? = null,
         /** v0.13.0 — true 면 nav 의 "프롬프트/Chat" 활성화 + 사이드 링크 (프로젝트로 / 빌드 등) 숨김. */
         isChat: Boolean = false,
+        /** v0.18.0 — 프로젝트 등록 직후 첫 console 진입 시 자동 입력될 starter prompt. */
+        starterPrompt: String? = null,
     ): String {
         val statusBadge = when {
             isAlive -> """<span class="ok">running</span>"""
@@ -437,9 +446,9 @@ $authBannerHtml
 <form id="prompt-form" class="prompt-form" autocomplete="off">
   <!-- maxlength 는 char 단위라 ASCII 기준 32K. 한국어 등 multi-byte 입력은
        실제 UTF-8 byte 가 32K 를 넘으면 서버에서 prompt_too_large (400) 로 거절. -->
-  <textarea id="prompt-input" rows="3" maxlength="32768"
+  <textarea id="prompt-input" rows="${if (starterPrompt != null) 8 else 3}" maxlength="32768"
             placeholder="${if (blocking) "Claude 인증을 완료한 뒤 사용할 수 있습니다." else "Claude 에게 보낼 프롬프트를 입력하세요. Ctrl+Enter 로 전송.&#10;예) Android 빈 프로젝트를 생성하고 Compose 로 'Hello' 화면을 띄워줘."}"
-            ${if (blocking) "disabled" else "required"}></textarea>
+            ${if (blocking) "disabled" else "required"}>${esc(starterPrompt)}</textarea>
   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
     <small class="dim">${if (blocking) "위쪽 안내의 명령을 실행한 뒤 페이지를 새로고침하세요." else "전송: Ctrl+Enter · 줄바꿈: Enter"}</small>
     <button type="submit" class="primary" id="send-btn" style="width:auto;padding:8px 16px" ${if (blocking) "disabled" else ""}>전송</button>
@@ -1061,6 +1070,7 @@ $errHtml
         log: GitLogDto?,
         unavailable: Boolean,
         csrf: String? = null,
+        commitFlash: String? = null,
     ): String {
         val unavailableHtml = if (unavailable) {
             """<div class="error">이 프로젝트 폴더는 git repository 가 아니거나 git CLI 실행이 실패했습니다.
@@ -1125,6 +1135,7 @@ $errHtml
 </header>
 
 $unavailableHtml
+${if (commitFlash != null) """<div class="ok-banner" style="white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:12px">${esc(commitFlash)}</div>""" else ""}
 
 <section style="display:grid;gap:16px">
   $statusHtml
@@ -1132,12 +1143,38 @@ $unavailableHtml
   $logHtml
 </section>
 
+${if (status != null && !unavailable) """
+<div class="card" style="margin-top:16px">
+  <h2>커밋 / 푸시 (v0.18.0+)</h2>
+  <p class="dim" style="font-size:12px">변경된 파일을 한 번에 stage → commit → (옵션) push.
+  Push 는 git CLI 의 ~/.git-credentials (HTTPS PAT) 또는 ~/.ssh/id_ed25519 (SSH) 자동 사용.
+  push 실패해도 로컬 commit 은 유지됩니다.</p>
+  <form method="post" action="/projects/${esc(p.id)}/git/commit" style="display:grid;gap:8px">
+    ${CsrfTokens.hiddenInput(csrf)}
+    <label>Commit message
+      <textarea name="message" required minlength="3" maxlength="4000" rows="3"
+                placeholder="feat: ..."></textarea>
+    </label>
+    <label style="font-size:12px">
+      <input type="checkbox" name="onlyTracked" value="1">
+      Only tracked files (`git add -u`) — 새 파일은 stage 안 함
+    </label>
+    <label style="font-size:12px">
+      <input type="checkbox" name="push" value="1" checked>
+      Commit 후 `git push origin &lt;branch&gt;` 실행
+    </label>
+    <div>
+      <button type="submit" class="primary" style="padding:8px 18px">커밋 & 푸시</button>
+    </div>
+  </form>
+</div>""" else ""}
+
 <p class="hint" style="margin-top:16px">
   <a href="/projects/${esc(p.id)}" class="chip chip-link">← 프로젝트로</a>
   <a href="/projects/${esc(p.id)}/console" class="chip chip-link">콘솔로</a>
 </p>
-<p class="hint">읽기 전용입니다. <code>git push</code> / <code>git reset --hard</code> 등 쓰기 작업은
-브라우저에서 노출하지 않습니다 (CLAUDE.md §3 보안). 콘솔에서 Claude 에게 부탁하세요.</p>
+<p class="hint">v0.18.0 부터 단순한 commit & push 가 본 페이지에서 가능. <code>git reset --hard</code>
+같은 destructive 작업은 여전히 콘솔에서 Claude 에게 부탁 (위험 명령 노출 안 함).</p>
 """
         )
     }

@@ -99,6 +99,7 @@ data class ServerContext(
     val artifacts: ArtifactService,
     val build: BuildService,
     val git: GitReader,
+    val gitWriter: com.siamakerlab.vibecoder.server.git.GitWriter,
     val uploads: UploadService,
     val fileBrowser: com.siamakerlab.vibecoder.server.files.ProjectFileBrowser,
     val promptStore: com.siamakerlab.vibecoder.server.prompts.PromptTemplateStore,
@@ -222,6 +223,7 @@ fun Application.module(ctx: ServerContext) {
             hub = ctx.hub,
             uploads = ctx.uploads,
             gitReader = ctx.git,
+            gitWriter = ctx.gitWriter,
             workspace = ctx.workspace,
             fileBrowser = ctx.fileBrowser,
         )
@@ -231,7 +233,7 @@ fun Application.module(ctx: ServerContext) {
         projectActionRoutes(ctx.projects, ctx.actionRegistry, ctx.actionHandler, ctx.capabilityService)
         buildRoutes(ctx.build, ctx.hub)
         artifactRoutes(ctx.artifactRepo, ctx.workspace, ctx.artifacts)
-        gitRoutes(ctx.projects, ctx.git)
+        gitRoutes(ctx.projects, ctx.git, ctx.gitWriter, ctx.auditLogger)
         fileRoutes(ctx.uploads)
         promptRoutes(adminDeps, ctx.promptStore)
         auditRoutes(adminDeps, ctx.auditRepo)

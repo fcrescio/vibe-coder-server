@@ -68,6 +68,8 @@ object ApiPath {
     fun gitStatus(projectId: String) = "/api/projects/$projectId/git/status"
     fun gitDiff(projectId: String) = "/api/projects/$projectId/git/diff"
     fun gitLog(projectId: String) = "/api/projects/$projectId/git/log"
+    /** v0.18.0 — write: commit + optional push. */
+    fun gitCommit(projectId: String) = "/api/projects/$projectId/git/commit"
 
     // Files
     fun filesUpload(projectId: String) = "/api/projects/$projectId/files/upload"

@@ -47,6 +47,17 @@ class ProjectService(
      *     `<workspace>/.vibecoder/keystores/<projectId>/` (OUTSIDE the project folder).
      *   - moduleName defaults to "app", debugTask to "assembleDebug".
      */
+    /**
+     * v0.18.0 — register 후 콘솔에 자동 입력될 starter prompt 가 있으면 반환.
+     * 같은 turn 에서 사용자가 "엔터" 만 누르면 Claude 가 scaffolding 시작.
+     * register 결과와 별개라 ProjectDto 자체엔 안 넣고 별도 API 로 노출 (Phase4).
+     */
+    private val starterPromptByProject = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    fun starterPromptFor(projectId: String): String? = starterPromptByProject[projectId]
+
+    fun consumeStarterPrompt(projectId: String): String? = starterPromptByProject.remove(projectId)
+
     fun register(body: RegisterProjectRequestDto): ProjectDto {
         require(body.projectId.isNotBlank()) { "projectId required" }
         // v0.12.4 — 클라이언트 폼 regex 와 동일한 패턴을 서버에서도 강제.
@@ -124,6 +135,20 @@ class ProjectService(
             moduleName = DEFAULT_MODULE,
             debugTask = DEFAULT_DEBUG_TASK,
         )
+
+        // v0.18.0 — 템플릿 starter prompt 기록. 같은 turn 에서 사용자가 콘솔로 가면
+        // 입력란이 자동 채워짐. 한 번 소비되면 제거 (consumeStarterPrompt).
+        val tplId = body.templateId
+        if (tplId != null && tplId != "empty") {
+            val tpl = ProjectTemplates.byId(tplId)
+            if (tpl != null && tpl.starterPrompt.isNotBlank()) {
+                // 앱 이름 같은 메타데이터를 prompt 안에 삽입 (단순 placeholder 치환).
+                val expanded = tpl.starterPrompt.replace("\${앱이름}", body.appName)
+                starterPromptByProject[body.projectId] = expanded
+                log.info { "starter prompt queued for ${body.projectId}: template=${tpl.id}" }
+            }
+        }
+
         return row.toDto(hasGitChanges = false, lastBuildStatus = null)
     }
 

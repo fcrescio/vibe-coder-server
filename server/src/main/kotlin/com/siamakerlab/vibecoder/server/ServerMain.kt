@@ -155,6 +155,7 @@ fun main(args: Array<String>) {
     val artifacts = ArtifactService(config, workspace, artifactRepo, buildRepo, clock)
     val build = BuildService(config, workspace, projects, buildRepo, queue, gradle, artifacts, clock, notifier = emailNotifier)
     val git = GitReader()
+    val gitWriter = com.siamakerlab.vibecoder.server.git.GitWriter()
     val uploads = UploadService(config, workspace, uploadedRepo, clock)
     val fileBrowser = com.siamakerlab.vibecoder.server.files.ProjectFileBrowser(workspace)
     val promptStore = com.siamakerlab.vibecoder.server.prompts.PromptTemplateStore(workspace, clock)
@@ -190,6 +191,7 @@ fun main(args: Array<String>) {
         artifacts = artifacts,
         build = build,
         git = git,
+        gitWriter = gitWriter,
         uploads = uploads,
         fileBrowser = fileBrowser,
         promptStore = promptStore,
