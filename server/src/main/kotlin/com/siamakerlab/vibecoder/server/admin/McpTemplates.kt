@@ -118,7 +118,7 @@ cat &gt; ~/.claude/.mcp.json &lt;&lt;'JSON'
 JSON</pre>
 
   <p class="hint" style="margin-top:10px;font-size:12px">
-    ✅ <strong>v0.7.0+ 영구 보존</strong>: <code>/home/vibe/.local</code> 와
+    ✅ <strong>영구 보존</strong>: <code>/home/vibe/.local</code> 와
     <code>/home/vibe/.claude</code> 는 호스트 <code>./vibe-coder-data/</code> 의
     bind mount 입니다. 직접 설치한 MCP 도 <code>docker compose pull && up -d</code>
     이후 사라지지 않습니다.

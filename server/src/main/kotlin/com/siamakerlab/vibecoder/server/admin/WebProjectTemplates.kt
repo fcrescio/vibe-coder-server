@@ -166,7 +166,7 @@ $errHtml
       </label>
 
       <fieldset style="margin-top:10px;border:1px solid #333;padding:10px;border-radius:6px">
-        <legend style="padding:0 6px;font-size:13px">소스 (v0.9.0+)</legend>
+        <legend style="padding:0 6px;font-size:13px">소스</legend>
         <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
           <input type="radio" name="sourceType" value="empty" checked
                  onclick="document.getElementById('clone-fields').style.display='none'">

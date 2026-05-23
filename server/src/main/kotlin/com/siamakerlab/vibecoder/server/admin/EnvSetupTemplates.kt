@@ -146,7 +146,7 @@ docker compose up -d --force-recreate</pre>
 
             SetupComponent.MCP_DEFAULTS ->
                 """<a href="/env-setup/mcp" class="primary chip" style="display:inline-block;padding:8px 16px;margin-top:10px">MCP 카탈로그 열기 (50+) →</a>
-                <p class="hint" style="margin-top:8px;font-size:12px">v0.8.0+: 체크박스 다중 선택 + 토큰 입력 + 추천 별표. 카탈로그에 없는 MCP 도 컨테이너 직접 설치 시 영구 보존.</p>"""
+                <p class="hint" style="margin-top:8px;font-size:12px">체크박스 다중 선택 + 토큰 입력 + 추천 별표. 카탈로그에 없는 MCP 도 컨테이너 직접 설치 시 영구 보존.</p>"""
         }
     }
 
@@ -175,7 +175,7 @@ docker compose up -d --force-recreate</pre>
 $statusHint
 
 <div style="margin-top:10px;padding:10px;border:1px solid var(--ok);border-radius:6px;background:rgba(105,219,124,0.06)">
-  <strong style="color:var(--ok)">★ 옵션 0 — 웹에서 한 번에 로그인 (v0.7.0 신규)</strong>
+  <strong style="color:var(--ok)">★ 옵션 0 — 웹에서 한 번에 로그인</strong>
   <p class="hint" style="margin:6px 0 8px">브라우저만으로 OAuth 완료. 터미널/다른 머신 불요. 가장 빠릅니다.</p>
   <a href="/env-setup/claude-login" class="primary chip" style="padding:8px 16px;display:inline-block">웹으로 로그인 →</a>
 </div>
@@ -311,7 +311,7 @@ $statusHint
             currentPath = "/env-setup",
             body = """
 <header>
-  <h1>Claude 웹 로그인 <small class="dim" style="font-size:14px;font-weight:400">v0.7.0 옵션 A · 반자동 OAuth</small></h1>
+  <h1>Claude 웹 로그인 <small class="dim" style="font-size:14px;font-weight:400">반자동 OAuth</small></h1>
 </header>
 
 <div class="card" style="margin-bottom:12px">

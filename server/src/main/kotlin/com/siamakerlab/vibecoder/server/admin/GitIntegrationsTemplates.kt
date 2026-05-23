@@ -76,7 +76,7 @@ object GitIntegrationsTemplates {
             body = """
 <header>
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-    <h1 style="margin:0">Git 통합 <small class="dim" style="font-size:14px;font-weight:400">v0.9.0</small></h1>
+    <h1 style="margin:0">Git 통합</h1>
     <a href="/settings" class="chip chip-link">← 설정</a>
   </div>
   <p class="dim" style="margin:6px 0 0;font-size:13px">
