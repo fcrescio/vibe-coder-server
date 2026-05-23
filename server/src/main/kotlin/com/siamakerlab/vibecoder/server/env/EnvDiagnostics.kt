@@ -110,11 +110,29 @@ class EnvDiagnostics(private val config: ServerConfig) {
         val cfg = claudeConfigDir()
         val credentials = cfg.resolve(".credentials.json")
         if (!credentials.exists()) {
-            return CheckItemDto(
-                CheckStatus.ERROR, "Claude Auth",
-                "Claude CLI 로그인이 필요합니다.",
-                detail = buildClaudeAuthHelp(cfg),
-            )
+            // 잘못된 위치 (/root/.claude) 에 토큰이 떨어진 흔적이 있는지 별도 안내.
+            // `docker exec` 의 기본 사용자가 root 라서 vibe 가 아닌 root home 에 저장되는
+            // 흔한 실수. 사용자에게 명확한 정정 명령을 안내한다.
+            val stray = findStrayCredentials(cfg)
+            return if (stray != null) {
+                CheckItemDto(
+                    CheckStatus.ERROR, "Claude Auth",
+                    "토큰이 잘못된 사용자(root) 의 홈에 저장되었습니다 — 재로그인 필요.",
+                    detail = """발견 위치: $stray
+실제 서버가 보는 위치: $credentials
+
+해결: `docker exec` 의 기본 사용자가 root 라 vibe 사용자의 ~/.claude 가 아닌
+/root/.claude 에 저장됐습니다. 다음 명령으로 vibe 사용자로 실행해 다시 로그인하세요:
+
+  docker exec -it --user vibe vibe-coder claude login""",
+                )
+            } else {
+                CheckItemDto(
+                    CheckStatus.ERROR, "Claude Auth",
+                    "Claude CLI 로그인이 필요합니다.",
+                    detail = buildClaudeAuthHelp(cfg),
+                )
+            }
         }
 
         val expiresAt = readOauthExpiresAt(credentials)
@@ -123,7 +141,7 @@ class EnvDiagnostics(private val config: ServerConfig) {
             return CheckItemDto(
                 CheckStatus.WARNING, "Claude Auth",
                 "자격증명 파일이 있으나 만료 시각을 확인할 수 없습니다.",
-                detail = "$credentials\n콘솔에서 'Not logged in' 이 뜨면 'docker exec -it vibe-coder claude login' 으로 재로그인하세요.",
+                detail = "$credentials\n콘솔에서 'Not logged in' 이 뜨면 'docker exec -it --user vibe vibe-coder claude login' 으로 재로그인하세요.",
             )
         }
 
@@ -138,7 +156,7 @@ class EnvDiagnostics(private val config: ServerConfig) {
             expiresAt - nowMs < 6 * 3600 * 1000L -> CheckItemDto(
                 CheckStatus.WARNING, "Claude Auth",
                 "토큰이 곧 만료됩니다 (만료: $expiryStr)",
-                detail = "필요하면 'docker exec -it vibe-coder claude login' 으로 재발급하세요.",
+                detail = "필요하면 'docker exec -it --user vibe vibe-coder claude login' 으로 재발급하세요.",
             )
             else -> CheckItemDto(
                 CheckStatus.OK, "Claude Auth",
@@ -180,16 +198,28 @@ class EnvDiagnostics(private val config: ServerConfig) {
         return Path.of(home).resolve(".claude")
     }
 
+    /**
+     * `docker exec` 의 기본 사용자가 root 라서 vibe 가 아닌 root home 에 토큰이
+     * 저장되는 흔한 실수를 잡는다. 우리가 보는 [cfg] 가 vibe 의 홈이 아닌 다른
+     * 후보 경로(`/root/.claude`) 에 `.credentials.json` 이 있으면 반환.
+     */
+    private fun findStrayCredentials(currentCfg: Path): Path? {
+        val candidates = listOf("/root/.claude/.credentials.json")
+        return candidates
+            .map { Path.of(it) }
+            .firstOrNull { it != currentCfg.resolve(".credentials.json") && it.exists() }
+    }
+
     private fun buildClaudeAuthHelp(cfg: Path): String = buildString {
-        appendLine("자격증명 파일이 없습니다: $cfg/.credentials.json (또는 config.json)")
+        appendLine("자격증명 파일이 없습니다: $cfg/.credentials.json")
         appendLine()
-        appendLine("도커 환경:")
-        appendLine("  docker exec -it vibe-coder claude login")
+        appendLine("도커 환경 — `--user vibe` 옵션 필수 (root 로 실행하면 /root/.claude 로 저장됨):")
+        appendLine("  docker exec -it --user vibe vibe-coder claude login")
         appendLine()
-        appendLine("호스트 환경:")
+        appendLine("호스트 환경 (compose 가 ~/.claude 를 마운트한 경우 호스트에서 한 번만 해도 됨):")
         appendLine("  claude login")
         appendLine()
-        append("로그인 완료 후 이 페이지를 새로고침하세요.")
+        append("로그인 완료 후 이 페이지를 새로고침하세요. refresh token 으로 access token 은 자동 갱신되므로 한 번만 진행하면 됩니다.")
     }
 
     private fun checkWorkspace(): CheckItemDto {

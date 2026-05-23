@@ -174,7 +174,16 @@ class EnvSetupService(
             return ComponentState(c, ComponentStatus.MISSING, "디렉토리 없음: $cfg — `claude login` 필요")
         }
         if (!credentials.exists()) {
-            return ComponentState(c, ComponentStatus.MISSING, "로그인 필요: $cfg/.credentials.json 없음")
+            // root 쪽에 잘못 저장됐는지 함께 안내.
+            val stray = listOf("/root/.claude/.credentials.json")
+                .map { Path.of(it) }
+                .firstOrNull { it != credentials && it.exists() }
+            return if (stray != null) {
+                ComponentState(c, ComponentStatus.MISSING,
+                    "토큰이 root 사용자 홈에 저장됨 ($stray) — `--user vibe` 로 재로그인 필요")
+            } else {
+                ComponentState(c, ComponentStatus.MISSING, "로그인 필요: $credentials 없음")
+            }
         }
         val expiresAt = readOauthExpiresAt(credentials)
         if (expiresAt == null) {

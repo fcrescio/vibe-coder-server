@@ -162,7 +162,7 @@ object AdminTemplates {
             null -> "<span class=\"dim\">-</span>"
         }
         val authHint = if (claudeAuth?.status == com.siamakerlab.vibecoder.shared.dto.CheckStatus.ERROR) {
-            """<p class="hint">로그인: <code>docker exec -it vibe-coder claude login</code></p>"""
+            """<p class="hint">로그인: <code>docker exec -it --user vibe vibe-coder claude login</code></p>"""
         } else ""
 
         return shell(

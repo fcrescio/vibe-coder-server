@@ -279,7 +279,7 @@ $errHtml
             authMissing -> renderClaudeBanner(
                 title = "Claude CLI 로그인이 필요합니다",
                 body = "Claude Code 자격증명이 없어 새 세션을 시작할 수 없습니다. 도커 컨테이너에서 한 번만 로그인하면 됩니다.",
-                cmd = "docker exec -it vibe-coder claude login",
+                cmd = "docker exec -it --user vibe vibe-coder claude login",
                 detail = claudeAuth?.detail,
             )
             else -> ""
@@ -380,7 +380,7 @@ $authBannerHtml
     banner.style.cssText = 'margin-bottom:16px;padding:16px';
     banner.innerHTML = '<strong style="font-size:14px">Claude CLI 로그인이 필요합니다 (라이브 감지)</strong>' +
       '<p style="margin:6px 0">현재 응답에서 인증 실패 신호가 감지되었습니다. 컨테이너 안에서 재로그인 후 페이지를 새로고침하세요.</p>' +
-      '<pre class="diff-block" style="margin:8px 0">docker exec -it vibe-coder claude login</pre>';
+      '<pre class="diff-block" style="margin:8px 0">docker exec -it --user vibe vibe-coder claude login</pre>';
     var header = document.querySelector('header');
     if (header && header.parentNode) header.parentNode.insertBefore(banner, header.nextSibling);
     var input = document.getElementById('prompt-input');
