@@ -5,13 +5,19 @@
 
 ## 1. 프로젝트 성격
 
-- **단일 사용자, LAN 페어링 모드의 서버 컴포넌트.**
-  본인 PC에서 도커 컨테이너로 실행되며, 같은 LAN 안의 본인 Android 단말
-  1대가 `vibe-coder-android` (별도 리포 — §2 참고) 로 접속한다.
-- **다중 사용자 / 공개 배포 / 스토어 출시 대상이 아님.**
+- **Standalone 도커 앱.** Claude Code 를 활용해 Android 앱을 만드는
+  "외부 접근 가능한 개발머신" 그 자체. 브라우저만 있으면 별도 클라이언트
+  없이도 프로젝트 생성 · 프롬프트 전송 · 빌드 · APK 다운로드까지 완결.
+- **단일 사용자.** 본인 PC 의 도커 컨테이너로 실행되며 LAN 내부 / 또는
+  본인이 책임지는 외부 노출 경로(SSH 터널 · reverse proxy 등) 로 접근.
+  공개 배포 / 스토어 출시 / 멀티테넌트 대상은 아님.
+- **안드로이드 앱은 부가 클라이언트.** `vibe-coder-android` (별도 리포
+  — §2 참고) 는 같은 서버를 부르는 모바일 컨소시엄 같은 존재. 없어도
+  웹 만으로 모든 기능을 사용할 수 있어야 함 — 이 원칙이 깨지면 회귀로
+  간주.
 - 모듈 구성:
   - `:server` — Ktor 백엔드. Claude Code / Gradle / Git 자식 프로세스 관리,
-    SQLite(Exposed) 저장소, WebSocket 로그 허브, Admin 웹.
+    SQLite(Exposed) 저장소, WebSocket 로그 허브, SSR 웹 UI.
   - `:shared` — JVM-only DTO / `ApiPath` / `WsFrame`.
     같은 코드가 `vibe-coder-android` 리포의 `:shared` 모듈에도
     **동일한 사본**으로 존재한다 (양쪽 수동 동기화).

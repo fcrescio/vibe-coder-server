@@ -192,7 +192,7 @@ fun main(args: Array<String>) {
  * 있고 DB에 admin이 없으면 자동으로 생성한다. Docker compose 환경에서 수동 셋업
  * 단계 없이 부팅하기 위함.
  *
- * 부트 후엔 `.env` 의 plain text 비밀번호를 변경(`/admin/password`)할 것을 권장.
+ * 부트 후엔 `.env` 의 plain text 비밀번호를 변경(`/password`)할 것을 권장.
  */
 private fun bootstrapAdminFromEnv(auth: AuthService) {
     val u = System.getenv("VIBECODER_ADMIN_USERNAME")?.trim().orEmpty()
@@ -222,11 +222,10 @@ private fun printBanner(
     val url = "http://$host:${config.server.port}"
 
     println(">>> Vibe Coder Server started")
-    println(">>> Server URL  : $url")
-    println(">>> Admin URL   : $url/admin")
+    println(">>> URL         : $url")
     println(">>> Workspace   : $workspaceRoot")
     if (!adminExists) {
-        println(">>> ⚠ Admin 계정이 없습니다. 브라우저로 $url/admin 접속하여 초기 설정을 진행하세요.")
+        println(">>> ⚠ Admin 계정이 없습니다. 브라우저로 $url 접속하여 초기 설정을 진행하세요.")
         // 백워드 호환을 위해 페어링 코드도 표시 (admin 미설정 시에만 의미 있음)
         pairing.peek()?.let { rec ->
             val fmt = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())

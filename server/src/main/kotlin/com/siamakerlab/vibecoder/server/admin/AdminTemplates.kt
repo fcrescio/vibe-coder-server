@@ -25,7 +25,7 @@ object AdminTemplates {
         title: String,
         body: String,
         username: String? = null,
-        currentPath: String = "/admin",
+        currentPath: String = "/",
         showNav: Boolean = true,
     ): String {
         val nav = if (showNav) navHtml(currentPath, username) else ""
@@ -35,8 +35,8 @@ object AdminTemplates {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${esc(title)} · Vibe Coder Admin</title>
-  <link rel="stylesheet" href="/admin/static/admin.css">
+  <title>${esc(title)} · Vibe Coder</title>
+  <link rel="stylesheet" href="/static/admin.css">
 </head>
 <body>
   <div class="$layoutCls">
@@ -52,23 +52,26 @@ object AdminTemplates {
 
     private fun navHtml(currentPath: String, username: String?): String {
         fun link(href: String, label: String, key: String): String {
-            val cls = if (currentPath.startsWith(href) && href != "/admin") "active"
-            else if (href == "/admin" && (currentPath == "/admin" || currentPath == "/admin/")) "active"
-            else ""
+            // 루트("/") 는 정확히 일치할 때만 active. 그 외는 prefix 매칭.
+            val cls = when {
+                href == "/" && (currentPath == "/" || currentPath.isBlank()) -> "active"
+                href != "/" && currentPath.startsWith(href) -> "active"
+                else -> ""
+            }
             return """<a href="${esc(href)}" class="${esc(cls)}" data-key="${esc(key)}">${esc(label)}</a>"""
         }
         return """
 <nav class="sidebar">
   <div class="brand">Vibe Coder</div>
   <div class="nav-links">
-    ${link("/admin", "대시보드", "dashboard")}
-    ${link("/admin/settings", "설정", "settings")}
-    ${link("/admin/devices", "디바이스", "devices")}
-    ${link("/admin/password", "비밀번호", "password")}
+    ${link("/", "대시보드", "dashboard")}
+    ${link("/settings", "설정", "settings")}
+    ${link("/devices", "디바이스", "devices")}
+    ${link("/password", "비밀번호", "password")}
   </div>
   <div class="user-box">
     ${if (username != null) "<div class=\"user\">${esc(username)}</div>" else ""}
-    <form method="post" action="/admin/logout">
+    <form method="post" action="/logout">
       <button type="submit" class="logout">로그아웃</button>
     </form>
   </div>
@@ -90,7 +93,7 @@ object AdminTemplates {
   <h1>Vibe Coder 초기 설정</h1>
   <p class="dim">처음 사용 시 admin 계정을 만드세요. 이 계정으로 웹/앱 모두 로그인합니다.</p>
   $errHtml
-  <form method="post" action="/admin/setup">
+  <form method="post" action="/setup">
     <label>사용자명
       <input name="username" required minlength="3" maxlength="32" autofocus
              pattern="[A-Za-z0-9._-]{3,32}">
@@ -122,7 +125,7 @@ object AdminTemplates {
 <div class="auth-card">
   <h1>로그인</h1>
   $errHtml
-  <form method="post" action="/admin/login">
+  <form method="post" action="/login">
     $nextField
     <label>사용자명
       <input name="username" required autofocus>
@@ -153,7 +156,7 @@ object AdminTemplates {
         return shell(
             title = "대시보드",
             username = username,
-            currentPath = "/admin",
+            currentPath = "/",
             body = """
 <header><h1>대시보드</h1></header>
 
@@ -206,12 +209,12 @@ object AdminTemplates {
         return shell(
             title = "설정",
             username = username,
-            currentPath = "/admin/settings",
+            currentPath = "/settings",
             body = """
 <header><h1>운영 설정</h1></header>
 $okHtml
 $errHtml
-<form method="post" action="/admin/settings" class="settings-form">
+<form method="post" action="/settings" class="settings-form">
 
   <fieldset>
     <legend>서버 (재시작 필요)</legend>
@@ -260,12 +263,12 @@ $errHtml
         return shell(
             title = "비밀번호 변경",
             username = username,
-            currentPath = "/admin/password",
+            currentPath = "/password",
             body = """
 <header><h1>비밀번호 변경</h1></header>
 $okHtml
 $errHtml
-<form method="post" action="/admin/password" class="auth-card narrow">
+<form method="post" action="/password" class="auth-card narrow">
   <label>현재 비밀번호
     <input name="currentPassword" type="password" required>
   </label>
@@ -297,7 +300,7 @@ $errHtml
             val action = if (isCurrent) {
                 """<span class="dim">(현재 세션)</span>"""
             } else {
-                """<form method="post" action="/admin/devices/${esc(d.id)}/revoke" style="display:inline">
+                """<form method="post" action="/devices/${esc(d.id)}/revoke" style="display:inline">
                      <button type="submit" class="danger">revoke</button>
                    </form>"""
             }
@@ -312,7 +315,7 @@ $errHtml
         return shell(
             title = "디바이스",
             username = username,
-            currentPath = "/admin/devices",
+            currentPath = "/devices",
             body = """
 <header><h1>연결된 디바이스</h1></header>
 $okHtml
@@ -340,7 +343,7 @@ $okHtml
 <div class="auth-card">
   <h1>오류 $code</h1>
   <p>${esc(message)}</p>
-  <a href="/admin" class="primary-link">대시보드로</a>
+  <a href="/" class="primary-link">대시보드로</a>
 </div>
 """
     )

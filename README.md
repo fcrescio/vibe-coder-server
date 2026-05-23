@@ -1,13 +1,17 @@
 # Vibe Coder — Server
 
-> LAN 너머의 Android 단말(`vibe-coder-android`, 별도 리포)이 원격 조종하는
-> PC-side Ktor 서버. Claude Code CLI / Gradle Wrapper / Git CLI / 파일
-> 관리 자식 프로세스를 모두 이 서버가 소유하고, 로그는 WebSocket 으로
-> 클라이언트에 스트림한다.
+> **Standalone 도커 앱.** Claude Code 를 활용해 Android 앱을 만들어내는
+> "외부 접근 가능한 개발머신" 그 자체. 서버 PC 에 도커 컨테이너 하나
+> 띄우면 브라우저로 바로 로그인해서 프로젝트 생성 · 프롬프트 전송 ·
+> Gradle 빌드 · APK 다운로드까지 끝낸다.
+>
+> 안드로이드 앱(`vibe-coder-android`, 별도 리포) 은 같은 서버를 가리키는
+> **부가 클라이언트** 일 뿐, 없어도 모든 기능을 사용할 수 있다.
 
-Vibe Coder 는 "Android 위에서 개발하기" 가 아니라 **원격 콘솔**입니다.
-서버 PC 가 무거운 작업을 처리하고, Android 앱은 프롬프트 전송 · 로그
-시청 · 산출물 다운로드만 합니다.
+이 리포는 그 도커 앱의 본체(Ktor 서버) 와 운영용 웹 UI 를 보유한다.
+Claude Code CLI / Gradle Wrapper / Git CLI / 파일 관리 자식 프로세스를
+모두 서버가 소유하고, 로그는 WebSocket 으로 모든 클라이언트(브라우저 ·
+Android 앱) 에 스트림한다.
 
 ## 리포 구성
 
@@ -49,17 +53,22 @@ vibe-coder-server/
 
 ```
 >>> Vibe Coder Server started
->>> Server URL : http://192.168.0.10:17880
->>> Admin URL  : http://192.168.0.10:17880/admin
+>>> URL         : http://192.168.0.10:17880
 ```
 
-브라우저로 `Admin URL` 에 접속해 첫 admin 계정을 설정한 뒤, Android
-앱(`vibe-coder-android`) 에서 같은 username/password 로 로그인합니다.
+브라우저로 그 URL 에 접속하면 곧바로 셋업 화면(첫 부팅) 또는 로그인
+화면(이미 설정됨) 이 뜬다. 안드로이드 앱(`vibe-coder-android`) 도
+같은 URL + username/password 로 로그인할 수 있지만 필수는 아니다.
+
+v0.4.2 부터 별도 `/admin/*` prefix 가 없다. 모든 화면이 루트(`/`)
+바로 아래에 평탄화되어 있다 (`/`, `/login`, `/setup`, `/settings`,
+`/devices`, `/password`). 구버전 `/admin/...` 경로는 영구 리다이렉트
+호환층으로 유지된다 (v0.6.0 에서 제거 예정).
 
 ### Docker 실행
 
 ```bash
-docker pull siamakerlab/vibe-coder-server:0.4.1
+docker pull siamakerlab/vibe-coder-server:0.4.2
 cd ~/vibe-coder && cp docker/compose.yml . && cp docker/.env.example .env
 # .env 편집 후
 docker compose up -d

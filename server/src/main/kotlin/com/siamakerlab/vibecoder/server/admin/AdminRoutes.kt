@@ -23,7 +23,6 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
-import io.ktor.server.routing.route
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 private val log = KotlinLogging.logger {}
@@ -41,229 +40,238 @@ data class AdminRoutesDeps(
 )
 
 /**
- * 서버 사이드 렌더링 admin 웹 라우트.
+ * 서버 사이드 렌더링 웹 라우트.
  * 모든 POST는 form-urlencoded. 인증은 SESSION_COOKIE 기반.
+ *
+ * v0.5.0 부터 `admin` prefix 를 제거하고 루트 레벨로 평탄화.
+ * 함수명 `adminRoutes` 는 호환을 위해 유지 (호출부 변경 최소화).
  */
 fun Routing.adminRoutes(deps: AdminRoutesDeps) {
-    // 정적 파일 (CSS) — resources/static/admin/* 가 /admin/static/* 으로 노출
-    staticResources("/admin/static", "static/admin")
+    // 정적 파일 (CSS) — resources/static/admin/* 가 /static/* 으로 노출
+    staticResources("/static", "static/admin")
 
-    route("/admin") {
+    // ── 진입점: 대시보드 = 루트 ────────────────────────────────────
+    get("/") {
+        val sess = requireSessionOrRedirect(deps) ?: return@get
+        val status = deps.statusService.snapshot()
+        val deviceCount = deps.deviceRepo.listAll().size
+        // running build count는 status에 없으므로 0 표시. (간단함을 위해 PoC에선 보류)
+        val html = AdminTemplates.dashboardPage(
+            username = sess.username,
+            status = status,
+            deviceCount = deviceCount,
+            runningBuilds = 0,
+        )
+        call.respondText(html, ContentType.Text.Html)
+    }
 
-        // ── 진입점: 라우팅 ────────────────────────────────────────────
-        get {
-            val sess = requireSessionOrRedirect(deps) ?: return@get
-            val status = deps.statusService.snapshot()
-            val deviceCount = deps.deviceRepo.listAll().size
-            // running build count는 status에 없으므로 0 표시. (간단함을 위해 PoC에선 보류)
-            val html = AdminTemplates.dashboardPage(
-                username = sess.username,
-                status = status,
-                deviceCount = deviceCount,
-                runningBuilds = 0,
-            )
-            call.respondText(html, ContentType.Text.Html)
+    // ── Setup ─────────────────────────────────────────────────────
+    get("/setup") {
+        if (deps.authService.adminExists()) {
+            call.respondRedirect("/login")
+            return@get
         }
+        call.respondText(AdminTemplates.setupPage(), ContentType.Text.Html)
+    }
 
-        // ── Setup ─────────────────────────────────────────────────────
-        get("/setup") {
-            if (deps.authService.adminExists()) {
-                call.respondRedirect("/admin/login")
-                return@get
-            }
-            call.respondText(AdminTemplates.setupPage(), ContentType.Text.Html)
+    post("/setup") {
+        if (deps.authService.adminExists()) {
+            call.respondRedirect("/login")
+            return@post
         }
+        val params = call.receiveParameters()
+        val username = params["username"]?.trim().orEmpty()
+        val password = params["password"].orEmpty()
+        val confirm = params["passwordConfirm"].orEmpty()
 
-        post("/setup") {
-            if (deps.authService.adminExists()) {
-                call.respondRedirect("/admin/login")
-                return@post
-            }
-            val params = call.receiveParameters()
-            val username = params["username"]?.trim().orEmpty()
-            val password = params["password"].orEmpty()
-            val confirm = params["passwordConfirm"].orEmpty()
-
-            val err = when {
-                username.isEmpty() -> "사용자명을 입력하세요."
-                password.isEmpty() -> "비밀번호를 입력하세요."
-                password != confirm -> "비밀번호 확인이 일치하지 않습니다."
-                else -> UsernamePolicy.violation(username) ?: PasswordPolicy.violation(password)
-            }
-            if (err != null) {
-                call.respondText(
-                    AdminTemplates.setupPage(error = err),
-                    ContentType.Text.Html,
-                    HttpStatusCode.BadRequest,
-                )
-                return@post
-            }
-            val outcome = runCatching {
-                deps.authService.setup(
-                    username = username,
-                    password = password,
-                    deviceName = browserDeviceName(call),
-                    channel = "web",
-                )
-            }.getOrElse { e ->
-                val msg = (e as? ApiException)?.message ?: "초기 설정 실패"
-                call.respondText(
-                    AdminTemplates.setupPage(error = msg),
-                    ContentType.Text.Html,
-                    HttpStatusCode.BadRequest,
-                )
-                return@post
-            }
-            setSessionCookie(call, outcome.token)
-            call.respondRedirect("/admin")
+        val err = when {
+            username.isEmpty() -> "사용자명을 입력하세요."
+            password.isEmpty() -> "비밀번호를 입력하세요."
+            password != confirm -> "비밀번호 확인이 일치하지 않습니다."
+            else -> UsernamePolicy.violation(username) ?: PasswordPolicy.violation(password)
         }
-
-        // ── Login ─────────────────────────────────────────────────────
-        get("/login") {
-            if (!deps.authService.adminExists()) {
-                call.respondRedirect("/admin/setup")
-                return@get
-            }
-            val next = call.request.queryParameters["next"]
-            call.respondText(AdminTemplates.loginPage(next = next), ContentType.Text.Html)
-        }
-
-        post("/login") {
-            if (!deps.authService.adminExists()) {
-                call.respondRedirect("/admin/setup")
-                return@post
-            }
-            val params = call.receiveParameters()
-            val username = params["username"]?.trim().orEmpty()
-            val password = params["password"].orEmpty()
-            val next = params["next"]?.takeIf { it.startsWith("/admin") } ?: "/admin"
-
-            val outcome = runCatching {
-                deps.authService.login(
-                    username = username,
-                    password = password,
-                    deviceName = browserDeviceName(call),
-                    channel = "web",
-                )
-            }.getOrElse { e ->
-                val msg = (e as? ApiException)?.message ?: "로그인 실패"
-                call.respondText(
-                    AdminTemplates.loginPage(error = msg, next = next),
-                    ContentType.Text.Html,
-                    HttpStatusCode.Unauthorized,
-                )
-                return@post
-            }
-            setSessionCookie(call, outcome.token)
-            call.respondRedirect(next)
-        }
-
-        // ── Logout ────────────────────────────────────────────────────
-        post("/logout") {
-            val token = call.request.cookies[SESSION_COOKIE]
-            if (token != null) {
-                // 단일 디바이스 row 삭제로 invalidate
-                val hash = com.siamakerlab.vibecoder.server.core.Sha256.hashString(token)
-                deps.deviceRepo.findByTokenHash(hash)?.let { deps.deviceRepo.deleteById(it.id) }
-            }
-            clearSessionCookie(call)
-            call.respondRedirect("/admin/login")
-        }
-
-        // ── Dashboard 외 페이지 ───────────────────────────────────────
-
-        get("/settings") {
-            val sess = requireSessionOrRedirect(deps) ?: return@get
-            val cfg = deps.config
-            val view = AdminTemplates.SettingsView(
-                serverName = cfg.server.name,
-                serverPort = cfg.server.port,
-                serverHost = cfg.server.host,
-                maxUploadMb = cfg.workspace.maxUploadSizeMb,
-                artifactKeep = cfg.workspace.artifactKeepCount,
-                claudeEnabled = cfg.claude.enabled,
-                claudePath = cfg.claude.path,
-                claudeTimeoutMin = cfg.claude.timeoutMinutes,
-                buildTimeoutMin = cfg.build.timeoutMinutes,
-                defaultDebugTask = cfg.build.defaultDebugTask,
-            )
-            val ok = call.request.queryParameters["ok"]?.let { "저장됨." }
+        if (err != null) {
             call.respondText(
-                AdminTemplates.settingsPage(sess.username, view, flashOk = ok),
+                AdminTemplates.setupPage(error = err),
                 ContentType.Text.Html,
+                HttpStatusCode.BadRequest,
             )
+            return@post
         }
-
-        post("/settings") {
-            val sess = requireSessionOrRedirect(deps) ?: return@post
-            // server.yml 직접 편집은 위험 → PoC에서는 폼 데이터만 받아 적용은 보류, UI 동작만 검증
-            // (실제 디스크 쓰기는 후속 사이클에서 백업/롤백 포함 구현)
-            log.info { "settings 저장 시도 by ${sess.username} (PoC: not yet persisted)" }
-            call.respondRedirect("/admin/settings?ok=1")
-        }
-
-        get("/password") {
-            val sess = requireSessionOrRedirect(deps) ?: return@get
-            call.respondText(AdminTemplates.passwordPage(sess.username), ContentType.Text.Html)
-        }
-
-        post("/password") {
-            val sess = requireSessionOrRedirect(deps) ?: return@post
-            val params = call.receiveParameters()
-            val current = params["currentPassword"].orEmpty()
-            val new = params["newPassword"].orEmpty()
-            val confirm = params["newPasswordConfirm"].orEmpty()
-            if (new != confirm) {
-                call.respondText(
-                    AdminTemplates.passwordPage(sess.username, flashErr = "새 비밀번호 확인이 일치하지 않습니다."),
-                    ContentType.Text.Html,
-                    HttpStatusCode.BadRequest,
-                )
-                return@post
-            }
-            val result = runCatching {
-                deps.authService.changePassword(sess.userId, current, new)
-            }
-            if (result.isFailure) {
-                val msg = (result.exceptionOrNull() as? ApiException)?.message
-                    ?: "비밀번호 변경 실패"
-                call.respondText(
-                    AdminTemplates.passwordPage(sess.username, flashErr = msg),
-                    ContentType.Text.Html,
-                    HttpStatusCode.BadRequest,
-                )
-                return@post
-            }
+        val outcome = runCatching {
+            deps.authService.setup(
+                username = username,
+                password = password,
+                deviceName = browserDeviceName(call),
+                channel = "web",
+            )
+        }.getOrElse { e ->
+            val msg = (e as? ApiException)?.message ?: "초기 설정 실패"
             call.respondText(
-                AdminTemplates.passwordPage(sess.username, flashOk = "비밀번호가 변경되었습니다."),
+                AdminTemplates.setupPage(error = msg),
                 ContentType.Text.Html,
+                HttpStatusCode.BadRequest,
             )
+            return@post
         }
+        setSessionCookie(call, outcome.token)
+        call.respondRedirect("/")
+    }
 
-        get("/devices") {
-            val sess = requireSessionOrRedirect(deps) ?: return@get
-            val devices = deps.deviceRepo.listAll()
-            val ok = call.request.queryParameters["ok"]?.let { "디바이스 토큰이 무효화되었습니다." }
+    // ── Login ─────────────────────────────────────────────────────
+    get("/login") {
+        if (!deps.authService.adminExists()) {
+            call.respondRedirect("/setup")
+            return@get
+        }
+        val next = call.request.queryParameters["next"]
+        call.respondText(AdminTemplates.loginPage(next = next), ContentType.Text.Html)
+    }
+
+    post("/login") {
+        if (!deps.authService.adminExists()) {
+            call.respondRedirect("/setup")
+            return@post
+        }
+        val params = call.receiveParameters()
+        val username = params["username"]?.trim().orEmpty()
+        val password = params["password"].orEmpty()
+        // open-redirect 방지: 외부 도메인이나 `//` 로 시작하는 schemeless URL 차단
+        val next = params["next"]?.takeIf { it.startsWith("/") && !it.startsWith("//") } ?: "/"
+
+        val outcome = runCatching {
+            deps.authService.login(
+                username = username,
+                password = password,
+                deviceName = browserDeviceName(call),
+                channel = "web",
+            )
+        }.getOrElse { e ->
+            val msg = (e as? ApiException)?.message ?: "로그인 실패"
             call.respondText(
-                AdminTemplates.devicesPage(sess.username, devices, sess.deviceId, flashOk = ok),
+                AdminTemplates.loginPage(error = msg, next = next),
                 ContentType.Text.Html,
+                HttpStatusCode.Unauthorized,
             )
+            return@post
         }
+        setSessionCookie(call, outcome.token)
+        call.respondRedirect(next)
+    }
 
-        post("/devices/{id}/revoke") {
-            val sess = requireSessionOrRedirect(deps) ?: return@post
-            val id = call.parameters["id"]
-            if (id == null || id == sess.deviceId) {
-                call.respondText(
-                    AdminTemplates.errorPage(400, "현재 세션은 revoke할 수 없습니다. 로그아웃을 사용하세요."),
-                    ContentType.Text.Html,
-                    HttpStatusCode.BadRequest,
-                )
-                return@post
-            }
-            deps.deviceRepo.deleteById(id)
-            call.respondRedirect("/admin/devices?ok=1")
+    // ── Logout ────────────────────────────────────────────────────
+    post("/logout") {
+        val token = call.request.cookies[SESSION_COOKIE]
+        if (token != null) {
+            // 단일 디바이스 row 삭제로 invalidate
+            val hash = com.siamakerlab.vibecoder.server.core.Sha256.hashString(token)
+            deps.deviceRepo.findByTokenHash(hash)?.let { deps.deviceRepo.deleteById(it.id) }
         }
+        clearSessionCookie(call)
+        call.respondRedirect("/login")
+    }
+
+    // ── Dashboard 외 페이지 ───────────────────────────────────────
+
+    get("/settings") {
+        val sess = requireSessionOrRedirect(deps) ?: return@get
+        val cfg = deps.config
+        val view = AdminTemplates.SettingsView(
+            serverName = cfg.server.name,
+            serverPort = cfg.server.port,
+            serverHost = cfg.server.host,
+            maxUploadMb = cfg.workspace.maxUploadSizeMb,
+            artifactKeep = cfg.workspace.artifactKeepCount,
+            claudeEnabled = cfg.claude.enabled,
+            claudePath = cfg.claude.path,
+            claudeTimeoutMin = cfg.claude.timeoutMinutes,
+            buildTimeoutMin = cfg.build.timeoutMinutes,
+            defaultDebugTask = cfg.build.defaultDebugTask,
+        )
+        val ok = call.request.queryParameters["ok"]?.let { "저장됨." }
+        call.respondText(
+            AdminTemplates.settingsPage(sess.username, view, flashOk = ok),
+            ContentType.Text.Html,
+        )
+    }
+
+    post("/settings") {
+        val sess = requireSessionOrRedirect(deps) ?: return@post
+        // server.yml 직접 편집은 위험 → PoC에서는 폼 데이터만 받아 적용은 보류, UI 동작만 검증
+        // (실제 디스크 쓰기는 후속 사이클에서 백업/롤백 포함 구현)
+        log.info { "settings 저장 시도 by ${sess.username} (PoC: not yet persisted)" }
+        call.respondRedirect("/settings?ok=1")
+    }
+
+    get("/password") {
+        val sess = requireSessionOrRedirect(deps) ?: return@get
+        call.respondText(AdminTemplates.passwordPage(sess.username), ContentType.Text.Html)
+    }
+
+    post("/password") {
+        val sess = requireSessionOrRedirect(deps) ?: return@post
+        val params = call.receiveParameters()
+        val current = params["currentPassword"].orEmpty()
+        val new = params["newPassword"].orEmpty()
+        val confirm = params["newPasswordConfirm"].orEmpty()
+        if (new != confirm) {
+            call.respondText(
+                AdminTemplates.passwordPage(sess.username, flashErr = "새 비밀번호 확인이 일치하지 않습니다."),
+                ContentType.Text.Html,
+                HttpStatusCode.BadRequest,
+            )
+            return@post
+        }
+        val result = runCatching {
+            deps.authService.changePassword(sess.userId, current, new)
+        }
+        if (result.isFailure) {
+            val msg = (result.exceptionOrNull() as? ApiException)?.message
+                ?: "비밀번호 변경 실패"
+            call.respondText(
+                AdminTemplates.passwordPage(sess.username, flashErr = msg),
+                ContentType.Text.Html,
+                HttpStatusCode.BadRequest,
+            )
+            return@post
+        }
+        call.respondText(
+            AdminTemplates.passwordPage(sess.username, flashOk = "비밀번호가 변경되었습니다."),
+            ContentType.Text.Html,
+        )
+    }
+
+    get("/devices") {
+        val sess = requireSessionOrRedirect(deps) ?: return@get
+        val devices = deps.deviceRepo.listAll()
+        val ok = call.request.queryParameters["ok"]?.let { "디바이스 토큰이 무효화되었습니다." }
+        call.respondText(
+            AdminTemplates.devicesPage(sess.username, devices, sess.deviceId, flashOk = ok),
+            ContentType.Text.Html,
+        )
+    }
+
+    post("/devices/{id}/revoke") {
+        val sess = requireSessionOrRedirect(deps) ?: return@post
+        val id = call.parameters["id"]
+        if (id == null || id == sess.deviceId) {
+            call.respondText(
+                AdminTemplates.errorPage(400, "현재 세션은 revoke할 수 없습니다. 로그아웃을 사용하세요."),
+                ContentType.Text.Html,
+                HttpStatusCode.BadRequest,
+            )
+            return@post
+        }
+        deps.deviceRepo.deleteById(id)
+        call.respondRedirect("/devices?ok=1")
+    }
+
+    // ── 레거시 호환: /admin/* 경로는 항상 루트로 영구 리다이렉트 ─────
+    // 북마크/구버전 안드로이드 앱 보호용. v0.6.0 에서 제거 예정.
+    get("/admin{path...}") {
+        val sub = call.parameters.getAll("path")?.joinToString("/") ?: ""
+        val target = if (sub.isBlank()) "/" else "/$sub"
+        call.respondRedirect(target, permanent = true)
     }
 }
 
@@ -282,21 +290,21 @@ private suspend fun io.ktor.server.routing.RoutingContext.requireSessionOrRedire
 ): WebSession? {
     val token = call.request.cookies[SESSION_COOKIE]
     if (token.isNullOrBlank()) {
-        if (!deps.authService.adminExists()) call.respondRedirect("/admin/setup")
-        else call.respondRedirect("/admin/login?next=${call.request.local.uri}")
+        if (!deps.authService.adminExists()) call.respondRedirect("/setup")
+        else call.respondRedirect("/login?next=${call.request.local.uri}")
         return null
     }
     val hash = com.siamakerlab.vibecoder.server.core.Sha256.hashString(token)
     val device = deps.deviceRepo.findByTokenHash(hash)
     if (device == null || device.userId == null) {
         clearSessionCookie(call)
-        call.respondRedirect("/admin/login")
+        call.respondRedirect("/login")
         return null
     }
     val user = deps.userRepo.findById(device.userId)
     if (user == null) {
         clearSessionCookie(call)
-        call.respondRedirect("/admin/login")
+        call.respondRedirect("/login")
         return null
     }
     deps.deviceRepo.touchLastSeen(device.id)
