@@ -5,8 +5,16 @@ import com.siamakerlab.vibecoder.server.core.OsType
 import com.siamakerlab.vibecoder.shared.dto.CheckItemDto
 import com.siamakerlab.vibecoder.shared.dto.CheckStatus
 import com.siamakerlab.vibecoder.shared.dto.EnvironmentCheckDto
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlin.io.path.exists
 
 class EnvDiagnostics(private val config: ServerConfig) {
@@ -71,18 +79,21 @@ class EnvDiagnostics(private val config: ServerConfig) {
     }
 
     /**
-     * Claude CLI 로그인 상태 — `~/.claude/.credentials.json` (또는
-     * `CLAUDE_CONFIG_DIR` env 가 가리키는 곳) 존재 여부.
+     * Claude CLI 로그인 상태 진단.
      *
-     * v0.5.4 까지는 vibe-doctor 와 같이 `.credentials.json` 또는 `config.json`
-     * 중 하나만 있어도 OK 로 판정했으나, 그건 false positive 였다. claude CLI
-     * 는 첫 실행 시 빈 `config.json` 을 항상 만들어두기 때문에 "config.json
-     * 존재 = 로그인됨" 이 아니다. 실제 인증 토큰은 `.credentials.json` 에만
-     * 저장되므로 그 파일만 본다.
-     *
+     * 판정:
      * - CLI 미설치 → ERROR.
-     * - `.credentials.json` 있음 → OK.
-     * - 없음 → ERROR + `claude login` 가이드.
+     * - `~/.claude/.credentials.json` (또는 `CLAUDE_CONFIG_DIR/.credentials.json`)
+     *   없음 → ERROR + `claude login` 가이드.
+     * - 파일은 있지만 안의 `claudeAiOauth.expiresAt` (epoch ms) 가 현재보다
+     *   과거 → ERROR ("토큰 만료"). 사용자가 콘솔에서 "Not logged in" 을 받는
+     *   가장 흔한 원인.
+     * - 만료 시각 6시간 이내 → WARNING (곧 만료 예정 안내).
+     * - 그 외 정상 → OK.
+     *
+     * v0.6.2 변경: 단순 파일 존재 → expiresAt 까지 파싱. v0.5.4 ~ v0.6.1 에서
+     * 만료된 자격증명을 들고 콘솔에서 "Not logged in" 을 받는데도 빌드환경
+     * 페이지에서 "로그인됨" 으로 표시되던 false positive 해결.
      */
     private fun checkClaudeAuth(cli: CheckItemDto): CheckItemDto {
         if (!config.claude.enabled) {
@@ -98,19 +109,62 @@ class EnvDiagnostics(private val config: ServerConfig) {
 
         val cfg = claudeConfigDir()
         val credentials = cfg.resolve(".credentials.json")
-        return if (credentials.exists()) {
-            CheckItemDto(
-                CheckStatus.OK, "Claude Auth", "로그인됨",
-                detail = credentials.toString(),
-            )
-        } else {
-            CheckItemDto(
+        if (!credentials.exists()) {
+            return CheckItemDto(
                 CheckStatus.ERROR, "Claude Auth",
                 "Claude CLI 로그인이 필요합니다.",
                 detail = buildClaudeAuthHelp(cfg),
             )
         }
+
+        val expiresAt = readOauthExpiresAt(credentials)
+        if (expiresAt == null) {
+            // 파일은 있는데 형식 변경 등으로 파싱 실패 → 신중하게 WARNING.
+            return CheckItemDto(
+                CheckStatus.WARNING, "Claude Auth",
+                "자격증명 파일이 있으나 만료 시각을 확인할 수 없습니다.",
+                detail = "$credentials\n콘솔에서 'Not logged in' 이 뜨면 'docker exec -it vibe-coder claude login' 으로 재로그인하세요.",
+            )
+        }
+
+        val nowMs = System.currentTimeMillis()
+        val expiryStr = formatInstant(expiresAt)
+        return when {
+            expiresAt <= nowMs -> CheckItemDto(
+                CheckStatus.ERROR, "Claude Auth",
+                "토큰이 만료되었습니다 (${expiryStr}). 재로그인이 필요합니다.",
+                detail = buildClaudeAuthHelp(cfg) + "\n\n만료된 파일: $credentials",
+            )
+            expiresAt - nowMs < 6 * 3600 * 1000L -> CheckItemDto(
+                CheckStatus.WARNING, "Claude Auth",
+                "토큰이 곧 만료됩니다 (만료: $expiryStr)",
+                detail = "필요하면 'docker exec -it vibe-coder claude login' 으로 재발급하세요.",
+            )
+            else -> CheckItemDto(
+                CheckStatus.OK, "Claude Auth",
+                "로그인됨 (만료: $expiryStr)",
+                detail = credentials.toString(),
+            )
+        }
     }
+
+    /**
+     * `.credentials.json` 안의 `claudeAiOauth.expiresAt` (epoch ms) 추출.
+     * 파일 없음 / 형식 변경 등 어떤 실패에도 null 반환 — 호출자가 처리.
+     */
+    private fun readOauthExpiresAt(file: Path): Long? = try {
+        val text = Files.readString(file, Charsets.UTF_8)
+        val root = Json.parseToJsonElement(text) as? JsonObject ?: return null
+        val oauth = root["claudeAiOauth"]?.jsonObject ?: return null
+        oauth["expiresAt"]?.jsonPrimitive?.longOrNull
+    } catch (_: Throwable) {
+        null
+    }
+
+    private fun formatInstant(epochMs: Long): String =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+            .withZone(ZoneId.systemDefault())
+            .format(Instant.ofEpochMilli(epochMs))
 
     /**
      * `CLAUDE_CONFIG_DIR` env 우선, 없으면 OS 별 기본 (`~/.claude`).

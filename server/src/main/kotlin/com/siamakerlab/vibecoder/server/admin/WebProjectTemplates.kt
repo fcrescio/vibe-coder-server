@@ -363,12 +363,39 @@ $authBannerHtml
     if (atBottom) logEl.scrollTop = logEl.scrollHeight;
   }
 
+  // Claude 응답에 'Not logged in' 같은 인증 실패 패턴이 보이면 즉시 폼을 disable 하고
+  // 빨간 배너를 띄운다. 진단 (EnvDiagnostics) 이 false positive 였을 때의 라이브 fallback.
+  var AUTH_FAIL_RE = /(not logged in|please run \/login|invalid api key|unauthorized|authentication required)/i;
+  function detectAuthFailure(text) {
+    if (!text) return false;
+    if (AUTH_FAIL_RE.test(String(text))) { showAuthBanner(); return true; }
+    return false;
+  }
+  function showAuthBanner() {
+    var existing = document.getElementById('live-auth-banner');
+    if (existing) return;
+    var banner = document.createElement('div');
+    banner.id = 'live-auth-banner';
+    banner.className = 'error';
+    banner.style.cssText = 'margin-bottom:16px;padding:16px';
+    banner.innerHTML = '<strong style="font-size:14px">Claude CLI 로그인이 필요합니다 (라이브 감지)</strong>' +
+      '<p style="margin:6px 0">현재 응답에서 인증 실패 신호가 감지되었습니다. 컨테이너 안에서 재로그인 후 페이지를 새로고침하세요.</p>' +
+      '<pre class="diff-block" style="margin:8px 0">docker exec -it vibe-coder claude login</pre>';
+    var header = document.querySelector('header');
+    if (header && header.parentNode) header.parentNode.insertBefore(banner, header.nextSibling);
+    var input = document.getElementById('prompt-input');
+    var btn = document.getElementById('send-btn');
+    if (input) { input.disabled = true; input.placeholder = 'Claude 재로그인 후 새로고침하세요.'; }
+    if (btn) btn.disabled = true;
+  }
+
   function renderFrame(f) {
     var t = f.type;
     if (t === 'console_session_started') {
       append('sys', 'session', 'started ' + (f.sessionId || '').slice(0,12) + (f.model ? ' · ' + f.model : ''));
     } else if (t === 'console_assistant') {
       append('assistant', 'assistant', f.text || '');
+      detectAuthFailure(f.text);
     } else if (t === 'console_tool_use') {
       var inp = typeof f.input === 'string' ? f.input : JSON.stringify(f.input);
       append('tool', f.toolName || 'tool', inp.length > 500 ? inp.slice(0,500) + '…' : inp);
@@ -376,12 +403,15 @@ $authBannerHtml
       var out = typeof f.output === 'string' ? f.output : JSON.stringify(f.output);
       append(f.isError ? 'tool-err' : 'tool-out', f.isError ? 'tool-err' : 'tool-out',
              out.length > 500 ? out.slice(0,500) + '…' : out);
+      detectAuthFailure(out);
     } else if (t === 'console_error') {
       append('err', 'error', (f.code || '') + ': ' + (f.message || ''));
+      detectAuthFailure(f.message);
     } else if (t === 'console_done') {
       append('sys', 'done', f.reason || 'end_turn');
     } else if (t === 'console_system') {
       append('sys', f.code || 'system', f.message || '');
+      detectAuthFailure(f.message);
     } else if (t === 'console_replay_begin') {
       append('sys', 'replay', 'history begin (' + f.fromSeq + ' → ' + f.toSeq + ')');
     } else if (t === 'console_replay_end') {

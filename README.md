@@ -60,7 +60,7 @@ vibe-coder-server/
 화면(이미 설정됨) 이 뜬다. 안드로이드 앱(`vibe-coder-android`) 도
 같은 URL + username/password 로 로그인할 수 있지만 필수는 아니다.
 
-### 웹만으로 끝낼 수 있는 작업 (v0.6.1+)
+### 웹만으로 끝낼 수 있는 작업 (v0.6.2+)
 
 | 경로 | 용도 |
 |---|---|
@@ -78,7 +78,7 @@ vibe-coder-server/
 
 v0.4.2 부터 별도 `/admin/*` prefix 없이 모두 루트 바로 아래에 평탄화되어
 있다. 구버전 `/admin/...` 경로는 영구 리다이렉트 호환층으로 유지된다
-(v0.6.1 에서 제거 예정).
+(v0.6.2 에서 제거 예정).
 
 ### Docker 실행
 
@@ -103,7 +103,7 @@ docker compose up -d
 name: vibe-coder
 services:
   vibe-coder:
-    image: siamakerlab/vibe-coder-server:0.6.1
+    image: siamakerlab/vibe-coder-server:0.6.2
     container_name: vibe-coder
     restart: unless-stopped
     environment:

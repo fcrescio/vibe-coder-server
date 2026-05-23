@@ -10,6 +10,7 @@ import com.siamakerlab.vibecoder.shared.ws.WsFrame
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.longOrNull
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
@@ -165,15 +166,35 @@ class EnvSetupService(
     }
 
     private fun probeClaudeAuth(c: SetupComponent): ComponentState {
-        // `.credentials.json` 만 봄. config.json 은 claude CLI 가 첫 실행 시
-        // 빈 파일을 항상 만들기 때문에 인증 indicator 가 아니다 (false positive).
+        // `.credentials.json` 존재 + 그 안의 claudeAiOauth.expiresAt 까지 검증.
+        // 파일만 보면 v0.5.4~v0.6.1 처럼 토큰 만료 시 false positive 가 난다.
         val cfg = claudeConfigDir()
         val credentials = cfg.resolve(".credentials.json")
-        return when {
-            credentials.exists() -> ComponentState(c, ComponentStatus.INSTALLED, "로그인됨 (${credentials.fileName})")
-            !cfg.exists() -> ComponentState(c, ComponentStatus.MISSING, "디렉토리 없음: $cfg — `claude login` 필요")
-            else -> ComponentState(c, ComponentStatus.MISSING, "로그인 필요: $cfg/.credentials.json 없음")
+        if (!cfg.exists()) {
+            return ComponentState(c, ComponentStatus.MISSING, "디렉토리 없음: $cfg — `claude login` 필요")
         }
+        if (!credentials.exists()) {
+            return ComponentState(c, ComponentStatus.MISSING, "로그인 필요: $cfg/.credentials.json 없음")
+        }
+        val expiresAt = readOauthExpiresAt(credentials)
+        if (expiresAt == null) {
+            return ComponentState(c, ComponentStatus.PARTIAL, "credentials 파일 존재 — 만료 시각 확인 실패")
+        }
+        val nowMs = System.currentTimeMillis()
+        return when {
+            expiresAt <= nowMs -> ComponentState(c, ComponentStatus.MISSING, "토큰 만료 — 재로그인 필요")
+            expiresAt - nowMs < 6 * 3600 * 1000L -> ComponentState(c, ComponentStatus.PARTIAL, "곧 만료 — 재로그인 권장")
+            else -> ComponentState(c, ComponentStatus.INSTALLED, "로그인됨 (${credentials.fileName})")
+        }
+    }
+
+    private fun readOauthExpiresAt(file: Path): Long? = try {
+        val text = Files.readString(file, Charsets.UTF_8)
+        val root = kotlinx.serialization.json.Json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonObject ?: return null
+        val oauth = root["claudeAiOauth"] as? kotlinx.serialization.json.JsonObject ?: return null
+        (oauth["expiresAt"] as? kotlinx.serialization.json.JsonPrimitive)?.longOrNull
+    } catch (_: Throwable) {
+        null
     }
 
     private fun probeAndroidSdk(c: SetupComponent): ComponentState {
