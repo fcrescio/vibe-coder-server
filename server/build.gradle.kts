@@ -60,6 +60,10 @@ dependencies {
     // Security
     implementation(libs.bcrypt)
 
+    // Email (v0.17.0+) — SMTP via Jakarta Mail + Angus implementation.
+    implementation(libs.jakarta.mail.api)
+    implementation(libs.jakarta.mail.impl)
+
     // Test
     testImplementation(libs.junit)
     testImplementation(libs.kotest.assertions.core)

@@ -15,6 +15,8 @@ kaml = "0.65.0"
 logback = "1.5.12"
 kotlin-logging = "7.0.0"
 bcrypt = "0.10.2"
+jakarta-mail-api = "2.1.3"
+angus-mail = "2.0.3"
 
 # Test
 junit = "4.13.2"
@@ -62,6 +64,10 @@ kotlin-logging-jvm = { module = "io.github.oshai:kotlin-logging-jvm", version.re
 
 # Security
 bcrypt = { module = "at.favre.lib:bcrypt", version.ref = "bcrypt" }
+
+# Email — Jakarta Mail (SMTP). Angus 가 reference impl.
+jakarta-mail-api = { module = "jakarta.mail:jakarta.mail-api", version.ref = "jakarta-mail-api" }
+jakarta-mail-impl = { module = "org.eclipse.angus:angus-mail", version.ref = "angus-mail" }
 
 # Test
 junit = { module = "junit:junit", version.ref = "junit" }

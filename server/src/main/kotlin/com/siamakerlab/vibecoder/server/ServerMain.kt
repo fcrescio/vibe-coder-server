@@ -144,6 +144,7 @@ fun main(args: Array<String>) {
     val auditLogger = com.siamakerlab.vibecoder.server.audit.AuditLogger(auditRepo)
     val conversationRepo = com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository(clock)
     val conversationHistory = com.siamakerlab.vibecoder.server.claude.ConversationHistoryService(conversationRepo)
+    val emailNotifier = com.siamakerlab.vibecoder.server.notify.EmailNotifier { config.email }
     val projects = ProjectService(
         workspace, projectRepo, buildRepo, keystoreGen, gitClone,
         artifactRepo = artifactRepo, uploadedFileRepo = uploadedRepo,
@@ -152,7 +153,7 @@ fun main(args: Array<String>) {
     val sessionManager = ClaudeSessionManager(config, workspace, hub, history = conversationHistory)
     val gradle = GradleBuilder(config)
     val artifacts = ArtifactService(config, workspace, artifactRepo, buildRepo, clock)
-    val build = BuildService(config, workspace, projects, buildRepo, queue, gradle, artifacts, clock)
+    val build = BuildService(config, workspace, projects, buildRepo, queue, gradle, artifacts, clock, notifier = emailNotifier)
     val git = GitReader()
     val uploads = UploadService(config, workspace, uploadedRepo, clock)
     val fileBrowser = com.siamakerlab.vibecoder.server.files.ProjectFileBrowser(workspace)
@@ -195,6 +196,7 @@ fun main(args: Array<String>) {
         auditRepo = auditRepo,
         auditLogger = auditLogger,
         conversationRepo = conversationRepo,
+        emailNotifier = emailNotifier,
         status = status,
         env = env,
         envSetup = envSetup,

@@ -12,6 +12,7 @@ data class ServerConfig(
     val git: GitSection,
     val cors: CorsSection = CorsSection(),
     val database: DatabaseSection = DatabaseSection(),
+    val email: EmailSection = EmailSection(),
 )
 
 @Serializable
@@ -94,6 +95,36 @@ data class CorsSection(
  * 비밀번호 누락 시 startup 실패 (명시적 오류) — production 환경에서 빈 비밀번호로
  * 우연 connect 되는 일을 막음.
  */
+/**
+ * v0.17.0 — SMTP 알림.
+ *
+ * 기본은 비활성 (enabled=false). 사용자가 `/settings/email` UI 또는 env 로
+ * SMTP 설정을 입력하면 활성. 빌드 결과 / Claude 사용량 임계치 / 디스크 경고
+ * 등 운영 이벤트를 등록된 to 주소(들)로 발송.
+ *
+ * env override:
+ *   VIBECODER_SMTP_ENABLED / _HOST / _PORT / _USER / _PASSWORD / _PASSWORD_FILE
+ *   VIBECODER_SMTP_FROM / _TO  (콤마 구분 가능)
+ *   VIBECODER_SMTP_TLS  (true=STARTTLS, false=plain — production 은 true)
+ */
+@Serializable
+data class EmailSection(
+    val enabled: Boolean = false,
+    val host: String = "smtp.gmail.com",
+    val port: Int = 587,
+    val user: String = "",
+    val password: String = "",
+    val passwordFile: String = "",
+    val from: String = "",
+    /** Comma-separated 가능 (multiple recipients). */
+    val to: String = "",
+    val tls: Boolean = true,
+    /** Claude 사용량 임계치 — 잔여 % 가 이 값 아래로 떨어지면 알림. */
+    val claudeUsageWarnPercent: Int = 20,
+    /** 디스크 사용량 임계치 — 사용 % 가 이 값 이상이면 알림. */
+    val diskUsageWarnPercent: Int = 85,
+)
+
 @Serializable
 data class DatabaseSection(
     val host: String = "postgres",

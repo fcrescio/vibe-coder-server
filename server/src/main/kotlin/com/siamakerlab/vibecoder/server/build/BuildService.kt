@@ -26,6 +26,8 @@ class BuildService(
     private val builder: GradleBuilder,
     private val artifactService: ArtifactService,
     private val clock: Clock,
+    /** v0.17.0 — 빌드 결과 이메일 알림. null 이면 알림 skip (테스트). */
+    private val notifier: com.siamakerlab.vibecoder.server.notify.EmailNotifier? = null,
 ) {
 
     /**
@@ -64,10 +66,12 @@ class BuildService(
             onSuccess = {
                 buildRepo.setStatus(buildId, TaskStatus.SUCCESS)
                 hub.publisher(buildId).emit(WsFrame.Done(buildId, TaskStatus.SUCCESS.name))
+                notifier?.buildResult(projectId, buildId, "SUCCESS", null)
             },
             onFailure = { e ->
                 buildRepo.setStatus(buildId, TaskStatus.FAILED, e.message)
                 hub.publisher(buildId).emit(WsFrame.Done(buildId, TaskStatus.FAILED.name, e.message))
+                notifier?.buildResult(projectId, buildId, "FAILED", e.message)
             },
             onCancel = {
                 buildRepo.setStatus(buildId, TaskStatus.CANCELED)

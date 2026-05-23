@@ -57,7 +57,28 @@ object ConfigLoader {
         // v0.14.0 — Database 설정 env override
         current = current.copy(database = applyDatabaseEnvOverrides(current.database))
 
+        // v0.17.0 — Email/SMTP env override
+        current = current.copy(email = applyEmailEnvOverrides(current.email))
+
         return current
+    }
+
+    private fun applyEmailEnvOverrides(e: EmailSection): EmailSection {
+        var v = e
+        System.getenv("VIBECODER_SMTP_ENABLED")?.takeIf { it.isNotBlank() }?.let {
+            v = v.copy(enabled = it.equals("true", true))
+        }
+        System.getenv("VIBECODER_SMTP_HOST")?.takeIf { it.isNotBlank() }?.let { v = v.copy(host = it) }
+        System.getenv("VIBECODER_SMTP_PORT")?.takeIf { it.isNotBlank() }?.toIntOrNull()?.let { v = v.copy(port = it) }
+        System.getenv("VIBECODER_SMTP_USER")?.takeIf { it.isNotBlank() }?.let { v = v.copy(user = it) }
+        System.getenv("VIBECODER_SMTP_PASSWORD")?.takeIf { it.isNotBlank() }?.let { v = v.copy(password = it) }
+        System.getenv("VIBECODER_SMTP_PASSWORD_FILE")?.takeIf { it.isNotBlank() }?.let { v = v.copy(passwordFile = it) }
+        System.getenv("VIBECODER_SMTP_FROM")?.takeIf { it.isNotBlank() }?.let { v = v.copy(from = it) }
+        System.getenv("VIBECODER_SMTP_TO")?.takeIf { it.isNotBlank() }?.let { v = v.copy(to = it) }
+        System.getenv("VIBECODER_SMTP_TLS")?.takeIf { it.isNotBlank() }?.let {
+            v = v.copy(tls = it.equals("true", true))
+        }
+        return v
     }
 
     private fun applyDatabaseEnvOverrides(db: DatabaseSection): DatabaseSection {
