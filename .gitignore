@@ -45,3 +45,10 @@ Thumbs.db
 docker/.env
 docker/*.local.yml
 docker/build-context/
+
+# 운영자 내부 문서 — 일반 사용자에게는 README 만 공개 (v0.10.0+)
+# CLAUDE.md 는 Claude Code 자동 메모리/규칙 파일이라 운영자 전용.
+# docs/ 는 PDCA 산출물 (plan/design/analysis/report) 로 내부 작업 흔적.
+CLAUDE.md
+docs/
+vibe-coder-icon.png
