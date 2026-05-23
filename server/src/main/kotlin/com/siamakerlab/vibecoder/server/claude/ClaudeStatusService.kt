@@ -61,7 +61,9 @@ class ClaudeStatusService(
     private suspend fun runStatusCommand(projectId: String): ParsedStatus = withContext(Dispatchers.IO) {
         val cmd = resolveClaudeCmd()
         val projectRoot = workspace.projectRoot(projectId)
-        val pb = ProcessBuilder(cmd, "--print", "/status")
+        // v0.12.2 — status 호출도 같은 권한 정책 (status 자체는 read-only 이지만
+        // claude CLI 가 init 단계에서 .claude/settings.json 을 평가하므로 일관성 유지).
+        val pb = ProcessBuilder(cmd, "--print", "--dangerously-skip-permissions", "/status")
             .directory(projectRoot.toFile())
             .redirectErrorStream(true)
         // v0.7.0 — API 키 모드면 ANTHROPIC_API_KEY 주입.

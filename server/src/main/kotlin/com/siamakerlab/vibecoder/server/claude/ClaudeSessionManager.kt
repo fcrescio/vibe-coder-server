@@ -149,6 +149,10 @@ class ClaudeSessionManager(
         if (!projectRoot.exists()) {
             throw IllegalStateException("project root not found: $projectRoot")
         }
+        // v0.12.2 — 기존 프로젝트 (v0.7.0 이전 생성) 도 권한 정책이 적용되도록
+        // .claude/settings.json + CLAUDE.md 가 없으면 매 spawn 전에 자동 backfill.
+        com.siamakerlab.vibecoder.server.projects.ProjectScaffolder.ensureClaudeFiles(projectRoot)
+
         val savedId = readSessionId(projectId)
         val cmd = resolveClaudeCmd()
         val args = buildList {
@@ -156,6 +160,14 @@ class ClaudeSessionManager(
             add("--output-format"); add("stream-json")
             add("--input-format"); add("stream-json")
             add("--verbose")
+            // v0.12.2 — vibe-coder 의 비인터랙티브 환경은 권한 prompt 응답 불가.
+            // bypassPermissions 를 spawn 인자로 강제 (.claude/settings.json 누락
+            // 케이스에서도 안전). CLAUDE.md §3 의 sandbox 정책과 일관.
+            add("--dangerously-skip-permissions")
+            // 인터랙티브 위젯 (AskUserQuestion / EnterPlanMode / ExitPlanMode) 명시 차단 —
+            // 모델이 호출하면 즉시 거부되어 다른 경로 (응답 끝에 옵션 나열) 로 진행.
+            add("--disallowedTools")
+            add("AskUserQuestion ExitPlanMode EnterPlanMode NotebookEdit")
             if (savedId != null) {
                 add("--resume"); add(savedId)
             }
