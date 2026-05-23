@@ -264,6 +264,71 @@ table.devices th {
 }
 table.devices tr:last-child td { border-bottom: none; }
 
+table.devices a { color: var(--text); text-decoration: none; }
+table.devices a:hover { color: var(--primary); }
+table.devices a strong { font-weight: 600; }
+table.devices small.dim { font-size: 11px; }
+
+/* ── 콘솔 (project console) ──────────────────────────────────────── */
+
+.console-log {
+    background: #0a0d12;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    min-height: 320px;
+    max-height: 60vh;
+    overflow-y: auto;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    margin-bottom: 16px;
+}
+
+.console-log .log-line {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 12px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.console-log .log-line:last-child { border-bottom: none; }
+
+.console-log .log-label {
+    color: var(--text-dim);
+    text-transform: uppercase;
+    font-size: 10.5px;
+    letter-spacing: 0.5px;
+    padding-top: 1px;
+    user-select: none;
+}
+.console-log .log-body { white-space: pre-wrap; word-break: break-word; }
+
+.console-log .sys .log-label   { color: #6c7a93; }
+.console-log .user .log-label  { color: var(--primary); }
+.console-log .user .log-body   { color: var(--text); }
+.console-log .assistant .log-label { color: #5ed3a1; }
+.console-log .tool .log-label  { color: #cfa763; }
+.console-log .tool-out .log-label { color: #8ea0c2; }
+.console-log .tool-err .log-label { color: var(--danger); }
+.console-log .tool-err .log-body  { color: var(--danger); }
+.console-log .err .log-label   { color: var(--danger); }
+.console-log .err .log-body    { color: var(--danger); }
+
+.prompt-form textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 10px 12px;
+    font: inherit;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    resize: vertical;
+}
+.prompt-form textarea:focus { outline: none; border-color: var(--primary); }
+
 /* ── Responsive ──────────────────────────────────────────────────── */
 
 @media (max-width: 720px) {

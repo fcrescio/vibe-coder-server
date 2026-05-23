@@ -6,6 +6,7 @@ import com.siamakerlab.vibecoder.server.actions.ServerActionHandler
 import com.siamakerlab.vibecoder.server.actions.projectActionRoutes
 import com.siamakerlab.vibecoder.server.admin.AdminRoutesDeps
 import com.siamakerlab.vibecoder.server.admin.adminRoutes
+import com.siamakerlab.vibecoder.server.admin.webProjectRoutes
 import com.siamakerlab.vibecoder.server.artifacts.ArtifactService
 import com.siamakerlab.vibecoder.server.artifacts.artifactRoutes
 import com.siamakerlab.vibecoder.server.auth.AUTH_BEARER
@@ -141,18 +142,26 @@ fun Application.module(ctx: ServerContext) {
             userRepo = ctx.adminUserRepo,
             authService = ctx.authService,
         )
-        adminRoutes(
-            AdminRoutesDeps(
-                config = ctx.config,
-                serverName = ctx.config.server.name,
-                serverVersion = ctx.config.server.version,
-                workspaceRoot = ctx.workspace.root.toString(),
-                authService = ctx.authService,
-                userRepo = ctx.adminUserRepo,
-                deviceRepo = ctx.deviceRepo,
-                statusService = ctx.status,
-                envDiagnostics = ctx.env,
-            )
+        val adminDeps = AdminRoutesDeps(
+            config = ctx.config,
+            serverName = ctx.config.server.name,
+            serverVersion = ctx.config.server.version,
+            workspaceRoot = ctx.workspace.root.toString(),
+            authService = ctx.authService,
+            userRepo = ctx.adminUserRepo,
+            deviceRepo = ctx.deviceRepo,
+            statusService = ctx.status,
+            envDiagnostics = ctx.env,
+        )
+        adminRoutes(adminDeps)
+        webProjectRoutes(
+            authDeps = adminDeps,
+            projects = ctx.projects,
+            builds = ctx.build,
+            buildRepo = ctx.buildRepo,
+            artifactRepo = ctx.artifactRepo,
+            sessionManager = ctx.sessionManager,
+            hub = ctx.hub,
         )
         envRoutes(ctx.status, ctx.env)
         projectRoutes(ctx.projects)

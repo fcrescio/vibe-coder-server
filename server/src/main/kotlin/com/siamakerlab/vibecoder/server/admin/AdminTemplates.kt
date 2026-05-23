@@ -21,7 +21,7 @@ object AdminTemplates {
             .replace("\"", "&quot;")
             .replace("'", "&#39;")
 
-    private fun shell(
+    internal fun shell(
         title: String,
         body: String,
         username: String? = null,
@@ -65,6 +65,7 @@ object AdminTemplates {
   <div class="brand">Vibe Coder</div>
   <div class="nav-links">
     ${link("/", "대시보드", "dashboard")}
+    ${link("/projects", "프로젝트", "projects")}
     ${link("/settings", "설정", "settings")}
     ${link("/devices", "디바이스", "devices")}
     ${link("/password", "비밀번호", "password")}

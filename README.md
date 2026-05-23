@@ -60,15 +60,26 @@ vibe-coder-server/
 화면(이미 설정됨) 이 뜬다. 안드로이드 앱(`vibe-coder-android`) 도
 같은 URL + username/password 로 로그인할 수 있지만 필수는 아니다.
 
-v0.4.2 부터 별도 `/admin/*` prefix 가 없다. 모든 화면이 루트(`/`)
-바로 아래에 평탄화되어 있다 (`/`, `/login`, `/setup`, `/settings`,
-`/devices`, `/password`). 구버전 `/admin/...` 경로는 영구 리다이렉트
-호환층으로 유지된다 (v0.6.0 에서 제거 예정).
+### 웹만으로 끝낼 수 있는 작업 (v0.5.0+)
+
+| 경로 | 용도 |
+|---|---|
+| `/` | 대시보드 (서버/환경/활동 요약) |
+| `/projects` | 프로젝트 목록 + 새 프로젝트 등록 |
+| `/projects/{id}` | 프로젝트 상세, 최근 빌드 |
+| `/projects/{id}/console` | Claude 프롬프트 입력 + 실시간 로그 (WebSocket) |
+| `/projects/{id}/builds` | Debug 빌드 큐 등록 + APK 다운로드 |
+| `/settings` · `/devices` · `/password` | 운영 설정 / 디바이스 / 비밀번호 |
+| `/login` · `/setup` · `/logout` | 인증 |
+
+v0.4.2 부터 별도 `/admin/*` prefix 없이 모두 루트 바로 아래에 평탄화되어
+있다. 구버전 `/admin/...` 경로는 영구 리다이렉트 호환층으로 유지된다
+(v0.6.0 에서 제거 예정).
 
 ### Docker 실행
 
 ```bash
-docker pull siamakerlab/vibe-coder-server:0.4.2
+docker pull siamakerlab/vibe-coder-server:0.5.0
 cd ~/vibe-coder && cp docker/compose.yml . && cp docker/.env.example .env
 # .env 편집 후
 docker compose up -d

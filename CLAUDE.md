@@ -17,7 +17,8 @@
   간주.
 - 모듈 구성:
   - `:server` — Ktor 백엔드. Claude Code / Gradle / Git 자식 프로세스 관리,
-    SQLite(Exposed) 저장소, WebSocket 로그 허브, SSR 웹 UI.
+    SQLite(Exposed) 저장소, WebSocket 로그 허브, SSR 웹 UI (대시보드 /
+    프로젝트 / 콘솔 / 빌드 / 설정 / 디바이스, v0.5.0+).
   - `:shared` — JVM-only DTO / `ApiPath` / `WsFrame`.
     같은 코드가 `vibe-coder-android` 리포의 `:shared` 모듈에도
     **동일한 사본**으로 존재한다 (양쪽 수동 동기화).

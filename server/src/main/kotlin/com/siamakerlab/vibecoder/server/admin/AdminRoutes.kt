@@ -277,7 +277,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
 
 // ─── 세션 헬퍼 ─────────────────────────────────────────────────────────────
 
-private data class WebSession(
+internal data class WebSession(
     val token: String,
     val userId: String,
     val username: String,
@@ -285,7 +285,7 @@ private data class WebSession(
 )
 
 /** 세션 유효 시 WebSession, 아니면 적절한 곳으로 redirect 후 null 반환. */
-private suspend fun io.ktor.server.routing.RoutingContext.requireSessionOrRedirect(
+internal suspend fun io.ktor.server.routing.RoutingContext.requireSessionOrRedirect(
     deps: AdminRoutesDeps,
 ): WebSession? {
     val token = call.request.cookies[SESSION_COOKIE]
