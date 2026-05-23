@@ -25,7 +25,7 @@ docker compose up -d
 # 5) 빌드 환경 다운로드 (Android SDK 등)
 #    웹 UI 의 "⚡ 모두 설치/업데이트" 버튼이 표준입니다.
 #    터미널로 진행하려면:
-docker exec -it vibe-coder vibe-doctor
+docker exec -it vibe-coder-server vibe-doctor
 ```
 
 이후 Android 앱에서 같은 서버 URL + username/password로 로그인.
@@ -165,12 +165,12 @@ docker volume rm vibe-coder_vibe-android-sdk vibe-coder_vibe-gradle-cache
 ## doctor
 
 ```bash
-docker exec -it vibe-coder vibe-doctor              # 인터랙티브 (권장)
-docker exec -it vibe-coder vibe-doctor check        # 진단만
-docker exec    vibe-coder vibe-doctor install       # 비대화형 일괄 설치
-docker exec -it vibe-coder vibe-doctor android      # Android SDK만
-docker exec -it vibe-coder vibe-doctor claude       # Claude 인증만
-docker exec -it vibe-coder vibe-doctor mcp          # 선택적 MCP만
+docker exec -it vibe-coder-server vibe-doctor              # 인터랙티브 (권장)
+docker exec -it vibe-coder-server vibe-doctor check        # 진단만
+docker exec    vibe-coder-server vibe-doctor install       # 비대화형 일괄 설치
+docker exec -it vibe-coder-server vibe-doctor android      # Android SDK만
+docker exec -it vibe-coder-server vibe-doctor claude       # Claude 인증만
+docker exec -it vibe-coder-server vibe-doctor mcp          # 선택적 MCP만
 ```
 
 처음 실행 시 다음 순서로 진행됩니다.
@@ -214,11 +214,11 @@ docker compose up -d --force-recreate
 
 ### "Build failed: SDK location not found"
 
-doctor 미실행. `docker exec -it vibe-coder vibe-doctor android` 실행.
+doctor 미실행. `docker exec -it vibe-coder-server vibe-doctor android` 실행.
 
 ### Claude가 인증 안 됨
 
-호스트 `~/.claude` 마운트 권장. 또는 `docker exec -it --user vibe vibe-coder claude login`.
+호스트 `~/.claude` 마운트 권장. 또는 `docker exec -it --user vibe vibe-coder-server claude login`.
 
 ### 빌드가 느림
 

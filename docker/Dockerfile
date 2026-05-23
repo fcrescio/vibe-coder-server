@@ -48,7 +48,8 @@ FROM eclipse-temurin:17-jre-jammy AS runtime
 LABEL org.opencontainers.image.title="Vibe Coder Server"
 LABEL org.opencontainers.image.description="Ktor 기반 vibe-coder 서버 (LAN 페어링 1인 개발 도구)"
 LABEL org.opencontainers.image.source="https://github.com/siamakerlab/vibe-coder"
-LABEL org.opencontainers.image.licenses="UNLICENSED"
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
+LABEL org.opencontainers.image.source="https://github.com/siamakerlab/vibe-coder-server"
 
 # ---- 시스템 패키지 (도구 최소셋) ---------------------------------------------
 # Android SDK / Playwright Chromium / 무거운 MCP들은 doctor가 볼륨에 설치한다.

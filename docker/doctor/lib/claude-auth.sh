@@ -36,6 +36,6 @@ EOF
         log_info "claude login 실행 중... (Ctrl+C로 취소)"
         claude login || log_warn "로그인 실패/취소"
     else
-        log_dim "건너뜀. 이후 'docker exec -it --user vibe vibe-coder claude login' 으로 직접 실행 가능."
+        log_dim "건너뜀. 이후 'docker exec -it --user vibe vibe-coder-server claude login' 으로 직접 실행 가능."
     fi
 }

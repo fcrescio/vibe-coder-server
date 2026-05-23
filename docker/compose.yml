@@ -13,7 +13,7 @@ name: vibe-coder
 # ──────────────────────────────────────────────────────────────────────────
 
 services:
-  vibe-coder:
+  vibe-coder-server:
     # 로컬 빌드 (개발자용)
     build:
       context: ..
@@ -22,7 +22,7 @@ services:
     # Docker Hub 배포 사용자는 위 build: 블록 대신 image: 만 사용
     image: ${VIBECODER_IMAGE:-siamakerlab/vibe-coder-server:0.7.0}
 
-    container_name: vibe-coder
+    container_name: vibe-coder-server
     restart: unless-stopped
 
     # 호스트 UID/GID 매칭 → 마운트된 볼륨의 파일 소유권 충돌 방지

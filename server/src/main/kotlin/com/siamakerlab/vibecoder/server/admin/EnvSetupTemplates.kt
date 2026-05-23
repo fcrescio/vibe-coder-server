@@ -49,7 +49,7 @@ $flashHtml
   컴포넌트는 컨테이너 첫 부팅 후 사용자가 직접 다운로드해야 합니다.</p>
   <ol style="margin:8px 0 0 20px;line-height:1.8">
     <li><strong>이미지 내장 컴포넌트</strong> (JDK / Git / Node / Claude CLI) 는 이미 설치되어 있으므로 그대로 두세요.</li>
-    <li><strong>Claude 로그인</strong> 은 OAuth 가 필요해 터미널에서 한 번만 <code>docker exec -it --user vibe vibe-coder claude login</code> 실행. (자동화 불가)</li>
+    <li><strong>Claude 로그인</strong> 은 OAuth 가 필요해 터미널에서 한 번만 <code>docker exec -it --user vibe vibe-coder-server claude login</code> 실행. (자동화 불가)</li>
     <li>위 우측 <strong>"모두 설치/업데이트"</strong> 버튼 또는 카드 개별 버튼으로 Android SDK / MCP 를 설치. 진행은 실시간 로그로 확인.</li>
     <li>설치가 모두 ✓ 로 바뀌면 <a href="/projects">/projects</a> 로 이동해 첫 프로젝트를 만들고 콘솔에서 Claude 에게 안드로이드 앱 생성을 부탁하세요.</li>
   </ol>
@@ -137,7 +137,7 @@ docker compose up -d --force-recreate</pre>
                   <button type="submit" class="primary" style="width:auto;padding:8px 16px">${esc(label)}</button>
                 </form>
                 <details style="margin-top:8px"><summary class="dim" style="cursor:pointer;font-size:12px">CLI 로 직접 실행하려면</summary>
-                  <pre class="diff-block" style="margin-top:6px">docker exec -it vibe-coder vibe-doctor android</pre>
+                  <pre class="diff-block" style="margin-top:6px">docker exec -it vibe-coder-server vibe-doctor android</pre>
                 </details>"""
             }
 
@@ -183,7 +183,7 @@ $statusHint
 </div>
 
 <details style="margin-top:10px"><summary class="dim" style="cursor:pointer;font-size:13px">옵션 1 — 컨테이너 터미널에서 직접 로그인 (표준)</summary>
-  <pre class="diff-block" style="margin-top:6px">docker exec -it --user vibe vibe-coder claude login</pre>
+  <pre class="diff-block" style="margin-top:6px">docker exec -it --user vibe vibe-coder-server claude login</pre>
   <p class="hint">한 번만 진행. refresh token 으로 access token 은 자동 갱신됩니다. 터미널 접근이 가능하면 가장 단순.</p>
 </details>
 

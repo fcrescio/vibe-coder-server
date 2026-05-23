@@ -6,8 +6,8 @@
 
 ## Quick Reference
 
-- **Source repository**: <https://github.com/siamakerlab/vibe-coder>
-- **Issue tracker**: <https://github.com/siamakerlab/vibe-coder/issues>
+- **Source repository**: <https://github.com/siamakerlab/vibe-coder-server>
+- **Issue tracker**: <https://github.com/siamakerlab/vibe-coder-server/issues>
 - **Supported architectures**: `linux/amd64`, `linux/arm64`
 - **Supported tags**: `0.7.0`, `latest`
 - **Image size**: ~600MB (Android SDK and Gradle cache are downloaded into volumes separately)
@@ -32,7 +32,7 @@ docker compose up -d
 #    http://<PC IP>:17880/admin → create the first password
 
 # 5) Download the build environment (Android SDK, etc.)
-docker exec -it vibe-coder vibe-doctor
+docker exec -it vibe-coder-server vibe-doctor
 ```
 
 Then sign in from the Android console app using the same server URL and username/password.
@@ -105,12 +105,12 @@ ${VIBE_DATA_ROOT}/                          container
 ## doctor
 
 ```bash
-docker exec -it vibe-coder vibe-doctor              # interactive (recommended)
-docker exec -it vibe-coder vibe-doctor check        # diagnostics only
-docker exec    vibe-coder vibe-doctor install       # non-interactive bulk install
-docker exec -it vibe-coder vibe-doctor android      # Android SDK only
-docker exec -it vibe-coder vibe-doctor claude       # Claude auth only
-docker exec -it vibe-coder vibe-doctor mcp          # optional MCP servers only
+docker exec -it vibe-coder-server vibe-doctor              # interactive (recommended)
+docker exec -it vibe-coder-server vibe-doctor check        # diagnostics only
+docker exec    vibe-coder-server vibe-doctor install       # non-interactive bulk install
+docker exec -it vibe-coder-server vibe-doctor android      # Android SDK only
+docker exec -it vibe-coder-server vibe-doctor claude       # Claude auth only
+docker exec -it vibe-coder-server vibe-doctor mcp          # optional MCP servers only
 ```
 
 On the first run it walks through:
@@ -154,11 +154,11 @@ docker compose up -d --force-recreate
 
 ### "Build failed: SDK location not found"
 
-doctor has not been run. Execute `docker exec -it vibe-coder vibe-doctor android`.
+doctor has not been run. Execute `docker exec -it vibe-coder-server vibe-doctor android`.
 
 ### Claude is not authenticated
 
-Prefer mounting the host `~/.claude`. Otherwise run `docker exec -it --user vibe vibe-coder claude login`.
+Prefer mounting the host `~/.claude`. Otherwise run `docker exec -it --user vibe vibe-coder-server claude login`.
 
 ### Builds are slow
 
@@ -183,6 +183,6 @@ Mounting a Windows-side path (`/mnt/c/...`) makes build I/O 5–20× slower.
 
 ## Further Information / Build Instructions
 
-- Full documentation + maintainer multi-arch build guide: <https://github.com/siamakerlab/vibe-coder/blob/main/docker/README.md>
-- Changelog: <https://github.com/siamakerlab/vibe-coder/blob/main/CHANGELOG.md>
+- Full documentation + maintainer multi-arch build guide: <https://github.com/siamakerlab/vibe-coder-server/blob/main/docker/README.md>
+- Changelog: <https://github.com/siamakerlab/vibe-coder-server/blob/main/CHANGELOG.md>
 - Android console app and server source: in the same repository under `android-app/` and `server/`

@@ -55,7 +55,7 @@ fun Routing.consoleRoutes(
             }
             if (env.claudeAuth?.status == CheckStatus.ERROR) {
                 throw ApiException(503, "claude_auth_required",
-                    "Claude CLI 로그인이 필요합니다. 'docker exec -it --user vibe vibe-coder claude login' 후 다시 시도하세요.")
+                    "Claude CLI 로그인이 필요합니다. 'docker exec -it --user vibe vibe-coder-server claude login' 후 다시 시도하세요.")
             }
 
             val body = call.receive<PromptRequestDto>()

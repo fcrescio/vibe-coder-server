@@ -134,7 +134,7 @@ class EnvDiagnostics(private val config: ServerConfig) {
 해결: `docker exec` 의 기본 사용자가 root 라 vibe 사용자의 ~/.claude 가 아닌
 /root/.claude 에 저장됐습니다. 다음 명령으로 vibe 사용자로 실행해 다시 로그인하세요:
 
-  docker exec -it --user vibe vibe-coder claude login""",
+  docker exec -it --user vibe vibe-coder-server claude login""",
                 )
             } else {
                 CheckItemDto(
@@ -151,7 +151,7 @@ class EnvDiagnostics(private val config: ServerConfig) {
             return CheckItemDto(
                 CheckStatus.WARNING, "Claude Auth",
                 "자격증명 파일이 있으나 만료 시각을 확인할 수 없습니다.",
-                detail = "$credentials\n콘솔에서 'Not logged in' 이 뜨면 'docker exec -it --user vibe vibe-coder claude login' 으로 재로그인하세요.",
+                detail = "$credentials\n콘솔에서 'Not logged in' 이 뜨면 'docker exec -it --user vibe vibe-coder-server claude login' 으로 재로그인하세요.",
             )
         }
 
@@ -166,7 +166,7 @@ class EnvDiagnostics(private val config: ServerConfig) {
             expiresAt - nowMs < 6 * 3600 * 1000L -> CheckItemDto(
                 CheckStatus.WARNING, "Claude Auth",
                 "토큰이 곧 만료됩니다 (만료: $expiryStr)",
-                detail = "필요하면 'docker exec -it --user vibe vibe-coder claude login' 으로 재발급하세요.",
+                detail = "필요하면 'docker exec -it --user vibe vibe-coder-server claude login' 으로 재발급하세요.",
             )
             else -> CheckItemDto(
                 CheckStatus.OK, "Claude Auth",
@@ -224,7 +224,7 @@ class EnvDiagnostics(private val config: ServerConfig) {
         appendLine("자격증명 파일이 없습니다: $cfg/.credentials.json")
         appendLine()
         appendLine("도커 환경 — `--user vibe` 옵션 필수 (root 로 실행하면 /root/.claude 로 저장됨):")
-        appendLine("  docker exec -it --user vibe vibe-coder claude login")
+        appendLine("  docker exec -it --user vibe vibe-coder-server claude login")
         appendLine()
         appendLine("호스트 환경 (compose 가 ~/.claude 를 마운트한 경우 호스트에서 한 번만 해도 됨):")
         appendLine("  claude login")

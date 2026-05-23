@@ -87,8 +87,8 @@ case "$cmd" in
         install_android_sdk_all || log_err "Android SDK 설치 부분 실패"
         # claude/mcp는 인증/네트워크 필요 → 자동 모드에서는 안내만
         log_info "Claude 인증 / MCP는 인터랙티브 실행을 권장합니다."
-        log_dim "  docker exec -it vibe-coder vibe-doctor claude"
-        log_dim "  docker exec -it vibe-coder vibe-doctor mcp"
+        log_dim "  docker exec -it vibe-coder-server vibe-doctor claude"
+        log_dim "  docker exec -it vibe-coder-server vibe-doctor mcp"
         ;;
     interactive)
         print_banner
