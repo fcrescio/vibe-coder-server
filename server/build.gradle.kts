@@ -64,6 +64,9 @@ dependencies {
     implementation(libs.jakarta.mail.api)
     implementation(libs.jakarta.mail.impl)
 
+    // v0.34.0 — tar / tar.gz 백업 streaming (Apache Commons Compress).
+    implementation("org.apache.commons:commons-compress:1.27.1")
+
     // Test
     testImplementation(libs.junit)
     testImplementation(libs.kotest.assertions.core)

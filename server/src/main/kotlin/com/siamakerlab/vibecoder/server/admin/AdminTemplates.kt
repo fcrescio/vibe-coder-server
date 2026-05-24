@@ -93,6 +93,7 @@ object AdminTemplates {
     ${link("/emulator", "Emulator", "emulator")}
     ${link("/settings", "설정", "settings")}
     ${link("/settings/cache", "빌드 캐시", "cache")}
+    ${link("/backup", "백업", "backup")}
     ${link("/devices", "디바이스", "devices")}
     ${link("/audit", "감사 로그", "audit")}
     ${link("/logs", "빌드 로그 검색", "logs")}

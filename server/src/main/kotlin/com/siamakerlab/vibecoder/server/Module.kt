@@ -6,6 +6,7 @@ import com.siamakerlab.vibecoder.server.actions.ServerActionHandler
 import com.siamakerlab.vibecoder.server.actions.projectActionRoutes
 import com.siamakerlab.vibecoder.server.admin.AdminRoutesDeps
 import com.siamakerlab.vibecoder.server.admin.adminRoutes
+import com.siamakerlab.vibecoder.server.admin.backupRoutes
 import com.siamakerlab.vibecoder.server.admin.logSearchRoutes
 import com.siamakerlab.vibecoder.server.build.buildAutomationRoutes
 import com.siamakerlab.vibecoder.server.build.buildCacheRoutes
@@ -306,6 +307,8 @@ fun Application.module(ctx: ServerContext) {
             adminDeps, ctx.projects, ctx.buildScheduleRepo, ctx.buildWebhookSecretRepo,
             ctx.build, ctx.hub, ctx.clock,
         )
+        // v0.34.0 — 백업 / 복원 UI.
+        backupRoutes(adminDeps, ctx.workspace)
         emailSettingsRoutes(adminDeps, ctx.emailNotifier)
         webhookSettingsRoutes(adminDeps, ctx.webhookNotifier)
         emulatorRoutes(adminDeps, ctx.emulator)

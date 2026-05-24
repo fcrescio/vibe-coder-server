@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+#
+# vibe-coder-cli MVP (v0.34.0) — bash + curl + jq.
+#
+# 단순 wrapper. Go / Rust 정식 CLI 는 별도 리포 / 후속 minor.
+#
+# 의존성: bash 4+, curl, jq (선택 — 응답 pretty print).
+#
+# Usage:
+#   vibe login              # 대화형 — server URL + username + password (+ TOTP) 입력
+#   vibe logout
+#   vibe projects                              # 프로젝트 목록
+#   vibe console <projectId> <prompt...>       # 프롬프트 1회 발송
+#   vibe build  <projectId>                    # debug 빌드 큐 등록
+#   vibe status                                # 서버 상태
+#   vibe whoami                                # 현재 token / username
+#
+# 토큰 저장: $XDG_CONFIG_HOME/vibe-coder/config (없으면 ~/.config/vibe-coder/config).
+#   permissions 0600.
+
+set -euo pipefail
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/vibe-coder"
+CONFIG_FILE="$CONFIG_DIR/config"
+
+err() { echo "vibe: $*" >&2; exit 1; }
+
+need_tool() { command -v "$1" >/dev/null 2>&1 || err "missing dependency: $1"; }
+need_tool curl
+
+# jq 는 optional — 없어도 raw JSON 반환.
+HAS_JQ=0; command -v jq >/dev/null 2>&1 && HAS_JQ=1
+fmt_json() { if [ "$HAS_JQ" = 1 ]; then jq .; else cat; fi; }
+
+ensure_config_dir() {
+    mkdir -p "$CONFIG_DIR"
+    chmod 0700 "$CONFIG_DIR"
+}
+
+save_config() {
+    ensure_config_dir
+    {
+        echo "VIBE_SERVER_URL='${VIBE_SERVER_URL}'"
+        echo "VIBE_TOKEN='${VIBE_TOKEN}'"
+        echo "VIBE_USERNAME='${VIBE_USERNAME:-}'"
+    } > "$CONFIG_FILE"
+    chmod 0600 "$CONFIG_FILE"
+}
+
+load_config() {
+    [ -f "$CONFIG_FILE" ] || err "not logged in. run 'vibe login' first."
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+    [ -n "${VIBE_SERVER_URL:-}" ] || err "missing VIBE_SERVER_URL in config"
+    [ -n "${VIBE_TOKEN:-}" ] || err "missing VIBE_TOKEN in config"
+}
+
+api() {
+    local method="$1"; shift
+    local path="$1"; shift
+    local body="${1:-}"
+    if [ -n "$body" ]; then
+        curl -fsS -X "$method" "${VIBE_SERVER_URL}${path}" \
+            -H "Authorization: Bearer ${VIBE_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "$body"
+    else
+        curl -fsS -X "$method" "${VIBE_SERVER_URL}${path}" \
+            -H "Authorization: Bearer ${VIBE_TOKEN}"
+    fi
+}
+
+cmd_login() {
+    read -r -p "Server URL [http://localhost:17880]: " server
+    server="${server:-http://localhost:17880}"
+    read -r -p "Username: " user
+    read -r -s -p "Password: " pass; echo
+    local resp
+    resp=$(curl -fsS -X POST "${server}/api/auth/login" \
+        -H "Content-Type: application/json" \
+        --data "{\"username\":\"${user}\",\"password\":\"${pass}\",\"deviceName\":\"vibe-cli\"}" \
+        2>/dev/null) || {
+        # totp_required 검사
+        local err_resp
+        err_resp=$(curl -sS -X POST "${server}/api/auth/login" \
+            -H "Content-Type: application/json" \
+            --data "{\"username\":\"${user}\",\"password\":\"${pass}\",\"deviceName\":\"vibe-cli\"}" || true)
+        if echo "$err_resp" | grep -q "totp_required"; then
+            read -r -p "TOTP code: " totp
+            resp=$(curl -fsS -X POST "${server}/api/auth/login" \
+                -H "Content-Type: application/json" \
+                --data "{\"username\":\"${user}\",\"password\":\"${pass}\",\"deviceName\":\"vibe-cli\",\"totpCode\":\"${totp}\"}") \
+                || err "login failed: $err_resp"
+        else
+            err "login failed: $err_resp"
+        fi
+    }
+    VIBE_SERVER_URL="$server"
+    VIBE_TOKEN=$(echo "$resp" | (if [ "$HAS_JQ" = 1 ]; then jq -r .token; else sed -E 's/.*"token":"([^"]+)".*/\1/'; fi))
+    VIBE_USERNAME="$user"
+    save_config
+    echo "logged in as $user → $server"
+    echo "config saved to $CONFIG_FILE"
+}
+
+cmd_logout() {
+    [ -f "$CONFIG_FILE" ] && rm "$CONFIG_FILE" && echo "config removed: $CONFIG_FILE" || echo "no config"
+}
+
+cmd_whoami() {
+    load_config
+    echo "server:   $VIBE_SERVER_URL"
+    echo "username: ${VIBE_USERNAME:-(unknown)}"
+    echo "token:    ${VIBE_TOKEN:0:8}…"
+}
+
+cmd_projects() {
+    load_config
+    api GET /api/projects | fmt_json
+}
+
+cmd_status() {
+    load_config
+    api GET /api/server/status | fmt_json
+}
+
+cmd_console() {
+    load_config
+    [ $# -ge 2 ] || err "usage: vibe console <projectId> <prompt...>"
+    local pid="$1"; shift
+    local prompt="$*"
+    # JSON escape (단순 — backslash + double-quote 만)
+    local escaped
+    escaped=$(printf '%s' "$prompt" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    api POST "/api/projects/${pid}/claude/console/prompt" "{\"text\":\"${escaped}\"}" | fmt_json
+    echo
+    echo "(prompt sent — watch the WebSocket at /ws/projects/${pid}/console/logs)"
+}
+
+cmd_build() {
+    load_config
+    [ $# -ge 1 ] || err "usage: vibe build <projectId>"
+    local pid="$1"
+    api POST "/api/projects/${pid}/build/debug" "" | fmt_json
+}
+
+cmd_help() {
+    cat <<'HELP'
+vibe-coder-cli MVP (v0.34.0)
+
+Commands:
+  vibe login                              대화형 로그인 (server URL + username + password [+ TOTP])
+  vibe logout                             로컬 토큰 삭제
+  vibe whoami                             현재 server / username / token prefix 표시
+  vibe projects                           프로젝트 목록 (JSON)
+  vibe status                             서버 상태 (JSON)
+  vibe console <projectId> <prompt...>    프롬프트 1회 발송 (WS 는 별도 도구로 view)
+  vibe build  <projectId>                 debug 빌드 큐 등록
+
+Config:
+  $XDG_CONFIG_HOME/vibe-coder/config (없으면 ~/.config/vibe-coder/config)
+  permissions 0600.
+
+Dependencies:
+  - curl (required)
+  - jq (optional — pretty print)
+
+This is a minimum-viable scaffold. Go-based vibe-cli with WS subscribe,
+project register, file upload 등은 후속 minor / 별도 리포에서.
+HELP
+}
+
+main() {
+    local cmd="${1:-help}"; shift || true
+    case "$cmd" in
+        login)    cmd_login ;;
+        logout)   cmd_logout ;;
+        whoami)   cmd_whoami ;;
+        projects) cmd_projects ;;
+        status)   cmd_status ;;
+        console)  cmd_console "$@" ;;
+        build)    cmd_build "$@" ;;
+        help|-h|--help) cmd_help ;;
+        *) err "unknown command: $cmd (try 'vibe help')" ;;
+    esac
+}
+
+main "$@"
