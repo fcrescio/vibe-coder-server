@@ -170,6 +170,14 @@ fun main(args: Array<String>) {
     val actionHandler = ServerActionHandler(projects, build, git, hub, sessionManager)
     val capabilityService = CapabilityService(env, actionRegistry)
     val claudeStatusService = ClaudeStatusService(config, workspace, sessionManager)
+    // v0.21.0 — usage 백그라운드 폴링 + 임계치 알림.
+    val claudeUsageMonitor = com.siamakerlab.vibecoder.server.claude.ClaudeUsageMonitor(
+        statusService = claudeStatusService,
+        emailNotifier = emailNotifier,
+        configProvider = { config.claude.usage },
+        activeProjectsProvider = { projectRepo.list().map { it.id } },
+    )
+    claudeUsageMonitor.start()
 
     val ctx = ServerContext(
         config = config,
@@ -213,10 +221,12 @@ fun main(args: Array<String>) {
         actionHandler = actionHandler,
         capabilityService = capabilityService,
         claudeStatusService = claudeStatusService,
+        claudeUsageMonitor = claudeUsageMonitor,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {
         kotlinx.coroutines.runBlocking { sessionManager.shutdown() }
+        runCatching { claudeUsageMonitor.shutdown() }
     })
 
     printBanner(config, workspaceRoot, pairing, authService.adminExists())

@@ -2,7 +2,7 @@ server:
   name: Vibe Coder Server
   host: 0.0.0.0
   port: 17880
-  version: 0.20.0
+  version: 0.21.0
 
 workspace:
   # Each project lives at <root>/<projectId>/.
@@ -28,6 +28,16 @@ claude:
   path: auto
   timeoutMinutes: 60
   autoBuildAfterTask: false
+  # v0.21.0 — 사용량 모니터링 + 임계치 이메일 알림.
+  # enabled=false 면 폴링/알림 둘 다 끔. pollIntervalMinutes 너무 짧으면
+  # claude /status 호출 비용↑. warnThresholdPercent 도달 시 1회 + critical 도달 시
+  # 1회 transition 기반 발송 (재발송 방지 10분 cooldown).
+  usage:
+    enabled: true
+    pollIntervalMinutes: 5
+    warnThresholdPercent: 80
+    criticalThresholdPercent: 95
+    scratchOnly: true
 
 build:
   timeoutMinutes: 30

@@ -177,6 +177,7 @@ object AdminTemplates {
         deviceCount: Int,
         runningBuilds: Int,
         claudeAuth: com.siamakerlab.vibecoder.shared.dto.CheckItemDto? = null,
+        claudeUsage: com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto? = null,
         csrf: String? = null,
     ): String {
         val claudeBadge = if (status.claudeAvailable) "<span class=\"ok\">✓ OK</span>" else "<span class=\"warn\">✗ 미설치</span>"
@@ -230,9 +231,67 @@ object AdminTemplates {
       <dt>연결된 디바이스</dt><dd>${deviceCount}개</dd>
     </dl>
   </div>
+
+  ${renderClaudeUsageCard(claudeUsage)}
 </section>
 """
         )
+    }
+
+    /**
+     * v0.21.0 — 대시보드 Claude 사용량 카드.
+     *
+     * `ClaudeUsageMonitor` 의 마지막 snapshot 이 없거나 percent 추출 실패 시 비활성
+     * 안내. 추출된 percent 가 있으면 80%↑ 노랑 / 95%↑ 빨강 strip + reset 시각.
+     */
+    private fun renderClaudeUsageCard(snapshot: com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto?): String {
+        if (snapshot == null) {
+            return """
+  <div class="card">
+    <h2>Claude 사용량 (v0.21.0)</h2>
+    <p class="hint">아직 사용량 정보 없음. 백그라운드 폴링이 다음 사이클(기본 5분)에 갱신합니다. <code>/settings/email</code> 에서 임계치 조정 가능.</p>
+  </div>"""
+        }
+        val pct = snapshot.usagePercent
+        if (pct == null) {
+            return """
+  <div class="card">
+    <h2>Claude 사용량 (v0.21.0)</h2>
+    <dl>
+      <dt>마지막 폴링</dt><dd>${esc(snapshot.updatedAt)}</dd>
+      <dt>quota line</dt><dd><code>${esc(snapshot.quotaRemaining ?: "(파싱 실패)")}</code></dd>
+    </dl>
+    <p class="hint">Claude CLI <code>/status</code> 출력에서 percent 를 추출하지 못했습니다. CLI 버전이 새 포맷일 가능성.</p>
+  </div>"""
+        }
+        val level = when {
+            pct >= 95 -> "warn"
+            pct >= 80 -> "warn"
+            else -> "ok"
+        }
+        val color = when {
+            pct >= 95 -> "#dc2626"
+            pct >= 80 -> "#d97706"
+            else -> "#059669"
+        }
+        val resetLine = if (snapshot.resetAt != null) {
+            """<dt>리셋</dt><dd>${esc(snapshot.resetAt)}</dd>"""
+        } else ""
+        val barWidth = pct.coerceIn(0, 100)
+        return """
+  <div class="card">
+    <h2>Claude 사용량 (v0.21.0)</h2>
+    <dl>
+      <dt>사용량</dt><dd><span class="$level">${pct}%</span></dd>
+      $resetLine
+      <dt>plan</dt><dd>${esc(snapshot.plan ?: "-")}</dd>
+      <dt>model</dt><dd>${esc(snapshot.model ?: "-")}</dd>
+    </dl>
+    <div style="margin-top:8px; background:#e5e7eb; border-radius:4px; height:8px; overflow:hidden;">
+      <div style="width:${barWidth}%; background:${color}; height:100%;"></div>
+    </div>
+    <p class="hint">임계치 도달 시 등록된 이메일로 알림. 설정: <a href="/settings/email">/settings/email</a></p>
+  </div>"""
     }
 
     // ────────────────────────────────────────────────────────────────────

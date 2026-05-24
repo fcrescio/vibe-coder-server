@@ -44,6 +44,30 @@ data class ClaudeSection(
     val path: String = "auto",
     val timeoutMinutes: Int = 60,
     val autoBuildAfterTask: Boolean = false,
+    /** v0.21.0 — usage 모니터링 정책. */
+    val usage: ClaudeUsageSection = ClaudeUsageSection(),
+)
+
+/**
+ * v0.21.0 — Claude 사용량 모니터링 + 임계치 알림.
+ *
+ * - [enabled]                : 폴링 + 임계치 트리거 활성화. 비활성 시 모든 알림 no-op.
+ * - [pollIntervalMinutes]    : 백그라운드 폴링 주기 (기본 5분). claude /status 호출은
+ *                              ClaudeStatusService TTL (60s) 캐시를 우회하므로 너무
+ *                              짧게 잡으면 비용↑.
+ * - [warnThresholdPercent]   : usagePercent 가 이 값 이상으로 transition 할 때 1회 알림.
+ *                              기본 80 (= "사용량 80% 도달").
+ * - [criticalThresholdPercent]: 더 강한 임계치. 기본 95.
+ * - [scratchOnly]            : true 면 __scratch__ 프로젝트만 폴링. 단일 사용자 가정
+ *                              에선 모든 프로젝트가 같은 quota 를 공유하므로 기본값.
+ */
+@Serializable
+data class ClaudeUsageSection(
+    val enabled: Boolean = true,
+    val pollIntervalMinutes: Int = 5,
+    val warnThresholdPercent: Int = 80,
+    val criticalThresholdPercent: Int = 95,
+    val scratchOnly: Boolean = true,
 )
 
 @Serializable

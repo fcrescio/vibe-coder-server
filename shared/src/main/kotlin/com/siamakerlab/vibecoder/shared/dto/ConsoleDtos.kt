@@ -24,6 +24,9 @@ data class PromptAcceptedDto(val seq: Long)
  * - `model`         : last-seen model name from session init.
  * - `plan`          : subscription plan name parsed from `/status` (Phase E).
  * - `quotaRemaining`: free-form quota summary parsed from `/status` (Phase E).
+ * - `usagePercent`  : (v0.21.0) extracted percent value (0-100) from quota line if present.
+ *                     Null = couldn't parse (older CLI / different output format).
+ * - `resetAt`       : (v0.21.0) ISO-ish reset timestamp extracted from quota output.
  * - `updatedAt`     : ISO-8601 timestamp of the snapshot.
  */
 @Serializable
@@ -33,5 +36,7 @@ data class ClaudeStatusDto(
     val model: String? = null,
     val plan: String? = null,
     val quotaRemaining: String? = null,
+    val usagePercent: Int? = null,
+    val resetAt: String? = null,
     val updatedAt: String,
 )

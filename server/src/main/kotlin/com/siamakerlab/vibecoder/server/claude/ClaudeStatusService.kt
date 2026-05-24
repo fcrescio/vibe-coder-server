@@ -44,7 +44,7 @@ class ClaudeStatusService(
         val parsed = runCatching { runStatusCommand(projectId) }
             .getOrElse {
                 log.debug(it) { "[$projectId] /status invocation failed; falling back to session-manager state" }
-                ParsedStatus(model = null, plan = null, quotaRemaining = null)
+                ParsedStatus(model = null, plan = null, quotaRemaining = null, usagePercent = null, resetAt = null)
             }
         val dto = ClaudeStatusDto(
             sessionId = sessionId,
@@ -52,6 +52,8 @@ class ClaudeStatusService(
             model = parsed.model,
             plan = parsed.plan,
             quotaRemaining = parsed.quotaRemaining,
+            usagePercent = parsed.usagePercent,
+            resetAt = parsed.resetAt,
             updatedAt = Instant.now().toString(),
         )
         cache[projectId] = Cached(dto, Instant.now().plus(ttl))
@@ -81,22 +83,50 @@ class ClaudeStatusService(
         val model: String?,
         val plan: String?,
         val quotaRemaining: String?,
+        /** v0.21.0 — quota/usage 줄에서 추출한 사용량 percent. */
+        val usagePercent: Int?,
+        /** v0.21.0 — quota line 의 reset 시각 (free-form). */
+        val resetAt: String?,
     )
 
+    /**
+     * Best-effort `claude /status` parser.
+     *
+     * `claude /status` 출력 포맷은 릴리즈마다 미세하게 바뀌므로 정규식만으로 100%
+     * 잡지 않는다. v0.21.0 에선 다음 휴리스틱:
+     *   - "Model:" / "Plan:" 의 colon-separated value
+     *   - "quota|remaining|usage" 포함 줄 전체를 quotaRemaining 으로 저장 (UI 표시용)
+     *   - 같은 줄에 N% 패턴이 있으면 usagePercent 로 추출 (임계치 트리거용)
+     *   - "reset" + "at|in" 포함 줄을 resetAt 으로 저장
+     */
     private fun parseOutput(raw: String): ParsedStatus {
         val lines = raw.lines()
         var model: String? = null
         var plan: String? = null
         var quota: String? = null
+        var usagePercent: Int? = null
+        var resetAt: String? = null
+        val percentRegex = Regex("(\\d{1,3})%")
         for (line in lines) {
             val lower = line.lowercase()
             if (model == null && lower.contains("model")) model = line.substringAfter(":", "").trim().ifBlank { null }
             if (plan == null && lower.contains("plan")) plan = line.substringAfter(":", "").trim().ifBlank { null }
             if (quota == null && (lower.contains("quota") || lower.contains("remaining") || lower.contains("usage"))) {
                 quota = line.trim().ifBlank { null }
+                // Same line: extract percent if any. Interpret as USAGE — if the line
+                // says "remaining" we flip the value (e.g. "20% remaining" → 80% used).
+                percentRegex.find(line)?.let { match ->
+                    val n = match.groupValues[1].toIntOrNull()?.coerceIn(0, 100)
+                    if (n != null) {
+                        usagePercent = if (lower.contains("remaining")) 100 - n else n
+                    }
+                }
+            }
+            if (resetAt == null && lower.contains("reset") && (lower.contains(" at") || lower.contains(" in"))) {
+                resetAt = line.trim().ifBlank { null }
             }
         }
-        return ParsedStatus(model, plan, quota)
+        return ParsedStatus(model, plan, quota, usagePercent, resetAt)
     }
 
     private fun resolveClaudeCmd(): String {

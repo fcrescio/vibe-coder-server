@@ -121,6 +121,8 @@ data class ServerContext(
     val actionHandler: ServerActionHandler,
     val capabilityService: CapabilityService,
     val claudeStatusService: ClaudeStatusService,
+    /** v0.21.0 — 백그라운드 사용량 폴링 + 임계치 알림. */
+    val claudeUsageMonitor: com.siamakerlab.vibecoder.server.claude.ClaudeUsageMonitor,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -199,6 +201,7 @@ fun Application.module(ctx: ServerContext) {
             statusService = ctx.status,
             envDiagnostics = ctx.env,
             audit = ctx.auditLogger,
+            claudeUsageMonitor = ctx.claudeUsageMonitor,
         )
         adminRoutes(adminDeps)
         envSetupRoutes(adminDeps, ctx.envSetup, ctx.claudeAuth, ctx.claudeLogin)
