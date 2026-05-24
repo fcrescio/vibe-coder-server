@@ -9,6 +9,7 @@ import com.siamakerlab.vibecoder.server.admin.adminRoutes
 import com.siamakerlab.vibecoder.server.admin.backupRoutes
 import com.siamakerlab.vibecoder.server.admin.logSearchRoutes
 import com.siamakerlab.vibecoder.server.admin.multiConsoleRoutes
+import com.siamakerlab.vibecoder.server.admin.usersRoutes
 import com.siamakerlab.vibecoder.server.build.buildAutomationRoutes
 import com.siamakerlab.vibecoder.server.build.buildCacheRoutes
 import com.siamakerlab.vibecoder.server.build.dependencyAuditRoutes
@@ -168,6 +169,8 @@ data class ServerContext(
     val gradleWrapperService: com.siamakerlab.vibecoder.server.build.GradleWrapperService,
     val codeStatsService: com.siamakerlab.vibecoder.server.projects.CodeStatsService,
     val codeSearchService: com.siamakerlab.vibecoder.server.projects.CodeSearchService,
+    /** v0.37.0 — usersRoutes 가 신규 password 해싱에 사용. */
+    val hasher: com.siamakerlab.vibecoder.server.auth.PasswordHasher,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -321,6 +324,8 @@ fun Application.module(ctx: ServerContext) {
         )
         // v0.36.0 — N-pane multi-console.
         multiConsoleRoutes(adminDeps, ctx.projects)
+        // v0.37.0 — 멀티 사용자 / 팀 (admin / member).
+        usersRoutes(adminDeps, ctx.adminUserRepo, ctx.deviceRepo, ctx.hasher)
         emailSettingsRoutes(adminDeps, ctx.emailNotifier)
         webhookSettingsRoutes(adminDeps, ctx.webhookNotifier)
         emulatorRoutes(adminDeps, ctx.emulator)

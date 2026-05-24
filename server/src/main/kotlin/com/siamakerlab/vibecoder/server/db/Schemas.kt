@@ -29,6 +29,19 @@ object AdminUsers : Table("admin_users") {
      */
     val totpSecret = varchar("totp_secret", 64).nullable()
     val totpEnabledAt = varchar("totp_enabled_at", 64).nullable()
+    /**
+     * v0.37.0 — Role-based access control.
+     *
+     *   admin   — 모든 권한 (사용자 관리 / 설정 / audit / backup / agents / 2FA)
+     *   member  — 프로젝트 / 콘솔 / 빌드 (자기 작업), 관리 페이지 차단
+     *
+     * 첫 admin (setup) 은 항상 admin. 신규 사용자 default = member.
+     * viewer (read-only) 는 후속 minor 에서 추가 (현재는 admin / member 만).
+     *
+     * 새 컬럼이 nullable + default("admin") 이라 기존 row 는 자동 admin 으로 마이그.
+     * (단일 사용자 환경 가정의 안전한 default — 권한 축소를 자동 적용하지 않음.)
+     */
+    val role = varchar("role", 16).default("admin")
     override val primaryKey = PrimaryKey(id)
 }
 

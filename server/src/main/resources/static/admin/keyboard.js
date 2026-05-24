@@ -30,6 +30,7 @@
     'g l': '/logs',
     'g f': '/code-search',
     'g m': '/multi-console',
+    'g u': '/users',
   };
 
   function isTypingTarget(el) {

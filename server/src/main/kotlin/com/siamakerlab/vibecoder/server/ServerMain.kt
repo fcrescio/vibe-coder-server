@@ -281,6 +281,7 @@ fun main(args: Array<String>) {
         gradleWrapperService = gradleWrapperService,
         codeStatsService = codeStatsService,
         codeSearchService = codeSearchService,
+        hasher = passwordHasher,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {

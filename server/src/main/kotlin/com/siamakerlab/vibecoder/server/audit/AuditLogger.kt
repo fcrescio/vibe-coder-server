@@ -368,6 +368,34 @@ class AuditLogger(
         )
     }
 
+    // ── Users (v0.37.0+) ─────────────────────────────────────────────
+
+    fun userCreate(userId: String?, ip: String?, newUsername: String, role: String) = safe {
+        repo.insert(
+            action = Actions.USER_CREATE, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "user", resourceId = newUsername,
+            detail = jsonDetail { put("role", role) },
+        )
+    }
+
+    fun userRoleChange(userId: String?, ip: String?, targetUsername: String, newRole: String) = safe {
+        repo.insert(
+            action = Actions.USER_ROLE_CHANGE, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "user", resourceId = targetUsername,
+            detail = jsonDetail { put("role", newRole) },
+        )
+    }
+
+    fun userDelete(userId: String?, ip: String?, targetUsername: String) = safe {
+        repo.insert(
+            action = Actions.USER_DELETE, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "user", resourceId = targetUsername,
+        )
+    }
+
     object Actions {
         const val AUTH_LOGIN = "auth.login"
         const val AUTH_LOGOUT = "auth.logout"
@@ -402,6 +430,9 @@ class AuditLogger(
         const val WEBHOOK_SECRET_DELETE = "webhook.secret.delete"
         const val WEBHOOK_BUILD_TRIGGER = "webhook.build.trigger"
         const val WRAPPER_UPDATE = "wrapper.update"
+        const val USER_CREATE = "user.create"
+        const val USER_ROLE_CHANGE = "user.role.change"
+        const val USER_DELETE = "user.delete"
     }
 
     object Results {

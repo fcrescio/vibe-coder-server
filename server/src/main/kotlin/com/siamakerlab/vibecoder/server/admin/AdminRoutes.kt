@@ -414,7 +414,11 @@ internal data class WebSession(
      * 로 검증한다.
      */
     val csrf: String,
-)
+    /** v0.37.0 — "admin" | "member". 관리 페이지 가드용. */
+    val role: String = "admin",
+) {
+    val isAdmin: Boolean get() = role == "admin"
+}
 
 /** 세션 유효 시 WebSession, 아니면 적절한 곳으로 redirect 후 null 반환. */
 internal suspend fun io.ktor.server.routing.RoutingContext.requireSessionOrRedirect(
@@ -458,7 +462,21 @@ internal suspend fun io.ktor.server.routing.RoutingContext.requireSessionOrRedir
     return WebSession(
         token = token, userId = user.id, username = user.username, deviceId = device.id,
         csrf = com.siamakerlab.vibecoder.server.auth.CsrfTokens.tokenFor(token),
+        role = user.role,
     )
+}
+
+/**
+ * v0.37.0 — admin role 가드. Member 가 접근하면 dashboard 로 redirect (403 redirect).
+ * `requireSessionOrRedirect` 다음에 chain 으로 사용.
+ */
+internal suspend fun io.ktor.server.routing.RoutingContext.requireAdminOrRedirect(
+    sess: WebSession,
+): Boolean {
+    if (sess.isAdmin) return true
+    val msg = java.net.URLEncoder.encode("관리자 전용 페이지입니다.", Charsets.UTF_8)
+    call.respondRedirect("/?err=$msg")
+    return false
 }
 
 private fun setSessionCookie(call: ApplicationCall, token: String) {

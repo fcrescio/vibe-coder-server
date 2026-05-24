@@ -1,0 +1,254 @@
+package com.siamakerlab.vibecoder.server.admin
+
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
+import com.siamakerlab.vibecoder.server.auth.PasswordHasher
+import com.siamakerlab.vibecoder.server.auth.PasswordPolicy
+import com.siamakerlab.vibecoder.server.auth.UsernamePolicy
+import com.siamakerlab.vibecoder.server.core.Ids
+import com.siamakerlab.vibecoder.server.repo.AdminUserRepository
+import com.siamakerlab.vibecoder.server.repo.DeviceRepository
+import io.github.oshai.kotlinlogging.KotlinLogging
+import io.ktor.http.ContentType
+import io.ktor.server.application.call
+import io.ktor.server.request.receiveParameters
+import io.ktor.server.response.respondRedirect
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.Routing
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+
+private val log = KotlinLogging.logger {}
+
+/**
+ * v0.37.0 — `/users` SSR (admin 만).
+ *
+ *   GET  /users                       — 전체 사용자 + 권한 변경 / 삭제
+ *   POST /users                       — 신규 사용자 (default role=member)
+ *   POST /users/{id}/role             — admin <-> member
+ *   POST /users/{id}/delete           — 사용자 삭제 (device cascade)
+ *
+ * 가드:
+ *   - 모든 endpoint 가 admin role 만. member 가 접근하면 403 redirect /login.
+ *   - 마지막 admin 강등/삭제 차단 (lockout 방지).
+ */
+fun Routing.usersRoutes(
+    deps: AdminRoutesDeps,
+    userRepo: AdminUserRepository,
+    deviceRepo: DeviceRepository,
+    hasher: PasswordHasher,
+) {
+    get("/users") {
+        val sess = requireSessionOrRedirect(deps) ?: return@get
+        val me = userRepo.findById(sess.userId) ?: run { call.respondRedirect("/login"); return@get }
+        if (!me.isAdmin) {
+            call.respondRedirect("/?err=${enc("관리자 전용 페이지")}")
+            return@get
+        }
+        val users = userRepo.listAll()
+        val adminCount = userRepo.adminCount()
+        val ok = call.request.queryParameters["ok"]
+        val err = call.request.queryParameters["err"]
+        call.respondText(
+            UsersTemplates.page(sess.username, sess.userId, users, adminCount, ok, err, sess.csrf),
+            ContentType.Text.Html,
+        )
+    }
+
+    post("/users") {
+        val sess = requireSessionOrRedirect(deps) ?: return@post
+        requireCsrf()
+        val me = userRepo.findById(sess.userId) ?: run { call.respondRedirect("/login"); return@post }
+        if (!me.isAdmin) {
+            call.respondRedirect("/?err=${enc("관리자 전용")}")
+            return@post
+        }
+        val form = call.receiveParameters()
+        val username = form["username"]?.trim().orEmpty()
+        val password = form["password"].orEmpty()
+        val role = form["role"]?.trim()?.takeIf { it in setOf("admin", "member") } ?: "member"
+
+        UsernamePolicy.violation(username)?.let {
+            call.respondRedirect("/users?err=${enc(it)}")
+            return@post
+        }
+        PasswordPolicy.violation(password)?.let {
+            call.respondRedirect("/users?err=${enc(it)}")
+            return@post
+        }
+        if (userRepo.findByUsername(username) != null) {
+            call.respondRedirect("/users?err=${enc("이미 존재하는 username: $username")}")
+            return@post
+        }
+        val hash = hasher.hash(password)
+        userRepo.insert(Ids.deviceId(), username, hash, role)
+        log.info { "user created: $username role=$role by ${sess.username}" }
+        deps.audit.userCreate(sess.userId, call.request.local.remoteHost, username, role)
+        call.respondRedirect("/users?ok=${enc("user '$username' ($role) 생성됨")}")
+    }
+
+    post("/users/{id}/role") {
+        val sess = requireSessionOrRedirect(deps) ?: return@post
+        requireCsrf()
+        val me = userRepo.findById(sess.userId) ?: run { call.respondRedirect("/login"); return@post }
+        if (!me.isAdmin) {
+            call.respondRedirect("/?err=${enc("관리자 전용")}")
+            return@post
+        }
+        val targetId = call.parameters["id"]!!
+        val form = call.receiveParameters()
+        val newRole = form["role"]?.trim()?.takeIf { it in setOf("admin", "member") } ?: run {
+            call.respondRedirect("/users?err=${enc("invalid role")}")
+            return@post
+        }
+        val target = userRepo.findById(targetId) ?: run {
+            call.respondRedirect("/users?err=${enc("user not found")}")
+            return@post
+        }
+        // 마지막 admin 강등 차단
+        if (target.isAdmin && newRole != "admin" && userRepo.adminCount() <= 1) {
+            call.respondRedirect("/users?err=${enc("마지막 admin 은 강등할 수 없습니다.")}")
+            return@post
+        }
+        userRepo.setRole(targetId, newRole)
+        log.info { "role change: ${target.username} → $newRole by ${sess.username}" }
+        deps.audit.userRoleChange(sess.userId, call.request.local.remoteHost, target.username, newRole)
+        call.respondRedirect("/users?ok=${enc("${target.username} → $newRole")}")
+    }
+
+    post("/users/{id}/delete") {
+        val sess = requireSessionOrRedirect(deps) ?: return@post
+        requireCsrf()
+        val me = userRepo.findById(sess.userId) ?: run { call.respondRedirect("/login"); return@post }
+        if (!me.isAdmin) {
+            call.respondRedirect("/?err=${enc("관리자 전용")}")
+            return@post
+        }
+        val targetId = call.parameters["id"]!!
+        val target = userRepo.findById(targetId) ?: run {
+            call.respondRedirect("/users?err=${enc("user not found")}")
+            return@post
+        }
+        if (target.id == sess.userId) {
+            call.respondRedirect("/users?err=${enc("자기 자신은 삭제할 수 없습니다.")}")
+            return@post
+        }
+        if (target.isAdmin && userRepo.adminCount() <= 1) {
+            call.respondRedirect("/users?err=${enc("마지막 admin 은 삭제할 수 없습니다.")}")
+            return@post
+        }
+        // device row 도 cascade — 토큰 즉시 무효화.
+        val devices = deviceRepo.listAll().filter { it.userId == targetId }
+        for (d in devices) deviceRepo.deleteById(d.id)
+        userRepo.delete(targetId)
+        log.info { "user delete: ${target.username} (devices=${devices.size}) by ${sess.username}" }
+        deps.audit.userDelete(sess.userId, call.request.local.remoteHost, target.username)
+        call.respondRedirect("/users?ok=${enc("user '${target.username}' 삭제됨 (devices=${devices.size})")}")
+    }
+}
+
+private fun enc(s: String) = URLEncoder.encode(s, StandardCharsets.UTF_8)
+
+private object UsersTemplates {
+    private fun esc(s: String?): String =
+        s.orEmpty()
+            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace("\"", "&quot;").replace("'", "&#39;")
+
+    fun page(
+        currentUsername: String,
+        currentUserId: String,
+        users: List<com.siamakerlab.vibecoder.server.repo.AdminUserRow>,
+        adminCount: Long,
+        ok: String?,
+        err: String?,
+        csrf: String?,
+    ): String {
+        val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
+        val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""
+
+        val rows = if (users.isEmpty()) {
+            """<tr><td colspan="5" class="dim" style="text-align:center;padding:14px">no users</td></tr>"""
+        } else users.joinToString("") { u ->
+            val isMe = u.id == currentUserId
+            val roleBadge = if (u.isAdmin)
+                """<span class="ok">admin</span>"""
+            else
+                """<span class="dim">member</span>"""
+            val totpBadge = if (u.totpEnabled) """ <span class="dim" style="font-size:11px">🔐 2FA</span>""" else ""
+            val canDemote = !isMe && (!u.isAdmin || adminCount > 1)
+            val canDelete = !isMe && (!u.isAdmin || adminCount > 1)
+            val newRole = if (u.isAdmin) "member" else "admin"
+            val roleBtnLabel = if (u.isAdmin) "↓ member" else "↑ admin"
+
+            """<tr>
+              <td><strong>${esc(u.username)}</strong>${if (isMe) " <small class=\"dim\">(나)</small>" else ""}$totpBadge</td>
+              <td>$roleBadge</td>
+              <td class="dim" style="font-family:ui-monospace,Menlo,monospace;font-size:11px">${esc(u.createdAt)}</td>
+              <td class="dim" style="font-family:ui-monospace,Menlo,monospace;font-size:11px">${esc(u.lastLoginAt ?: "-")}</td>
+              <td>
+                ${if (canDemote) """
+                <form method="post" action="/users/${esc(u.id)}/role" style="display:inline">
+                  ${CsrfTokens.hiddenInput(csrf)}
+                  <input type="hidden" name="role" value="$newRole">
+                  <button type="submit" class="chip chip-link" onclick="return confirm('${esc(u.username)} → $newRole?')">$roleBtnLabel</button>
+                </form>""" else ""}
+                ${if (canDelete) """
+                <form method="post" action="/users/${esc(u.id)}/delete" style="display:inline">
+                  ${CsrfTokens.hiddenInput(csrf)}
+                  <button type="submit" class="chip chip-danger" onclick="return confirm('user ${esc(u.username)} 영구 삭제? device row 도 cascade.')">삭제</button>
+                </form>""" else ""}
+              </td>
+            </tr>"""
+        }
+
+        return AdminTemplates.shell(
+            title = "사용자 관리",
+            username = currentUsername,
+            currentPath = "/users",
+            csrf = csrf,
+            body = """
+<header>
+  <h1>사용자 관리 <small class="dim" style="font-size:14px;font-weight:400">v0.37.0 — admin / member · admin 수 = $adminCount</small></h1>
+</header>
+
+$okHtml
+$errHtml
+
+<table class="devices" style="margin-bottom:14px">
+  <thead><tr><th>username</th><th>role</th><th>가입</th><th>마지막 로그인</th><th>동작</th></tr></thead>
+  <tbody>$rows</tbody>
+</table>
+
+<div class="card">
+  <h2 style="margin-top:0">신규 사용자 추가</h2>
+  <form method="post" action="/users" style="display:grid;grid-template-columns:1fr 1fr 140px auto;gap:8px;align-items:end">
+    ${CsrfTokens.hiddenInput(csrf)}
+    <label style="margin:0">username
+      <input name="username" required pattern="[a-zA-Z0-9._\\-]{3,32}" placeholder="alice">
+    </label>
+    <label style="margin:0">password (≥ 8자)
+      <input name="password" type="password" required minlength="8">
+    </label>
+    <label style="margin:0">role
+      <select name="role">
+        <option value="member" selected>member</option>
+        <option value="admin">admin</option>
+      </select>
+    </label>
+    <div>
+      <button type="submit" class="primary" style="padding:8px 14px">생성</button>
+    </div>
+  </form>
+  <p class="hint" style="margin-top:10px;font-size:12px">
+    Role 정책: <strong>admin</strong> = 사용자 관리 / 설정 / audit / backup / 2FA / agents 등 관리 페이지 접근.
+    <strong>member</strong> = 프로젝트 / 콘솔 / 빌드 등 작업 페이지만. 마지막 admin 은 강등/삭제 불가.
+    팀 사용은 v0.37.0 의 첫 단계 — 프로젝트별 ACL 은 후속 minor.
+  </p>
+</div>
+"""
+        )
+    }
+}

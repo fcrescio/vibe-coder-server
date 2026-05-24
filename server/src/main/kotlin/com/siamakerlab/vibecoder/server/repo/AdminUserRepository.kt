@@ -3,6 +3,8 @@ package com.siamakerlab.vibecoder.server.repo
 import com.siamakerlab.vibecoder.server.core.Clock
 import com.siamakerlab.vibecoder.server.db.AdminUsers
 import org.jetbrains.exposed.sql.ResultRow
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -18,8 +20,11 @@ data class AdminUserRow(
     /** v0.26.0 — TOTP. null = 2FA 비활성. */
     val totpSecret: String? = null,
     val totpEnabledAt: String? = null,
+    /** v0.37.0 — "admin" | "member". 첫 admin (setup) 은 항상 admin. */
+    val role: String = "admin",
 ) {
     val totpEnabled: Boolean get() = !totpSecret.isNullOrBlank()
+    val isAdmin: Boolean get() = role == "admin"
 }
 
 /**
@@ -48,7 +53,7 @@ class AdminUserRepository(private val clock: Clock) {
             .singleOrNull()
     }
 
-    fun insert(id: String, username: String, passwordHash: String): AdminUserRow = transaction {
+    fun insert(id: String, username: String, passwordHash: String, role: String = "admin"): AdminUserRow = transaction {
         val now = clock.nowIso()
         AdminUsers.insert {
             it[AdminUsers.id] = id
@@ -56,8 +61,9 @@ class AdminUserRepository(private val clock: Clock) {
             it[AdminUsers.passwordHash] = passwordHash
             it[createdAt] = now
             it[passwordChangedAt] = now
+            it[AdminUsers.role] = role
         }
-        AdminUserRow(id, username, passwordHash, now, null, now)
+        AdminUserRow(id, username, passwordHash, now, null, now, role = role)
     }
 
     fun touchLogin(id: String) = transaction {
@@ -89,6 +95,27 @@ class AdminUserRepository(private val clock: Clock) {
         }
     }
 
+    /** v0.37.0 — role 변경. 호출자가 마지막 admin 보존 책임. */
+    fun setRole(id: String, role: String): Int = transaction {
+        AdminUsers.update({ AdminUsers.id eq id }) { it[AdminUsers.role] = role }
+    }
+
+    /** v0.37.0 — 전체 사용자. /users 페이지가 listing 용. */
+    fun listAll(): List<AdminUserRow> = transaction {
+        AdminUsers.selectAll().map { it.toRow() }
+            .sortedWith(compareBy({ it.role != "admin" }, { it.username.lowercase() }))
+    }
+
+    /** v0.37.0 — admin role 의 사용자 수. 마지막 admin 강등/삭제 차단 가드. */
+    fun adminCount(): Long = transaction {
+        AdminUsers.selectAll().where { AdminUsers.role eq "admin" }.count()
+    }
+
+    /** v0.37.0 — 사용자 삭제. AuthService 가 device row 도 cascade 정리할 책임. */
+    fun delete(id: String): Int = transaction {
+        AdminUsers.deleteWhere { AdminUsers.id eq id }
+    }
+
     private fun ResultRow.toRow() = AdminUserRow(
         id = this[AdminUsers.id],
         username = this[AdminUsers.username],
@@ -98,5 +125,6 @@ class AdminUserRepository(private val clock: Clock) {
         passwordChangedAt = this[AdminUsers.passwordChangedAt],
         totpSecret = this[AdminUsers.totpSecret],
         totpEnabledAt = this[AdminUsers.totpEnabledAt],
+        role = this[AdminUsers.role],
     )
 }
