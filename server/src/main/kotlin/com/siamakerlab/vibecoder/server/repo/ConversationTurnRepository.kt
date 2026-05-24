@@ -142,9 +142,12 @@ class ConversationTurnRepository(private val clock: Clock) {
         fromTs?.let { c = c and (ConversationTurns.ts greaterEq it) }
         toTs?.let { c = c and (ConversationTurns.ts lessEq it) }
         // v0.53.0 — Phase 32 PG tsvector + GIN 풀텍스트 검색.
-        // content_tsv 생성 컬럼 (Database.init() 의 raw SQL 마이그) + GIN 인덱스로
-        // LIKE 의 O(N) full-scan → 인덱스 사용 O(log N) match.
-        q?.let { c = c and TsvectorMatchOp(it) }
+        // v0.62.0 — Phase 41 한국어 / non-ASCII 포함 query 는 trigram (ILIKE %q%) 으로
+        //          자동 분기. simple tsvector 가 한국어 형태소 분석을 안 해서 정확도가
+        //          낮은 문제 회피. pg_trgm GIN 인덱스가 ILIKE 도 인덱스 사용.
+        q?.let { rawQ ->
+            c = c and if (isAsciiOnly(rawQ)) TsvectorMatchOp(rawQ) else TrigramIlikeOp(rawQ)
+        }
         // v0.52.0 — agent_name 필터링.
         when (agentName) {
             null -> c = c and IsNullOp(ConversationTurns.agentName)
@@ -175,6 +178,24 @@ class ConversationTurnRepository(private val clock: Clock) {
             queryBuilder.append(")")
         }
     }
+
+    /**
+     * v0.62.0 — Phase 41 한국어 부분 매치용 ILIKE %q%. pg_trgm GIN 인덱스가 활성화되어
+     * 있으므로 N 만 줄여도 인덱스 사용. tsvector 가 못 잡는 형태소-mid substring 매치
+     * (예: "개발자가" 에 대한 "개발자" query) 를 처리.
+     *
+     * %, _, \ 같은 LIKE 메타문자는 escape — 사용자 input 그대로 substring 매치.
+     */
+    private class TrigramIlikeOp(private val q: String) : Op<Boolean>() {
+        override fun toQueryBuilder(queryBuilder: QueryBuilder) {
+            val escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            queryBuilder.append("content ILIKE ")
+            queryBuilder.registerArgument(TextColumnType(), "%$escaped%")
+        }
+    }
+
+    /** ASCII printable 만 포함하면 tsvector (영어), 한 글자라도 non-ASCII 면 trigram. */
+    private fun isAsciiOnly(s: String): Boolean = s.all { it.code in 0x20..0x7e }
 
     fun list(filter: Filter, limit: Int = 200, offset: Long = 0): List<ConversationTurnRow> = transaction {
         ConversationTurns.selectAll().where { filter.toCondition() }

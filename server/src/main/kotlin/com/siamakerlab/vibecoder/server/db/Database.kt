@@ -81,6 +81,17 @@ object VibeDb {
                           ON conversation_turns USING GIN (content_tsv)
                         """.trimIndent(),
                     )
+                    // v0.62.0 — Phase 41 한국어 / non-ASCII 부분 매치용 trigram 인덱스.
+                    // mecab-ko 같은 형태소 분석 extension 보다 가벼움 (단일 사용자 dev 환경
+                    // 가정). simple tsvector 가 못 잡는 한국어 substring (예: "개발자가" →
+                    // "개발자") 매치를 ILIKE %q% 로 처리하되 인덱스 덕분에 빠름.
+                    exec("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+                    exec(
+                        """
+                        CREATE INDEX IF NOT EXISTS conversation_turns_content_trgm_idx
+                          ON conversation_turns USING GIN (content gin_trgm_ops)
+                        """.trimIndent(),
+                    )
                 }
                 log.info {
                     "PostgreSQL connected → ${db.host}:${db.port}/${db.name} (pool=${db.maxPoolSize}, sslmode=${db.sslMode})"
