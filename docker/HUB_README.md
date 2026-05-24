@@ -47,7 +47,7 @@ docker compose up -d            # boots postgres + vibe-coder-server
 > [CHANGELOG.md](https://github.com/siamakerlab/vibe-coder-server/blob/main/CHANGELOG.md)
 > for the exact steps.
 
-## What's in the box (v0.47.0)
+## What's in the box (v0.50.0)
 
 **Core**
 - **Claude Code CLI orchestration** — one persistent child per project,
@@ -245,6 +245,30 @@ docker compose up -d            # boots postgres + vibe-coder-server
   Deployment + optional postgres StatefulSet sidecar + optional
   ingress. See chart README inside the source repo.
 
+**WebAuthn / passkey 2FA (v0.48.0+)**
+- `webauthn4j` 0.29.1 (only new server dep since v0.46.0; ~600 KB
+  with BouncyCastle + Jackson-CBOR transitive).
+- `/webauthn` for register / list / delete. Login page exposes a
+  "🔑 Passkey 로 로그인" button next to the password form — Touch ID
+  / Windows Hello / FIDO2 key works without typing a password.
+- `server.webauthn.{rpId, rpName, origin}` config — set to actual
+  user-facing hostname (LAN: `vibe.local`).
+
+**Project ACL + sub-agent persistent history (v0.49.0+)**
+- `project_acls` table — opt-in restriction. 0 rows for a user →
+  every project visible (default); 1+ rows → only those. `admin`
+  bypasses. `/users/{userId}/projects` checkbox bulk-replace UI.
+- `conversation_turns.agent_name` column (nullable). Sub-agent
+  process pool turns (v0.44.0) now persist to PostgreSQL alongside
+  the main console — survive container restart.
+
+**Web Push payload encryption (v0.50.0+ — RFC 8291)**
+- The payload-less mode from v0.46.0 now has the full ECDH +
+  HKDF-SHA256 + AES-128-GCM (`aes128gcm` content-encoding)
+  implementation. JDK stdlib only (no BouncyCastle / no
+  web-push-java). Notifications carry real title / body / URL — the
+  service worker focuses the relevant page on click.
+
 **Git + project scaffolding (v0.18.0+)**
 - **Git commit + push** wrapped in a single non-interactive endpoint
   (`POST /api/projects/{id}/git/commit` + SSR form). PAT / SSH auth,
@@ -350,7 +374,7 @@ container (UID 70 in alpine images). On the host you may need `sudo` to read
 files directly. Either use `tar` with sudo, or do logical `pg_dump` against
 the running container.
 
-## Web UI routes (v0.47.0)
+## Web UI routes (v0.50.0)
 
 All routes sit at the root (no `/admin/*` prefix from v0.4.2+). Bearer
 token or session cookie required except `/setup`, `/login`, `/health`.
@@ -397,9 +421,11 @@ SSR POST forms carry a CSRF token (v0.12.4+).
 | `/projects/{id}/agents` | Sub-agent index (v0.44.0+) — live status + open-console |
 | `/projects/{id}/agents/{agent}/console` | Per-agent console — independent Claude child (v0.44.0+) |
 | `/usage` | Claude `/status` raw viewer (admin-only, v0.47.0+) |
+| `/webauthn` | Passkey (WebAuthn) — register / list / delete (v0.48.0+) |
+| `/users/{userId}/projects` | Project ACL editor — admin only (v0.49.0+) |
 | `/settings`, `/devices`, `/password` | Operations |
 
-## JSON API (v0.47.0 — for clients)
+## JSON API (v0.50.0 — for clients)
 
 Full reference + curl examples in the
 [REST API Reference](https://github.com/siamakerlab/vibe-coder-server/wiki/REST-API-Reference)
@@ -428,12 +454,20 @@ Highlights:
   `GET /api/projects/{id}/agents/active` (v0.44.0+ — real multi-agent
   process pool, one Claude child per agent + WS topic)
 - `GET  /api/push/vapid-public-key`, `POST /api/push/subscribe`,
-  `DELETE /api/push/subscriptions/{id}` (v0.46.0+ — browser Web Push)
+  `DELETE /api/push/subscriptions/{id}` (v0.46.0+ — browser Web Push;
+  v0.50.0+ payload-encrypted per RFC 8291 aes128gcm)
+- `POST /api/webauthn/register/options | verify`,
+  `POST /api/webauthn/assert/options | verify`
+  (v0.48.0+ — passkey registration + login; assert mints a fresh
+  `vibe_session` cookie + Bearer token)
 - **Role guards (v0.45.0+)**: mutating REST endpoints require write
   role (admin/member) — viewers get `403 viewer_readonly`. Server-level
   setup endpoints require admin — non-admins get `403 admin_only`.
   WebSocket `UserPrompt`/`ActionInvoke` from a viewer reply with
   `viewer_readonly` error frame but keep the read stream open.
+- **Project ACL (v0.49.0+)**: `GET /api/projects` is filtered by the
+  caller's ACL. `GET /api/projects/{id}` returns
+  `403 project_forbidden` on violation.
 - `GET  /api/env-setup/components`, `POST /api/env-setup/install-all`
 - `POST /api/env-setup/claude-auth/upload | api-key`
 - `POST /api/env-setup/claude-login/start | submit | cancel`

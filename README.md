@@ -24,7 +24,7 @@ vibe-coder-server/
 └─ docker/              # Slim Docker image + compose + vibe-doctor
 ```
 
-## What's inside (v0.47.0)
+## What's inside (v0.50.0)
 
 ### Core orchestration
 - **Claude Code CLI orchestration** — one persistent child process per project,
@@ -339,6 +339,79 @@ vibe-coder-server/
   `:full` (emulator + noVNC) image not yet supported — needs KVM
   passthrough + privileged container.
 
+### WebAuthn (passkey 2FA, v0.48.0+)
+- **`webauthn4j` 0.29.1** wraps the spec heavy lifting (COSE / CBOR /
+  attestation validation, assertion signature verification). ~600 KB
+  transitive (BouncyCastle + Jackson-CBOR) — the only dep added since
+  v0.46.0.
+- **`/webauthn`** — any authenticated user can register / list /
+  delete their own passkeys. Names like "MacBook Touch ID" /
+  "YubiKey 5C". `WebauthnCredentials` table keeps the full attestation
+  object (base64url CBOR) so assertions can rebuild a CredentialRecord.
+- **JSON API**: `POST /api/webauthn/register/{options,verify}` and
+  `POST /api/webauthn/assert/{options,verify}`. The assert path is
+  **unauthenticated** — it's the login itself. It mints a fresh
+  `vibe_session` cookie + Bearer token on success.
+- **Login page integration** — "🔑 Passkey 로 로그인" button next to
+  the password form. Type the username, click, Touch ID / Windows
+  Hello / FIDO2 key prompts; no password required. TOTP and passkey
+  are both available — pick whichever is enabled.
+- **rpId / origin** via new `server.webauthn.{rpId, rpName, origin}`
+  config section. LAN deployments must set them to the actual hostname
+  users type (`vibe.local`) and the full origin (`http://vibe.local:17880`).
+- **Audit**: `auth.passkey.register`, `auth.passkey.login`,
+  `auth.passkey.delete`.
+
+### Project ACL + Sub-agent persistent history (v0.49.0+)
+- **`project_acls` table** (`project_id`, `user_id`, `granted_by`,
+  `created_at`) — opt-in restriction. A user with **zero ACL rows**
+  sees every project (legacy / default). With **one or more rows** they
+  see only those. `admin` role bypasses ACL entirely (lockout
+  protection).
+- **`ProjectService.listForUser(userId, isAdmin)`** +
+  **`canUserAccess(userId, isAdmin, projectId)`** centralize the
+  evaluation. **`requireProjectAccessOrRedirect`** is the SSR guard
+  chained after the session / role checks.
+- **`/users/{userId}/projects`** (admin-only) — checkbox bulk-replace
+  of the user's ACL. Status banner makes it clear whether the user is
+  in unrestricted ("모든 프로젝트 보임") or opt-in restricted ("N개 허용")
+  mode. `/users` row gains a "권한" chip linking to the editor.
+- **JSON API** — `GET /api/projects` now filters per the caller's
+  `DevicePrincipal.userRole`; `GET /api/projects/{id}` returns
+  `403 project_forbidden` on ACL violation.
+- **`conversation_turns.agent_name`** column (nullable). Main project
+  console writes `null`; the sub-agent process pool (v0.44.0) now
+  tags every persisted turn with the agent name. New
+  `(project_id, agent_name, ts)` index. Existing rows are unaffected
+  (column auto-migrated).
+- **`ConversationHistoryService`** API gains `agentName: String? = null`
+  on `userPrompt`, `event`, `systemNotice`. **`SubAgentSessionManager`**
+  takes a `history: ConversationHistoryService?` and persists every
+  user prompt + Claude event + system notice. Sub-agent conversations
+  survive container restart.
+
+### Web Push payload encryption (v0.50.0+ — RFC 8291)
+- **`Aes128GcmEncrypt`** — pure JDK stdlib implementation (no
+  BouncyCastle / no `web-push-java`). Ephemeral P-256 keypair via
+  `KeyPairGenerator`, ECDH via `KeyAgreement`, HKDF-SHA256 via
+  `Mac("HmacSHA256")`, AES-128-GCM via `Cipher("AES/GCM/NoPadding")`.
+- **Two paths** in `WebPushNotifier.sendOne()`:
+  - subscription has `p256dh` + `auth` → encrypted POST with
+    `Content-Encoding: aes128gcm`. Body layout per RFC 8291:
+    `salt(16) || record_size(4 BE) || keyid_len(1) || as_public(65)
+    || ciphertext`. Padding pattern `payload || 0x02 || zeros` up to
+    4080 bytes plaintext.
+  - missing keys (legacy v0.46.0 row) → payload-less POST. Service
+    worker shows a generic notification (fallback).
+- **`broadcast(title, body, url?)`** — the `Notifiers` facade now
+  passes meaningful URLs (`/projects/{id}/builds/{buildId}`,
+  `/usage`, `/`) so the service-worker's `notificationclick` opens
+  the right page (focus existing tab if its URL matches).
+- **Service worker `v0.50.0`** — `event.data.json()` reads the
+  decrypted plaintext (browser handles aes128gcm transparently),
+  pulls `title` / `body` / `url`, calls `showNotification` with a
+  `data: {url}` payload that the click handler routes to.
+
 ### Git + project scaffolding (v0.18.0+)
 - **Git commit + push** — single `POST /api/projects/{id}/git/commit` (and an
   SSR form) wraps `add → commit → push` with non-interactive auth (PAT via
@@ -499,7 +572,7 @@ ssh user@newhost 'cd ~/vibe-coder && tar xzf vibe-coder-data-*.tar.gz && docker 
 mounts only (no named volumes by default), but watch out if you mixed
 in legacy state. For regular upgrades, always `up -d --force-recreate`.
 
-## Web routes (v0.47.0)
+## Web routes (v0.50.0)
 
 All routes below sit at the root (no `/admin/*` prefix). Bearer auth or
 session cookie required except `/setup`, `/login`, `/health`. Every SSR POST
@@ -549,12 +622,14 @@ carries a CSRF `_csrf` token (v0.12.4+).
 | `/emulator/vnc/*` | **v0.42.0** noVNC reverse proxy (HTTP + WebSocket; admin only) |
 | `/projects/{id}/agents` | **v0.44.0** Sub-agent index (per project) — registered agents + live status + open-console |
 | `/projects/{id}/agents/{agent}/console` | **v0.44.0** Per-agent console (independent Claude child) |
-| `/settings/push` | **v0.46.0** Web Push (VAPID) — subscribe / unsubscribe / list / test |
+| `/settings/push` | **v0.46.0** Web Push (VAPID) — subscribe / unsubscribe / list / test; **v0.50.0** payload-encrypted |
 | `/usage` | **v0.47.0** Claude `/status` raw viewer (cache stats visible when Anthropic ships them) — admin |
+| `/webauthn` | **v0.48.0** Passkey (WebAuthn) — register / list / delete; 2FA alternative to TOTP |
+| `/users/{userId}/projects` | **v0.49.0** Project ACL editor (admin only) — opt-in per-user restriction |
 | `/settings`, `/devices`, `/password` | Operations |
 | `/login`, `/setup`, `/logout` | Auth |
 
-## JSON API (v0.47.0 — for clients like the Android app)
+## JSON API (v0.50.0 — for clients like the Android app)
 
 Every UI feature has a matching `/api/*` endpoint with Bearer authentication.
 Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
@@ -588,9 +663,14 @@ Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
 - `POST /api/projects/{id}/agents/{agent}/console/prompt | cancel`,
   `GET /api/projects/{id}/agents/active` (**v0.44.0+** — real multi-agent
   process pool; each agent gets its own Claude child + WS topic)
+- `POST /api/webauthn/register/options | verify`,
+  `POST /api/webauthn/assert/options | verify`
+  (**v0.48.0+** — passkey registration + login flows; the `assert` path
+  mints a fresh `vibe_session` cookie + Bearer token)
 - `GET  /api/push/vapid-public-key`,
   `POST /api/push/subscribe`, `DELETE /api/push/subscriptions/{id}`
-  (**v0.46.0+** — browser Web Push registration; VAPID P-256 / payload-less)
+  (**v0.46.0+** — browser Web Push; **v0.50.0+** payload-encrypted per
+  RFC 8291)
 - `GET  /api/env-setup/components`, `POST /api/env-setup/install-all`,
   `POST /api/env-setup/{componentId}/install`
 - `POST /api/env-setup/claude-auth/upload` (multipart)
@@ -609,6 +689,12 @@ Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
 on server-level endpoints get `403 admin_only`. WebSocket `UserPrompt` /
 `ActionInvoke` from a viewer session reply with
 `WsFrame.Error("viewer_readonly")` but keep the read stream alive.
+
+**Project ACL on JSON API (v0.49.0+)** — `GET /api/projects` is filtered
+through the caller's ACL (admin sees everything; member / viewer with no
+ACL rows sees everything; member / viewer with any ACL rows sees only
+those projects). `GET /api/projects/{id}` returns `403 project_forbidden`
+when the project is outside the caller's ACL.
 
 ## Auth (v0.4.0+, hardened in v0.26.0)
 
@@ -634,25 +720,46 @@ scan the otpauth URI with Google Authenticator / 1Password / Authy, verify a
 6-digit code, secret persisted to `admin_users.totp_secret`. Login then
 requires the code after password. Disable requires a current code.
 
+**WebAuthn / Passkey (v0.48.0+)** — `webauthn4j` 0.29.1, RFC 8292 VAPID-less,
+phishing-resistant alternative to TOTP. Enable at `/webauthn`: click
+"이 디바이스에서 passkey 등록", complete the Touch ID / Windows Hello /
+FIDO2 prompt, full attestation object persisted to `webauthn_credentials`.
+Login page exposes a "🔑 Passkey 로 로그인" button — pick the passkey or
+the password+TOTP path. Configure `server.webauthn.{rpId, rpName, origin}`
+to match the user-facing hostname (LAN: `rpId: "vibe.local"`,
+`origin: "http://vibe.local:17880"`).
+
 **Session idle timeout (v0.26.0+)** — `security.sessionIdleTimeoutMinutes`
 (default 30, `0` = unlimited). Bearer auth + SSR session both check
 `device.lastSeenAt`; if older than N min, the device row is deleted and the
 client is redirected to `/login?err=session_timeout`. Same policy across
 cookie and `Authorization: Bearer …`.
 
-**Multi-user + role (v0.37.0 / v0.40.0)** — `admin_users.role` column
-adds `admin` / `member` / `viewer`. The first admin (from `/setup`) is
-always `admin`; new users created via `/users` default to `member`.
-`/users` itself is admin-only. Last-admin demotion and self-deletion are
-blocked. Project-level ACLs (member who only sees a subset of projects)
-are on the roadmap for v0.44+.
+**Multi-user + role (v0.37.0 / v0.40.0 / v0.45.0 / v0.49.0)** —
+`admin_users.role` column adds `admin` / `member` / `viewer`. The first
+admin (from `/setup`) is always `admin`; new users created via `/users`
+default to `member`. `/users` itself is admin-only. Last-admin demotion
+and self-deletion are blocked.
 
 `requireWriteAccessOrRedirect(sess)` blocks `viewer` sessions from
-destructive SSR `POST` endpoints (project create/delete, console
-new/slash, build enqueue, files upload, edit, git commit, agents
-save/delete). `requireAdminOrRedirect(sess)` guards `/audit`,
-`/settings`, `/backup`, `/users`. JSON API and WebSocket layers do not
-yet enforce role — known scope limit tracked for the next minor.
+destructive SSR `POST` endpoints. `requireAdminOrRedirect(sess)` guards
+`/audit`, `/settings`, `/backup`, `/users`, the full `/settings/*`
+family (v0.47.0), `/usage`. **JSON API and WebSocket layers also
+enforce role since v0.45.0** — `requireApiWrite()` and
+`requireApiAdmin()` extension functions return `403 viewer_readonly` /
+`403 admin_only` for unauthorized Bearer tokens, and WS `UserPrompt` /
+`ActionInvoke` from viewer sessions reply with a `viewer_readonly`
+error frame.
+
+**Project ACL (v0.49.0+)** — `project_acls(project_id, user_id,
+granted_by)` table implements opt-in per-user restriction. A user with
+zero ACL rows sees every project (default). With one or more rows,
+they see only those. `admin` role bypasses ACL entirely (lockout
+protection). Admin manages ACLs at **`/users/{userId}/projects`** with
+checkbox bulk-replace. SSR uses `requireProjectAccessOrRedirect(sess,
+projects, projectId)`; JSON `GET /api/projects` is filtered;
+`GET /api/projects/{id}` returns `403 project_forbidden` on
+violation.
 
 ## Security boundaries
 
