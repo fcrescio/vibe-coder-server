@@ -15,6 +15,12 @@ class Notifiers(
     /** v0.46.0 — Phase 25 Web Push (browser PushManager). */
     val webPush: WebPushNotifier? = null,
 ) {
+    /**
+     * v0.55.0 — Phase 34 Prometheus counters get bumped alongside delivery.
+     * `var` so `ServerMain` can wire this after `MetricsRegistry` is constructed
+     * (Notifiers itself has no MetricsRegistry dependency, so it's built earlier).
+     */
+    var metrics: com.siamakerlab.vibecoder.server.metrics.MetricsRegistry? = null
     fun buildResult(projectId: String, buildId: String, status: String, errorMessage: String?) {
         email?.buildResult(projectId, buildId, status, errorMessage)
         webhook?.buildResult(projectId, buildId, status, errorMessage)
@@ -22,6 +28,11 @@ class Notifiers(
             title = "빌드 $status",
             body = "프로젝트 $projectId / 빌드 $buildId — ${errorMessage ?: "성공"}",
             url = "/projects/$projectId/builds/$buildId",
+        )
+        metrics?.inc(
+            "vibe_build_total",
+            "Build outcomes by status",
+            labels = mapOf("status" to status.lowercase()),
         )
     }
 
@@ -33,6 +44,7 @@ class Notifiers(
             body = "남은 ${remainingPercent}% (리셋 ${resetAt ?: "예정 미상"})",
             url = "/usage",
         )
+        metrics?.inc("vibe_claude_usage_warn_total", "Claude usage threshold alerts")
     }
 
     fun diskUsageWarn(usedPercent: Int, freeGb: Double) {
@@ -43,6 +55,7 @@ class Notifiers(
             body = "${usedPercent}% 사용중 — 여유 ${"%.1f".format(freeGb)} GB",
             url = "/",
         )
+        metrics?.inc("vibe_disk_usage_warn_total", "Disk usage threshold alerts")
     }
 
     fun shutdown() {

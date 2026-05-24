@@ -37,6 +37,7 @@ import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
 import com.siamakerlab.vibecoder.server.claude.SubAgentSessionManager
 import com.siamakerlab.vibecoder.server.claude.subAgentRoutes
 import com.siamakerlab.vibecoder.server.admin.projectAclRoutes
+import com.siamakerlab.vibecoder.server.metrics.metricsRoutes
 import com.siamakerlab.vibecoder.server.projects.symbolRoutes
 import com.siamakerlab.vibecoder.server.auth.webauthnRoutes
 import com.siamakerlab.vibecoder.server.claude.usageRoutes
@@ -191,6 +192,8 @@ data class ServerContext(
     val projectAclRepo: com.siamakerlab.vibecoder.server.repo.ProjectAclRepository,
     /** v0.54.0 — Phase 33 best-effort symbol definition finder. */
     val symbolFinder: com.siamakerlab.vibecoder.server.projects.SymbolFinder,
+    /** v0.55.0 — Phase 34 Prometheus metrics registry. */
+    val metrics: com.siamakerlab.vibecoder.server.metrics.MetricsRegistry,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -364,6 +367,8 @@ fun Application.module(ctx: ServerContext) {
         projectAclRoutes(adminDeps, ctx.projects, ctx.adminUserRepo, ctx.projectAclRepo)
         // v0.54.0 — Phase 33 symbol definition lookup (best-effort regex).
         symbolRoutes(adminDeps, ctx.projects, ctx.symbolFinder)
+        // v0.55.0 — Phase 34 Prometheus /metrics endpoint.
+        metricsRoutes(adminDeps, ctx.metrics)
         wsRoutes(ctx.hub, ctx.deviceRepo, ctx.tokens, ctx.sessionManager,
             ctx.actionRegistry, ctx.actionHandler, ctx.subAgentManager, ctx.adminUserRepo, ctx.projects)
     }

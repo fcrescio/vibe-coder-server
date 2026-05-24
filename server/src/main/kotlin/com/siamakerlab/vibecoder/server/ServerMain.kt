@@ -249,6 +249,50 @@ fun main(args: Array<String>) {
     val codeSearchService = com.siamakerlab.vibecoder.server.projects.CodeSearchService(workspace)
     // v0.54.0 — Phase 33 best-effort symbol definition finder.
     val symbolFinder = com.siamakerlab.vibecoder.server.projects.SymbolFinder(workspace)
+    // v0.55.0 — Phase 34 Prometheus metrics registry.
+    val metrics = com.siamakerlab.vibecoder.server.metrics.MetricsRegistry().also { r ->
+        // JVM baseline.
+        r.gauge("vibe_jvm_memory_used_bytes", "Current JVM heap usage in bytes") {
+            val rt = Runtime.getRuntime(); rt.totalMemory() - rt.freeMemory()
+        }
+        r.gauge("vibe_jvm_memory_max_bytes", "JVM heap maximum in bytes (-Xmx)") {
+            Runtime.getRuntime().maxMemory()
+        }
+        r.gauge("vibe_jvm_threads", "Live JVM thread count") {
+            Thread.activeCount()
+        }
+        // Domain state — re-read on every scrape, so values are always live.
+        r.gauge("vibe_projects_total", "Registered projects (excluding __scratch__)") {
+            runCatching { projectRepo.list().count { it.id != com.siamakerlab.vibecoder.server.projects.ProjectService.SCRATCH_ID } }
+                .getOrDefault(0)
+        }
+        r.gauge("vibe_users_total", "Total admin/member/viewer users") {
+            runCatching { adminUserRepo.listAll().size }.getOrDefault(0)
+        }
+        r.gauge("vibe_devices_total", "Live device tokens (sessions + Bearer)") {
+            runCatching { deviceRepo.listAll().size }.getOrDefault(0)
+        }
+        r.gauge("vibe_push_subscriptions_total", "Registered Web Push subscriptions") {
+            runCatching { pushSubscriptionRepo.count() }.getOrDefault(0)
+        }
+        r.gauge("vibe_console_sessions_active", "Live Claude main-console child processes") {
+            // Best-effort via ClaudeSessionManager internals; defined below by adding a
+            // public alive-count accessor — declared inline as a defensive lookup using
+            // the public `isAlive(projectId)` over project list.
+            runCatching {
+                projectRepo.list().count { p ->
+                    sessionManager.isAlive(p.id)
+                }
+            }.getOrDefault(0)
+        }
+        r.gauge("vibe_sub_agent_sessions_active", "Live Claude sub-agent child processes (total)") {
+            runCatching { subAgentManager.activeAgents().size }.getOrDefault(0)
+        }
+    }
+    // v0.55.0 — Notifiers 가 먼저 만들어져서 (build/usage/disk 알림이 sessionManager 등보다
+    // 앞에 와이어업되므로), 여기서 뒤늦게 metrics 를 set. 이후 buildResult / claudeUsageWarn /
+    // diskUsageWarn 트리거가 카운터를 증가시킴.
+    notifiers.metrics = metrics
     // v0.29.0 — 프로젝트 zip + 디스크 monitor (Notifiers 와 email warn percent 공유).
     val projectArchiver = com.siamakerlab.vibecoder.server.projects.ProjectArchiver(workspace)
     val diskMonitor = com.siamakerlab.vibecoder.server.disk.DiskMonitor(
@@ -326,6 +370,7 @@ fun main(args: Array<String>) {
         webauthnService = webauthnService,
         projectAclRepo = projectAclRepo,
         symbolFinder = symbolFinder,
+        metrics = metrics,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {
