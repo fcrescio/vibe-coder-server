@@ -24,7 +24,7 @@ vibe-coder-server/
 └─ docker/              # Slim Docker image + compose + vibe-doctor
 ```
 
-## What's inside (v0.29.0)
+## What's inside (v0.34.0)
 
 ### Core orchestration
 - **Claude Code CLI orchestration** — one persistent child process per project,
@@ -129,6 +129,65 @@ vibe-coder-server/
   project source as a zip (excludes `.git`, `build`, `.gradle`,
   `node_modules`, `.idea`, `*.apk`, `*.aab`). Filename auto-generated as
   `<projectId>-source-<yyyyMMdd-HHmm>.zip`.
+- **Build history chart** (v0.30.0+) — inline SVG line chart on every
+  `/projects/{id}/builds` page; last 30 builds with duration (success line)
+  + status dots + APK size points.
+- **Keyboard shortcuts** (v0.30.0+) — `g p / c / h / e / s / a / d / l` 2-key
+  sequences + `?` help overlay. Disabled when an input is focused.
+
+### Search & cross-project tools (v0.30.0–v0.32.0)
+- **Global conversation search** (v0.30.0+) — `/history` greps every
+  project's `conversation_turns` table. LIKE escape, role filter, ±100 char
+  excerpt with `<mark>` highlight, 200 hit hard cap.
+- **Build log grep** (v0.32.0+) — `/logs` walks
+  `.vibecoder/<projectId>/logs/*.log` (last 2 MB per file scanned).
+  Project filter optional; 200 match cap; highlights match.
+- **Dependency audit** (v0.32.0+) — `/projects/{id}/deps` runs
+  `./gradlew :{module}:dependencies --configuration <cfg>` and extracts
+  `group:name:version` coordinates. CVE matching deferred to a later
+  minor.
+
+### Claude integration (v0.31.0+)
+- **Custom agents UI** — `/agents` CRUD over `~/.claude/agents/*.md`.
+  Sanitized names, 64 KB body cap, atomic write, audit logged.
+- **Conversation export/import** — `GET /projects/{id}/history/export`
+  downloads JSON envelope (schemaVersion 1). `POST .../history/import`
+  (multipart) restores into another project; sessionId-level idempotency
+  + dry-run mode. Same envelope feeds the automatic archive (next bullet).
+- **Conversation auto-archive** (v0.33.0+) — `ConversationArchiver` ticks
+  every 24 h: sessions inactive for ≥ 30 days are dumped to
+  `<workspace>/.vibecoder/<projectId>/archive/session-<sid>.json` and
+  their rows deleted from `conversation_turns`.
+- **Prompt suggestions** — `GET /api/projects/{id}/claude/prompt-suggestions?prefix=…`
+  returns LIKE-prefix matches from this project's `user` turns (60 s
+  in-memory cache).
+
+### Environment & build files (v0.32.0+)
+- **Env files quick edit** — `/projects/{id}/env-files` exposes only a
+  whitelist of 7 files (`local.properties`, `gradle.properties`, `.env`,
+  `.env.local`, `app/build.gradle.kts`, `build.gradle.kts`,
+  `settings.gradle.kts`). Atomic write, 256 KB cap, secret-content warning
+  inline.
+
+### Automation (v0.33.0+)
+- **Cron-style build schedule** — `/projects/{id}/automation` registers
+  `HH:MM` / `*:MM` / `*:*` schedules; `BuildScheduler` ticks every 60 s
+  with per-minute dedupe; audit logged.
+- **External build webhook** — multi-secret `POST /api/webhooks/build/{projectId}`
+  authenticates via `X-Vibe-Secret-Id` + `X-Vibe-Secret` (plaintext, TLS
+  expected) + optional `X-Vibe-Signature` (HMAC-SHA256 over body). 32-byte
+  URL-safe random secrets, SHA-256 stored.
+
+### Backup & CLI (v0.34.0+)
+- **`/backup` SSR** — streams a tar.gz of the entire workspace (`postgres/`,
+  `dev-tools/gradle/caches+daemon`, `npm-cache`, `playwright`, build logs
+  excluded). PostgreSQL backup uses `pg_dump` (page-tear safe), with the
+  exact command rendered inline.
+- **`cli/vibe`** — single-file bash + curl (jq optional). Commands:
+  `login` (auto-handles `totp_required`), `whoami`, `logout`, `projects`,
+  `status`, `console <id> <prompt...>`, `build <id>`. Token in
+  `~/.config/vibe-coder/config` with `0600`. Go/Rust port + WS subscribe on
+  the roadmap.
 
 ### Git + project scaffolding (v0.18.0+)
 - **Git commit + push** — single `POST /api/projects/{id}/git/commit` (and an
@@ -290,7 +349,7 @@ ssh user@newhost 'cd ~/vibe-coder && tar xzf vibe-coder-data-*.tar.gz && docker 
 mounts only (no named volumes by default), but watch out if you mixed
 in legacy state. For regular upgrades, always `up -d --force-recreate`.
 
-## Web routes (v0.29.0)
+## Web routes (v0.34.0)
 
 All routes below sit at the root (no `/admin/*` prefix). Bearer auth or
 session cookie required except `/setup`, `/login`, `/health`. Every SSR POST
@@ -325,10 +384,17 @@ carries a CSRF `_csrf` token (v0.12.4+).
 | `/2fa` | **v0.26.0** Two-factor TOTP enable / disable |
 | `/audit` | **v0.15.0** Operational audit log (filter / paginate) |
 | `/projects/{id}/zip` | **v0.29.0** Streaming source-only zip download |
+| `/projects/{id}/env-files` | **v0.32.0** Whitelist-edit `local.properties` / `.env` / `build.gradle.kts` |
+| `/projects/{id}/deps` | **v0.32.0** Gradle dependency tree + coord extraction |
+| `/projects/{id}/automation` | **v0.33.0** Cron schedule + webhook secret management |
+| `/history` | **v0.30.0** Cross-project conversation search |
+| `/logs` | **v0.32.0** Build log grep across all projects |
+| `/agents` | **v0.31.0** Custom `.agents/*.md` CRUD |
+| `/backup` | **v0.34.0** Workspace tar.gz backup + restore guide |
 | `/settings`, `/devices`, `/password` | Operations |
 | `/login`, `/setup`, `/logout` | Auth |
 
-## JSON API (v0.29.0 — for clients like the Android app)
+## JSON API (v0.34.0 — for clients like the Android app)
 
 Every UI feature has a matching `/api/*` endpoint with Bearer authentication.
 Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
@@ -350,6 +416,13 @@ Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
   constant promoted in **v0.20.0** (`PromptTemplateDto` + list response)
 - `POST /api/auth/login` now accepts optional `totpCode: String` (**v0.26.0+**);
   returns `401 totp_required` for 2FA-enabled users when missing
+- `GET  /api/projects/{id}/claude/prompt-suggestions?prefix=...&limit=8`
+  (**v0.31.0+** — LIKE prefix match against this project's user turns)
+- `GET  /projects/{id}/history/export` / `POST .../history/import`
+  (**v0.31.0+** — JSON envelope, sessionId-level idempotency)
+- `POST /api/webhooks/build/{projectId}` (**v0.33.0+** — admin-auth-free
+  external trigger; `X-Vibe-Secret-Id` + `X-Vibe-Secret` + optional
+  `X-Vibe-Signature`)
 - `GET  /api/env-setup/components`, `POST /api/env-setup/install-all`,
   `POST /api/env-setup/{componentId}/install`
 - `POST /api/env-setup/claude-auth/upload` (multipart)
@@ -478,3 +551,20 @@ under copyleft obligations.
 `vibe-coder-android` — mobile client that talks to the same server. Both
 repos share the `shared/` module (DTOs / ApiPath / WsFrame); update them in
 lockstep when wire changes occur. See `CHANGELOG.md` for the matrix.
+
+## Bundled CLI (`cli/vibe`, v0.34.0+)
+
+Single-file `bash` + `curl` wrapper around the REST API. Useful for shell
+automation and CI without a full client.
+
+```bash
+sudo install -m 0755 cli/vibe /usr/local/bin/vibe
+vibe login              # interactive — handles totp_required automatically
+vibe projects
+vibe console my-app "Add a settings screen with a dark mode toggle"
+vibe build my-app
+```
+
+Token stored at `~/.config/vibe-coder/config` with `chmod 0600`. `jq`
+optional (pretty-prints JSON). Go/Rust port with WebSocket subscribe is on
+the roadmap.

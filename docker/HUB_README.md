@@ -13,7 +13,7 @@
   <https://github.com/siamakerlab/vibe-coder-server/wiki>
 - **Issues**: <https://github.com/siamakerlab/vibe-coder-server/issues>
 - **Architectures**: `linux/amd64` (multi-arch builds reserved for milestones).
-- **Latest tags (slim)**: `0.29.0`, `latest`
+- **Latest tags (slim)**: `0.34.0`, `latest`
 - **Latest tags (full / emulator + noVNC)**: `0.25.0-full`, `full`
 - **Image size**: ~600 MB (Android SDK / Gradle / MCP packages live in
   bind-mounted volumes — see below). v0.14.0+ runs alongside a small
@@ -46,7 +46,7 @@ docker compose up -d            # boots postgres + vibe-coder-server
 > [CHANGELOG.md](https://github.com/siamakerlab/vibe-coder-server/blob/main/CHANGELOG.md)
 > for the exact steps.
 
-## What's in the box (v0.29.0)
+## What's in the box (v0.34.0)
 
 **Core**
 - **Claude Code CLI orchestration** — one persistent child per project,
@@ -126,6 +126,43 @@ docker compose up -d            # boots postgres + vibe-coder-server
   Gradle/Android/npm caches with per-target clear buttons.
 - **Project source zip** — `GET /projects/{id}/zip` for one-click source
   backup (excludes build/.git/.gradle).
+- **Build history chart** (v0.30.0+) — inline SVG, last 30 builds
+  (duration line + status dots + APK size points).
+- **Keyboard shortcuts** (v0.30.0+) — `g p/c/h/e/s/a/d/l` + `?` overlay.
+
+**Search & cross-project (v0.30.0–v0.32.0)**
+- **`/history`** — cross-project conversation grep (LIKE + role filter +
+  excerpt with `<mark>` highlight).
+- **`/logs`** — build-log grep across `.vibecoder/<id>/logs/*.log`
+  (last 2 MB per file scanned, project filter optional).
+- **`/projects/{id}/deps`** — `./gradlew :{module}:dependencies` runner
+  + `group:name:version` extraction.
+
+**Claude integration (v0.31.0+)**
+- **`/agents`** — `~/.claude/agents/*.md` CRUD UI.
+- **Conversation export/import** — JSON envelope (`/projects/{id}/history/export`
+  + `.../history/import` multipart). sessionId-level idempotency.
+- **Conversation auto-archive** (v0.33.0+) — 30-day inactive sessions
+  dumped to `<workspace>/.vibecoder/<id>/archive/session-<sid>.json`
+  and pruned from PostgreSQL.
+- **Prompt suggestions** — `GET /api/projects/{id}/claude/prompt-suggestions?prefix=…`.
+
+**Env & build files (v0.32.0+)**
+- **`/projects/{id}/env-files`** — whitelist-edit `local.properties`,
+  `gradle.properties`, `.env`, `build.gradle.kts`, etc.
+
+**Automation (v0.33.0+)**
+- **Cron build schedule** — `/projects/{id}/automation` registers
+  `HH:MM` / `*:MM` / `*:*` triggers.
+- **External build webhook** — `POST /api/webhooks/build/{projectId}` with
+  `X-Vibe-Secret-Id` + `X-Vibe-Secret` (TLS expected) + optional
+  `X-Vibe-Signature` HMAC.
+
+**Backup & CLI (v0.34.0+)**
+- **`/backup`** — streams a tar.gz of the workspace (cache/log dirs and
+  `postgres/` excluded). `pg_dump` command rendered inline for DB.
+- **`cli/vibe`** — bundled `bash` + `curl` MVP. `vibe login` (handles
+  `totp_required`) + projects / status / console / build.
 
 **Git + project scaffolding (v0.18.0+)**
 - **Git commit + push** wrapped in a single non-interactive endpoint
@@ -232,7 +269,7 @@ container (UID 70 in alpine images). On the host you may need `sudo` to read
 files directly. Either use `tar` with sudo, or do logical `pg_dump` against
 the running container.
 
-## Web UI routes (v0.29.0)
+## Web UI routes (v0.34.0)
 
 All routes sit at the root (no `/admin/*` prefix from v0.4.2+). Bearer
 token or session cookie required except `/setup`, `/login`, `/health`.
@@ -262,9 +299,16 @@ SSR POST forms carry a CSRF token (v0.12.4+).
 | `/settings/cors` | Read-only CORS policy viewer |
 | `/audit` | Operational audit log (v0.15.0+) |
 | `/projects/{id}/zip` | Source zip download (v0.29.0+) |
+| `/projects/{id}/env-files` | Whitelist-edit env / build property files (v0.32.0+) |
+| `/projects/{id}/deps` | Gradle dependency tree (v0.32.0+) |
+| `/projects/{id}/automation` | Cron schedule + webhook secret management (v0.33.0+) |
+| `/history` | Cross-project conversation search (v0.30.0+) |
+| `/logs` | Build log grep (v0.32.0+) |
+| `/agents` | Custom `.agents/*.md` CRUD (v0.31.0+) |
+| `/backup` | Workspace tar.gz backup + restore guide (v0.34.0+) |
 | `/settings`, `/devices`, `/password` | Operations |
 
-## JSON API (v0.29.0 — for clients)
+## JSON API (v0.34.0 — for clients)
 
 Full reference + curl examples in the
 [REST API Reference](https://github.com/siamakerlab/vibe-coder-server/wiki/REST-API-Reference)
@@ -284,6 +328,10 @@ Highlights:
 - `GET  /api/prompt-templates` (v0.13.0+ — `PROMPT_TEMPLATES` wire promoted in v0.20.0)
 - `POST /api/auth/login` accepts optional `totpCode` (v0.26.0+ — 2FA users
   receive `401 totp_required` until code is supplied)
+- `GET  /api/projects/{id}/claude/prompt-suggestions?prefix=...` (v0.31.0+)
+- `GET  /projects/{id}/history/export` / `POST .../history/import` (v0.31.0+)
+- `POST /api/webhooks/build/{projectId}` (v0.33.0+ — external trigger,
+  multi-secret auth: `X-Vibe-Secret-Id` + `X-Vibe-Secret` + optional HMAC)
 - `GET  /api/env-setup/components`, `POST /api/env-setup/install-all`
 - `POST /api/env-setup/claude-auth/upload | api-key`
 - `POST /api/env-setup/claude-login/start | submit | cancel`
