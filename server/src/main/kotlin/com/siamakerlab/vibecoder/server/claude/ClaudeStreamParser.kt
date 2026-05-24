@@ -10,6 +10,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 private val log = KotlinLogging.logger {}
@@ -48,7 +49,7 @@ class ClaudeStreamParser(
             "system" -> parseSystem(obj)?.let { listOf(it) } ?: listOf(ClaudeEvent.Unknown(obj))
             "assistant" -> parseAssistant(obj)
             "user" -> parseUserToolResult(obj)
-            "result" -> listOf(parseResult(obj))
+            "result" -> parseResult(obj)
             else -> listOf(ClaudeEvent.Unknown(obj))
         }
     }
@@ -68,6 +69,10 @@ class ClaudeStreamParser(
         val blocks = runCatching { content.jsonArray }.getOrNull() ?: return listOf(ClaudeEvent.Unknown(obj))
 
         val out = mutableListOf<ClaudeEvent>()
+        // v0.63.0 — Phase 42 prompt cache usage 추적. assistant message 의 usage 객체에서
+        // input/output/cache_read/cache_creation 토큰 추출. 누락된 model 버전도 있어
+        // nullable. 비어 있으면 emit skip.
+        message["usage"]?.let { parseUsage(it) }?.let { out += it }
         for (block in blocks) {
             val b = runCatching { block.jsonObject }.getOrNull() ?: continue
             when (b["type"]?.jsonPrimitive?.contentOrNull) {
@@ -108,10 +113,13 @@ class ClaudeStreamParser(
         return out.ifEmpty { listOf(ClaudeEvent.Unknown(obj)) }
     }
 
-    private fun parseResult(obj: JsonObject): ClaudeEvent {
+    private fun parseResult(obj: JsonObject): List<ClaudeEvent> {
+        val out = mutableListOf<ClaudeEvent>()
+        // v0.63.0 — result frame 에도 usage 가 종종 포함됨 (turn 종료 시 누적치).
+        obj["usage"]?.let { parseUsage(it) }?.let { out += it }
         val subtype = obj["subtype"]?.jsonPrimitive?.contentOrNull ?: "unknown"
         val isError = obj["is_error"]?.jsonPrimitive?.booleanOrNull ?: false
-        return if (isError) {
+        out += if (isError) {
             val msg = obj["error"]?.jsonPrimitive?.contentOrNull
                 ?: obj["result"]?.jsonPrimitive?.contentOrNull
                 ?: "claude returned an error"
@@ -119,6 +127,32 @@ class ClaudeStreamParser(
         } else {
             ClaudeEvent.Done(reason = subtype)
         }
+        return out
+    }
+
+    /**
+     * v0.63.0 — usage JSON 파싱.
+     * ```
+     * { "input_tokens": 4, "output_tokens": 50,
+     *   "cache_read_input_tokens": 12345, "cache_creation_input_tokens": 0 }
+     * ```
+     * 4 필드 모두 nullable. 모두 null 이면 emit skip (return null).
+     */
+    private fun parseUsage(el: JsonElement): ClaudeEvent.UsageReport? {
+        val obj = runCatching { el.jsonObject }.getOrNull() ?: return null
+        fun long(key: String): Long? =
+            obj[key]?.let { runCatching { it.jsonPrimitive.longOrNull }.getOrNull() }
+        val input = long("input_tokens")
+        val output = long("output_tokens")
+        val cacheRead = long("cache_read_input_tokens")
+        val cacheCreate = long("cache_creation_input_tokens")
+        if (input == null && output == null && cacheRead == null && cacheCreate == null) return null
+        return ClaudeEvent.UsageReport(
+            inputTokens = input,
+            outputTokens = output,
+            cacheReadInputTokens = cacheRead,
+            cacheCreationInputTokens = cacheCreate,
+        )
     }
 
     companion object {

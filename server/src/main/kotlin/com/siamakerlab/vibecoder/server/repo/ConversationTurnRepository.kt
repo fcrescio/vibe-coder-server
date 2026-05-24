@@ -275,4 +275,48 @@ class ConversationTurnRepository(private val clock: Clock) {
         ConversationTurns.selectAll().where { ConversationTurns.id eq turnId }
             .firstOrNull()?.toRow()
     }
+
+    /**
+     * v0.63.0 — Phase 42 prompt cache usage 집계. `role = "usage"` row 의 content
+     * JSON 을 walk 해 input / output / cacheRead / cacheCreate 합산.
+     */
+    data class UsageSummary(
+        val turns: Int,
+        val inputTokens: Long,
+        val outputTokens: Long,
+        val cacheReadTokens: Long,
+        val cacheCreationTokens: Long,
+    ) {
+        val totalInput: Long get() = inputTokens + cacheReadTokens + cacheCreationTokens
+        /** 0..100 (Double) — totalInput 의 cacheRead 비중. */
+        val cacheHitRate: Double? = if (totalInput == 0L) null
+            else cacheReadTokens.toDouble() * 100 / totalInput
+    }
+
+    fun usageSummary(projectId: String): UsageSummary = transaction {
+        val rows = ConversationTurns
+            .selectAll()
+            .where { (ConversationTurns.projectId eq projectId) and (ConversationTurns.role eq "usage") }
+            .map { it[ConversationTurns.content] }
+        var input = 0L; var output = 0L; var cr = 0L; var cc = 0L
+        val re = Regex("\"(input|output|cacheRead|cacheCreate)\":(\\d+)")
+        for (content in rows) {
+            for (m in re.findAll(content)) {
+                val v = m.groupValues[2].toLongOrNull() ?: continue
+                when (m.groupValues[1]) {
+                    "input" -> input += v
+                    "output" -> output += v
+                    "cacheRead" -> cr += v
+                    "cacheCreate" -> cc += v
+                }
+            }
+        }
+        UsageSummary(
+            turns = rows.size,
+            inputTokens = input,
+            outputTokens = output,
+            cacheReadTokens = cr,
+            cacheCreationTokens = cc,
+        )
+    }
 }

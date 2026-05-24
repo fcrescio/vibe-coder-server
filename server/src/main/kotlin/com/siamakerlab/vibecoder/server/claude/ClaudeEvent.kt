@@ -45,6 +45,27 @@ sealed class ClaudeEvent {
         val reason: String,
     ) : ClaudeEvent()
 
+    /**
+     * v0.63.0 — Phase 42 token usage report. Emitted whenever the CLI publishes a
+     * `usage` block (typically inside the final `result` frame). All fields nullable
+     * because Anthropic ships them inconsistently across model versions / channels.
+     *
+     * `cacheReadInputTokens` + `cacheCreationInputTokens` together convey prompt-cache
+     * efficiency: high `cacheRead` vs total `input` means the model is hitting cached
+     * prompt prefixes (much cheaper).
+     */
+    data class UsageReport(
+        val inputTokens: Long?,
+        val outputTokens: Long?,
+        val cacheReadInputTokens: Long?,
+        val cacheCreationInputTokens: Long?,
+    ) : ClaudeEvent() {
+        /** Sum of all input categories the server saw. */
+        val totalInputTokens: Long?
+            get() = listOfNotNull(inputTokens, cacheReadInputTokens, cacheCreationInputTokens)
+                .takeIf { it.isNotEmpty() }?.sum()
+    }
+
     /** CLI emitted a known top-level type we don't model — passed through. */
     data class Unknown(val raw: JsonElement) : ClaudeEvent()
 }

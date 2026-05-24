@@ -380,7 +380,7 @@ fun Application.module(ctx: ServerContext) {
         // v0.46.0 — Phase 25 Web Push (VAPID, payload-less).
         pushRoutes(adminDeps, ctx.webPushNotifier, ctx.pushSubscriptionRepo)
         // v0.47.0 — Phase 26 Claude /status raw 노출 (cache 통계 등 미래 정보 자동 가시화).
-        usageRoutes(adminDeps, ctx.projects, ctx.claudeStatusService)
+        usageRoutes(adminDeps, ctx.projects, ctx.claudeStatusService, ctx.conversationRepo)
         // v0.48.0 — Phase 27 WebAuthn (passkey 2FA).
         webauthnRoutes(adminDeps, ctx.webauthnService, ctx.authService, ctx.tokens)
         // v0.49.0 — Phase 28 Project ACL 관리 UI.

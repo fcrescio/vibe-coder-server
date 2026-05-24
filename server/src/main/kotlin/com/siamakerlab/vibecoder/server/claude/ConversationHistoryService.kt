@@ -112,6 +112,18 @@ class ConversationHistoryService(
                 raw = jsonString(event.raw),
                 agentName = agentName,
             )
+            // v0.63.0 — Phase 42 Anthropic prompt cache usage. JSON 형태로 적재해서
+            // /usage 페이지가 SUM 으로 집계 가능. tokens_in/tokens_out 컬럼도 동시에 사용.
+            is ClaudeEvent.UsageReport -> repo.insert(
+                projectId = projectId,
+                sessionId = sessionId,
+                role = "usage",
+                content = """{"input":${event.inputTokens ?: 0},"output":${event.outputTokens ?: 0},""" +
+                    """"cacheRead":${event.cacheReadInputTokens ?: 0},"cacheCreate":${event.cacheCreationInputTokens ?: 0}}""",
+                tokensIn = event.totalInputTokens?.toInt()?.coerceAtLeast(0),
+                tokensOut = event.outputTokens?.toInt()?.coerceAtLeast(0),
+                agentName = agentName,
+            )
         }
     }
 

@@ -25,6 +25,8 @@ fun Routing.usageRoutes(
     authDeps: AdminRoutesDeps,
     projects: ProjectService,
     statusService: ClaudeStatusService,
+    /** v0.63.0 — Phase 42 prompt cache 누적 통계. */
+    conversationRepo: com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository,
 ) {
     get("/usage") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
@@ -32,7 +34,10 @@ fun Routing.usageRoutes(
 
         val snapshots = statusService.allRawSnapshots()
         val allProjects = projects.list().associateBy { it.id }
-        val body = renderUsagePage(snapshots, allProjects)
+        // v0.63.0 — 모든 프로젝트의 cache stats 합산.
+        val cacheStatsByProject = allProjects.keys.associateWith { conversationRepo.usageSummary(it) }
+            .filterValues { it.turns > 0 }
+        val body = renderUsagePage(snapshots, allProjects, cacheStatsByProject)
         call.respondText(
             AdminTemplates.shell(
                 title = "Claude 사용량 / Cache 조회",
@@ -49,7 +54,72 @@ fun Routing.usageRoutes(
 private fun renderUsagePage(
     snapshots: Map<String, com.siamakerlab.vibecoder.server.claude.ClaudeStatusService.RawSnapshot>,
     projects: Map<String, com.siamakerlab.vibecoder.shared.dto.ProjectDto>,
+    cacheStats: Map<String, com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository.UsageSummary> = emptyMap(),
 ): String {
+    fun fmt(n: Long): String = "%,d".format(n)
+    val cacheCard = if (cacheStats.isEmpty()) {
+        """<div class="card dim" style="text-align:center;padding:18px;margin-bottom:14px">
+          <strong>Prompt cache stats (v0.63.0+):</strong> 아직 적재된 usage turn 이 없습니다.
+          콘솔로 prompt 를 한 번 보내면 turn 종료 시점에 자동 적재됩니다.
+        </div>"""
+    } else {
+        // 합산.
+        var totalIn = 0L; var totalOut = 0L; var totalCR = 0L; var totalCC = 0L; var totalTurns = 0
+        for ((_, s) in cacheStats) {
+            totalIn += s.inputTokens
+            totalOut += s.outputTokens
+            totalCR += s.cacheReadTokens
+            totalCC += s.cacheCreationTokens
+            totalTurns += s.turns
+        }
+        val totalAllInput = totalIn + totalCR + totalCC
+        val hitRate = if (totalAllInput == 0L) 0.0
+        else totalCR.toDouble() * 100 / totalAllInput
+        val perProject = cacheStats.entries
+            .sortedByDescending { it.value.cacheReadTokens + it.value.inputTokens }
+            .joinToString("\n") { (pid, s) ->
+                val rateStr = s.cacheHitRate?.let { "%.1f%%".format(it) } ?: "-"
+                """<tr>
+                  <td><strong>${esc(projects[pid]?.name ?: pid)}</strong>
+                    <div class="dim" style="font-size:11px">${esc(pid)}</div></td>
+                  <td style="text-align:right">${fmt(s.turns.toLong())}</td>
+                  <td style="text-align:right">${fmt(s.inputTokens)}</td>
+                  <td style="text-align:right">${fmt(s.outputTokens)}</td>
+                  <td style="text-align:right" class="ok">${fmt(s.cacheReadTokens)}</td>
+                  <td style="text-align:right">${fmt(s.cacheCreationTokens)}</td>
+                  <td style="text-align:right"><strong>$rateStr</strong></td>
+                </tr>"""
+            }
+        """
+<div class="card" style="margin-bottom:14px">
+  <h2 style="margin-top:0">Prompt Cache 통계 (v0.63.0+)</h2>
+  <p class="dim" style="margin:0 0 8px;font-size:12px">
+    Claude stream-json 의 <code>usage</code> 객체에서 추출한 누적 토큰 사용량.
+    <code>cache_read</code> 가 높으면 prompt 가 cache hit (저렴) — 비율은 효율 지표.
+  </p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:10px">
+    <div><div class="dim" style="font-size:11px">총 usage turns</div><div style="font-size:18px;font-weight:600">${fmt(totalTurns.toLong())}</div></div>
+    <div><div class="dim" style="font-size:11px">input (fresh)</div><div style="font-size:18px;font-weight:600">${fmt(totalIn)}</div></div>
+    <div><div class="dim" style="font-size:11px">output</div><div style="font-size:18px;font-weight:600">${fmt(totalOut)}</div></div>
+    <div><div class="dim" style="font-size:11px">cache read (hit)</div><div style="font-size:18px;font-weight:600" class="ok">${fmt(totalCR)}</div></div>
+    <div><div class="dim" style="font-size:11px">cache create</div><div style="font-size:18px;font-weight:600">${fmt(totalCC)}</div></div>
+    <div><div class="dim" style="font-size:11px">cache hit rate</div><div style="font-size:18px;font-weight:600">${"%.1f%%".format(hitRate)}</div></div>
+  </div>
+  <table class="table" style="width:100%;font-size:12px">
+    <thead><tr>
+      <th>Project</th>
+      <th style="text-align:right">turns</th>
+      <th style="text-align:right">input</th>
+      <th style="text-align:right">output</th>
+      <th style="text-align:right">cache read</th>
+      <th style="text-align:right">cache create</th>
+      <th style="text-align:right">hit rate</th>
+    </tr></thead>
+    <tbody>$perProject</tbody>
+  </table>
+</div>"""
+    }
+    // 이후 raw snapshot 섹션은 기존 로직.
     val now = Instant.now()
     val sections = if (snapshots.isEmpty()) {
         """<div class="card dim" style="text-align:center;padding:24px">
@@ -87,17 +157,14 @@ private fun renderUsagePage(
 
     return """
 <header>
-  <h1>Claude 사용량 / Cache 조회 <small class="dim" style="font-size:14px;font-weight:400">v0.47.0+</small></h1>
+  <h1>Claude 사용량 / Cache 조회 <small class="dim" style="font-size:14px;font-weight:400">v0.47.0+ / v0.63.0+</small></h1>
 </header>
 
+$cacheCard
+
 <div class="card" style="margin-bottom:16px">
-  <p style="margin:0 0 6px"><strong>이 페이지는 <code>claude /status</code> 출력의 raw text 를 그대로 보여줍니다.</strong>
+  <p style="margin:0 0 6px"><strong>아래 섹션은 <code>claude /status</code> 출력의 raw text 를 그대로 보여줍니다.</strong>
     임계치 알림용으로 이미 5분 마다 폴링 중인 결과를 재사용 (추가 비용 없음).</p>
-  <p class="dim" style="margin:0;font-size:12px">
-    Anthropic 이 prompt cache 통계 (hit / miss / saved tokens) 또는 billing 컨텍스트를
-    <code>/status</code> 에 추가하면 즉시 여기서 확인 가능합니다. 구조화 파싱은 출력 포맷이
-    안정화되면 별도 phase 에서 추가.
-  </p>
 </div>
 
 $sections

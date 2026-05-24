@@ -326,6 +326,16 @@ class ClaudeSessionManager(
             code = event.code, message = event.message, seq = seq,
         )
         is ClaudeEvent.Done -> WsFrame.ConsoleDone(reason = event.reason, seq = seq)
+        is ClaudeEvent.UsageReport -> {
+            // v0.63.0 — Phase 42 usage 정보는 콘솔 직접 표시 X (turn 종료 시 작은 system
+            // notice 로만). 영구 적재는 ConversationHistoryService 가 별도 처리.
+            val parts = mutableListOf<String>()
+            event.inputTokens?.let { parts += "input ${it}" }
+            event.outputTokens?.let { parts += "output ${it}" }
+            event.cacheReadInputTokens?.let { parts += "cache-read ${it}" }
+            event.cacheCreationInputTokens?.let { parts += "cache-create ${it}" }
+            WsFrame.ConsoleSystem(code = "usage", message = parts.joinToString(" · "), seq = seq)
+        }
         is ClaudeEvent.Unknown -> WsFrame.ConsoleUnknown(raw = event.raw, seq = seq)
     }
 

@@ -294,6 +294,14 @@ class SubAgentSessionManager(
             code = event.code, message = event.message, seq = seq,
         )
         is ClaudeEvent.Done -> WsFrame.ConsoleDone(reason = event.reason, seq = seq)
+        is ClaudeEvent.UsageReport -> {
+            val parts = mutableListOf<String>()
+            event.inputTokens?.let { parts += "input ${it}" }
+            event.outputTokens?.let { parts += "output ${it}" }
+            event.cacheReadInputTokens?.let { parts += "cache-read ${it}" }
+            event.cacheCreationInputTokens?.let { parts += "cache-create ${it}" }
+            WsFrame.ConsoleSystem(code = "usage", message = parts.joinToString(" · "), seq = seq)
+        }
         is ClaudeEvent.Unknown -> WsFrame.ConsoleUnknown(raw = event.raw, seq = seq)
     }
 
