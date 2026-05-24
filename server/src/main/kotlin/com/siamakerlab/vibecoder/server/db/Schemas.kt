@@ -179,6 +179,14 @@ object ConversationTurns : Table("conversation_turns") {
      * Non-null = a `(projectId, agentName)` sub-agent session via [SubAgentSessionManager].
      */
     val agentName = varchar("agent_name", 64).nullable()
+    /**
+     * v0.61.0 — user memo on a turn. null = no memo. UI 가 inline 편집 + 저장.
+     */
+    val userMemo = text("user_memo").nullable()
+    /**
+     * v0.61.0 — starred flag. UI 의 ☆ 토글. starred turn 만 필터링하면 책갈피처럼 사용 가능.
+     */
+    val starred = bool("starred").default(false)
     override val primaryKey = PrimaryKey(id)
 
     init {

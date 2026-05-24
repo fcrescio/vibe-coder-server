@@ -19,6 +19,7 @@ import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.max
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.update
 
 data class ConversationTurnRow(
     val id: String,
@@ -35,6 +36,10 @@ data class ConversationTurnRow(
     val raw: String?,
     /** v0.49.0 — null = main project console; non-null = sub-agent. */
     val agentName: String? = null,
+    /** v0.61.0 — user memo on this turn (UI inline editor). */
+    val userMemo: String? = null,
+    /** v0.61.0 — starred flag (UI ☆ toggle). */
+    val starred: Boolean = false,
 )
 
 /**
@@ -125,6 +130,8 @@ class ConversationTurnRepository(private val clock: Clock) {
          * compatible. 새 UI 가 명시적으로 `""` (all) 또는 agent 이름을 전달.
          */
         val agentName: String? = null,
+        /** v0.61.0 — true = `starred=true` 만, false (기본) = 필터 안 함. */
+        val starredOnly: Boolean = false,
     )
 
     private fun Filter.toCondition(): Op<Boolean> {
@@ -143,6 +150,10 @@ class ConversationTurnRepository(private val clock: Clock) {
             null -> c = c and IsNullOp(ConversationTurns.agentName)
             "" -> {}  // 모든 turn (필터 없음)
             else -> c = c and (ConversationTurns.agentName eq agentName)
+        }
+        // v0.61.0 — starred 필터.
+        if (starredOnly) {
+            c = c and (ConversationTurns.starred eq true)
         }
         return c
     }
@@ -220,5 +231,27 @@ class ConversationTurnRepository(private val clock: Clock) {
         tokensOut = this[ConversationTurns.tokensOut],
         raw = this[ConversationTurns.raw],
         agentName = this[ConversationTurns.agentName],
+        userMemo = this[ConversationTurns.userMemo],
+        starred = this[ConversationTurns.starred],
     )
+
+    // ── v0.61.0 — Phase 40 memo + star ─────────────────────────────────────
+
+    /** Returns true if row existed + was updated. */
+    fun setMemo(turnId: String, memo: String?): Boolean = transaction {
+        ConversationTurns.update({ ConversationTurns.id eq turnId }) {
+            it[ConversationTurns.userMemo] = memo?.takeIf { v -> v.isNotBlank() }?.take(8000)
+        } > 0
+    }
+
+    fun setStarred(turnId: String, starred: Boolean): Boolean = transaction {
+        ConversationTurns.update({ ConversationTurns.id eq turnId }) {
+            it[ConversationTurns.starred] = starred
+        } > 0
+    }
+
+    fun findById(turnId: String): ConversationTurnRow? = transaction {
+        ConversationTurns.selectAll().where { ConversationTurns.id eq turnId }
+            .firstOrNull()?.toRow()
+    }
 }

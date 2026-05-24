@@ -10,11 +10,14 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.server.application.call
 import io.ktor.server.request.receiveMultipart
+import io.ktor.server.request.receiveText
 import io.ktor.server.response.header
+import io.ktor.server.response.respond
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
+import kotlinx.serialization.json.contentOrNull
 import io.ktor.server.routing.post
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
@@ -95,6 +98,44 @@ fun Routing.historyRoutes(
             if (result.warnings.isNotEmpty()) "; warnings=${result.warnings.size}" else ""
         call.respondRedirect("/projects/$id/history?ok=${enc(msg)}")
     }
+
+    // v0.61.0 — Phase 40 memo + star JSON endpoints.
+    // ?_csrf= 쿼리로 CSRF 검증 (fetch POST 가 form-encoded body 안 보냄).
+    post("/api/projects/{id}/history/{turnId}/memo") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        val csrfQuery = call.request.queryParameters["_csrf"] ?: ""
+        if (csrfQuery != sess.csrf) {
+            return@post call.respond(io.ktor.http.HttpStatusCode.Forbidden, "csrf")
+        }
+        val turnId = call.parameters["turnId"]
+            ?: return@post call.respond(io.ktor.http.HttpStatusCode.BadRequest, "missing turnId")
+        val body = call.receiveText()
+        val memo = runCatching {
+            (kotlinx.serialization.json.Json.parseToJsonElement(body)
+                as? kotlinx.serialization.json.JsonObject)
+                ?.get("memo")?.let { it as? kotlinx.serialization.json.JsonPrimitive }
+                ?.contentOrNull
+        }.getOrNull()
+        // memo == null 이면 메모 제거.
+        val ok = repo.setMemo(turnId, memo)
+        if (ok) call.respondText("""{"ok":true}""", ContentType.Application.Json)
+        else call.respond(io.ktor.http.HttpStatusCode.NotFound, "not_found")
+    }
+
+    post("/api/projects/{id}/history/{turnId}/star") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        val csrfQuery = call.request.queryParameters["_csrf"] ?: ""
+        if (csrfQuery != sess.csrf) {
+            return@post call.respond(io.ktor.http.HttpStatusCode.Forbidden, "csrf")
+        }
+        val turnId = call.parameters["turnId"]
+            ?: return@post call.respond(io.ktor.http.HttpStatusCode.BadRequest, "missing turnId")
+        val starred = call.request.queryParameters["starred"]?.toBooleanStrictOrNull()
+            ?: return@post call.respond(io.ktor.http.HttpStatusCode.BadRequest, "missing starred=true|false")
+        val ok = repo.setStarred(turnId, starred)
+        if (ok) call.respondText("""{"ok":true}""", ContentType.Application.Json)
+        else call.respond(io.ktor.http.HttpStatusCode.NotFound, "not_found")
+    }
 }
 
 private fun enc(s: String) = URLEncoder.encode(s, StandardCharsets.UTF_8)
@@ -128,6 +169,7 @@ private suspend fun renderHistory(
             agentParam.isBlank() -> null
             else -> agentParam
         },
+        starredOnly = params["starred"] == "1",
     )
     val page = (params["p"]?.toIntOrNull() ?: 0).coerceAtLeast(0)
     val pageSize = 100
@@ -243,10 +285,26 @@ object HistoryTemplates {
                 val agentBadge = r.agentName?.let {
                     """<div style="font-size:10px;color:#7aa;margin-top:2px">@${esc(it)}</div>"""
                 } ?: ""
-                """<tr>
-                  <td class="dim" style="font-family:ui-monospace,Menlo,monospace;font-size:11px;white-space:nowrap">${esc(r.ts)}</td>
+                // v0.61.0 — star + memo. data attr 로 turn id 를 dataset 에 노출, JS 가 이벤트 위임.
+                val starChar = if (r.starred) "★" else "☆"
+                val starCls = if (r.starred) "ok" else "dim"
+                val memoBlock = if (!r.userMemo.isNullOrBlank()) {
+                    """<div class="user-memo" style="margin-top:6px;padding:6px 8px;background:rgba(250,204,21,0.08);border-left:3px solid #facc15;font-size:12px;white-space:pre-wrap" data-memo="1">${esc(r.userMemo)}</div>"""
+                } else """<div class="user-memo dim" style="margin-top:4px;font-size:11px;cursor:pointer" data-memo="0">+ 메모</div>"""
+                """<tr data-turn-id="${esc(r.id)}">
+                  <td class="dim" style="font-family:ui-monospace,Menlo,monospace;font-size:11px;white-space:nowrap">
+                    ${esc(r.ts)}
+                    <div style="margin-top:4px">
+                      <button type="button" class="star-btn $starCls" data-starred="${r.starred}"
+                              style="background:none;border:none;font-size:16px;cursor:pointer;padding:0"
+                              title="별표 토글 (v0.61.0+)">$starChar</button>
+                    </div>
+                  </td>
                   <td><span class="$roleCls" style="font-size:11px;text-transform:uppercase">${esc(r.role)}</span>$toolBadge$agentBadge</td>
-                  <td><pre style="margin:0;font-size:12px;white-space:pre-wrap;word-break:break-word;max-width:900px">${esc(preview)}</pre></td>
+                  <td>
+                    <pre style="margin:0;font-size:12px;white-space:pre-wrap;word-break:break-word;max-width:900px">${esc(preview)}</pre>
+                    $memoBlock
+                  </td>
                 </tr>"""
             }
         }
@@ -311,6 +369,10 @@ $errHtml
   <label style="margin:0">To (ISO ts)
     <input type="text" name="to" value="${esc(filter.toTs)}" placeholder="2026-05-25T00:00:00Z">
   </label>
+  <label style="margin:0;display:flex;align-items:center;gap:6px">
+    <input type="checkbox" name="starred" value="1" ${if (filter.starredOnly) "checked" else ""}>
+    <span>★ starred 만 (v0.61.0+)</span>
+  </label>
   <div style="display:flex;gap:6px">
     <button type="submit" class="primary" style="padding:8px 14px">검색</button>
     <a href="$baseAction" class="chip chip-link" style="padding:8px 14px">초기화</a>
@@ -339,6 +401,60 @@ $errHtml
   ts 정렬은 ascending (오래된 → 최근). assistant partial chunks 는 영구 적재되지 않음 (turn 단위 final 만).
   ${if (filter.q != null) "Content 검색은 PostgreSQL tsvector + GIN 인덱스 (v0.53.0+). 'simple' 토크나이저 — 정확 매칭 best-effort." else ""}
 </p>
+
+<script>
+(function() {
+  // v0.61.0 — star toggle + memo inline editor.
+  var csrf = window.__VIBE_CSRF__ || '';
+  var apiBase = '/api/projects/${esc(projectId)}/history';
+
+  document.addEventListener('click', async function(ev) {
+    var btn = ev.target.closest('.star-btn');
+    if (btn) {
+      var tr = btn.closest('tr');
+      var turnId = tr && tr.getAttribute('data-turn-id');
+      if (!turnId) return;
+      var starred = btn.getAttribute('data-starred') === 'true';
+      var next = !starred;
+      try {
+        var res = await fetch(apiBase + '/' + turnId + '/star?starred=' + next + '&_csrf=' + encodeURIComponent(csrf), {
+          method: 'POST', credentials: 'same-origin',
+        });
+        if (!res.ok) throw new Error('http ' + res.status);
+        btn.setAttribute('data-starred', String(next));
+        btn.textContent = next ? '★' : '☆';
+        btn.className = 'star-btn ' + (next ? 'ok' : 'dim');
+      } catch (e) { console.warn('star toggle failed', e); }
+      return;
+    }
+    var memoEl = ev.target.closest('.user-memo');
+    if (memoEl) {
+      var tr2 = memoEl.closest('tr');
+      var turnId2 = tr2 && tr2.getAttribute('data-turn-id');
+      if (!turnId2) return;
+      var existing = memoEl.getAttribute('data-memo') === '1' ? memoEl.textContent : '';
+      var input = prompt('이 turn 의 메모를 입력하세요 (빈 값 = 삭제):', existing);
+      if (input === null) return;
+      try {
+        var res2 = await fetch(apiBase + '/' + turnId2 + '/memo?_csrf=' + encodeURIComponent(csrf), {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memo: input }),
+        });
+        if (!res2.ok) throw new Error('http ' + res2.status);
+        if (input.trim() === '') {
+          memoEl.outerHTML = '<div class="user-memo dim" style="margin-top:4px;font-size:11px;cursor:pointer" data-memo="0">+ 메모</div>';
+        } else {
+          memoEl.outerHTML = '<div class="user-memo" style="margin-top:6px;padding:6px 8px;background:rgba(250,204,21,0.08);border-left:3px solid #facc15;font-size:12px;white-space:pre-wrap" data-memo="1">' +
+            input.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+        }
+      } catch (e) { console.warn('memo save failed', e); }
+    }
+  });
+})();
+</script>
+<p style="display:none">
+</p>
 """
         )
     }
@@ -364,6 +480,7 @@ $errHtml
             filter.fromTs?.let { "from=${enc(it)}" },
             filter.toTs?.let { "to=${enc(it)}" },
             filter.q?.let { "q=${enc(it)}" },
+            "starred=1".takeIf { filter.starredOnly },
             "p=$page".takeIf { page > 0 },
         )
         return if (params.isEmpty()) base else "$base?${params.joinToString("&")}"
