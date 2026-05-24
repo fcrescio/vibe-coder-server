@@ -198,6 +198,8 @@ data class ServerContext(
     /** v0.56.0 — Phase 35 per-IP rate limiters (api + auth buckets). */
     val rateLimitApi: com.siamakerlab.vibecoder.server.security.RateLimiter,
     val rateLimitAuth: com.siamakerlab.vibecoder.server.security.RateLimiter,
+    /** v0.60.0 — Phase 39 backup service (manual download + auto-rotation). */
+    val backupService: com.siamakerlab.vibecoder.server.admin.BackupService,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -359,7 +361,7 @@ fun Application.module(ctx: ServerContext) {
             ctx.build, ctx.hub, ctx.clock,
         )
         // v0.34.0 — 백업 / 복원 UI.
-        backupRoutes(adminDeps, ctx.workspace)
+        backupRoutes(adminDeps, ctx.workspace, ctx.backupService)
         // v0.35.0 — 코드 분석 묶음 (wrapper / stats / search).
         codeAnalysisRoutes(
             adminDeps, ctx.projects, ctx.gradleWrapperService, ctx.codeStatsService, ctx.codeSearchService,

@@ -15,6 +15,22 @@ data class ServerConfig(
     val email: EmailSection = EmailSection(),
     val webhook: WebhookSection = WebhookSection(),
     val webauthn: WebauthnSection = WebauthnSection(),
+    val backup: BackupSection = BackupSection(),
+)
+
+/**
+ * v0.60.0 — Phase 39 자동 backup. cron 분해는 BuildScheduler 와 동일 (HH:MM, asterisk wildcard).
+ *
+ * `enabled=false` (default) 면 BackupScheduler 가 polling 자체를 skip — 기존 수동
+ * /backup 흐름만 동작.
+ */
+@Serializable
+data class BackupSection(
+    val enabled: Boolean = false,
+    /** "HH:MM" / "*:MM" / "*:*". 예: "03:00" 매일 새벽 3시. */
+    val cron: String = "03:00",
+    /** 보관할 최근 자동 backup 파일 수. 초과 시 oldest 삭제. */
+    val retentionCount: Int = 7,
 )
 
 /**

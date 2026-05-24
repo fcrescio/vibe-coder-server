@@ -249,6 +249,16 @@ fun main(args: Array<String>) {
     val codeSearchService = com.siamakerlab.vibecoder.server.projects.CodeSearchService(workspace)
     // v0.54.0 — Phase 33 best-effort symbol definition finder.
     val symbolFinder = com.siamakerlab.vibecoder.server.projects.SymbolFinder(workspace)
+    // v0.60.0 — Phase 39 Backup service + scheduler.
+    val backupService = com.siamakerlab.vibecoder.server.admin.BackupService(workspace)
+    val backupScheduler = com.siamakerlab.vibecoder.server.admin.BackupScheduler(
+        service = backupService,
+        cronProvider = { config.backup.cron },
+        retentionProvider = { config.backup.retentionCount.coerceAtLeast(1) },
+        enabledProvider = { config.backup.enabled },
+    )
+    backupScheduler.start()
+
     // v0.55.0 — Phase 34 Prometheus metrics registry.
     val metrics = com.siamakerlab.vibecoder.server.metrics.MetricsRegistry().also { r ->
         // JVM baseline.
@@ -389,6 +399,7 @@ fun main(args: Array<String>) {
         metrics = metrics,
         rateLimitApi = rateLimitApi,
         rateLimitAuth = rateLimitAuth,
+        backupService = backupService,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {
@@ -397,6 +408,7 @@ fun main(args: Array<String>) {
         runCatching { claudeUsageMonitor.shutdown() }
         runCatching { diskMonitor.shutdown() }
         runCatching { buildScheduler.shutdown() }
+        runCatching { backupScheduler.shutdown() }
         runCatching { conversationArchiver.shutdown() }
         runCatching { notifiers.shutdown() }
     })

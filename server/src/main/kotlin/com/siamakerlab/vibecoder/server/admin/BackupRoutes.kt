@@ -7,16 +7,14 @@ import io.ktor.http.HttpHeaders
 import io.ktor.server.application.call
 import io.ktor.server.response.header
 import io.ktor.server.response.respondOutputStream
+import io.ktor.server.response.respondRedirect
+import io.ktor.server.response.respondFile
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
-import java.io.BufferedOutputStream
+import io.ktor.server.routing.post
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.zip.GZIPOutputStream
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry
-import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
-import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 
 private val log = KotlinLogging.logger {}
@@ -38,75 +36,71 @@ private val log = KotlinLogging.logger {}
  *
  * 위 정책 덕분에 일반 백업이 GB → 수십 MB 로 줄어든다.
  */
-fun Routing.backupRoutes(authDeps: AdminRoutesDeps, workspace: WorkspacePath) {
+fun Routing.backupRoutes(
+    authDeps: AdminRoutesDeps,
+    workspace: WorkspacePath,
+    /** v0.60.0 — Phase 39 BackupService (수동 download + 자동 목록 + rotation). */
+    service: BackupService,
+) {
     get("/backup") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         if (!requireAdminOrRedirect(sess)) return@get
         val sizes = measureSubdirs(workspace.root)
-        call.respondText(renderPage(sess.username, sess.csrf, sizes), ContentType.Text.Html)
+        val autoBackups = service.listAutoBackups()
+        call.respondText(
+            renderPage(sess.username, sess.csrf, sizes, autoBackups, authDeps.config.backup),
+            ContentType.Text.Html,
+        )
     }
 
     get("/backup/download") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         if (!requireAdminOrRedirect(sess)) return@get
-        val ts = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")
-            .withZone(java.time.ZoneId.systemDefault())
-            .format(java.time.Instant.now())
-        call.response.header(HttpHeaders.ContentDisposition, "attachment; filename=\"vibe-workspace-${ts}.tar.gz\"")
+        call.response.header(HttpHeaders.ContentDisposition, "attachment; filename=\"${service.downloadFileName()}\"")
         call.respondOutputStream(ContentType.parse("application/gzip")) {
-            runCatching {
-                BufferedOutputStream(this).use { buf ->
-                    GZIPOutputStream(buf).use { gz ->
-                        TarArchiveOutputStream(gz).use { tar ->
-                            tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX)
-                            walk(workspace.root, workspace.root, tar)
-                        }
-                    }
-                }
-            }.onFailure { log.warn(it) { "backup stream failed: ${it.message}" } }
+            runCatching { service.streamTarGz(this) }
+                .onFailure { log.warn(it) { "backup stream failed: ${it.message}" } }
             log.info { "workspace backup downloaded by ${sess.username}" }
         }
     }
-}
 
-private val EXCLUDED_SEGMENTS = setOf(
-    ".vibecoder/__scratch__",   // ghost project 의 turn cache 는 백업 가치 낮음
-)
-private val EXCLUDED_REL_PREFIXES = listOf(
-    "dev-tools/gradle/caches",
-    "dev-tools/gradle/daemon",
-    "dev-tools/npm-cache",
-    "dev-tools/playwright",
-    "postgres",   // PG data dir — 별도 pg_dump 권장
-)
-private val EXCLUDED_BASENAMES = setOf(".DS_Store")
+    // v0.60.0 — Phase 39 자동 backup 파일 다운로드.
+    get("/backup/auto/{name}") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@get
+        if (!requireAdminOrRedirect(sess)) return@get
+        val name = call.parameters["name"]
+            ?: return@get call.respondText("missing name", status = io.ktor.http.HttpStatusCode.BadRequest)
+        val path = service.resolveAutoBackupForDownload(name)
+            ?: return@get call.respondText("not found", status = io.ktor.http.HttpStatusCode.NotFound)
+        call.response.header(HttpHeaders.ContentDisposition, "attachment; filename=\"$name\"")
+        call.respondFile(path.toFile())
+    }
 
-private fun shouldExclude(rel: String): Boolean {
-    if (EXCLUDED_REL_PREFIXES.any { rel == it || rel.startsWith("$it/") }) return true
-    if (rel.contains("/logs/") || rel.endsWith("/logs")) return true
-    if (rel.split('/').lastOrNull() in EXCLUDED_BASENAMES) return true
-    if (EXCLUDED_SEGMENTS.any { rel.startsWith(it) }) return true
-    return false
-}
+    // v0.60.0 — Phase 39 자동 backup 삭제.
+    post("/backup/auto/{name}/delete") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireAdminOrRedirect(sess)) return@post
+        com.siamakerlab.vibecoder.server.auth.CsrfTokens.verifyCsrfFromQueryOrHeader(call)
+        val name = call.parameters["name"]
+            ?: return@post call.respondRedirect("/backup?err=missing_name")
+        val ok = service.deleteAutoBackup(name)
+        call.respondRedirect("/backup?${if (ok) "ok=deleted" else "err=not_found"}")
+    }
 
-private fun walk(root: Path, base: Path, tar: TarArchiveOutputStream) {
-    if (!Files.isDirectory(root)) return
-    Files.walk(root).use { stream ->
-        stream.forEach { p ->
-            if (p == root) return@forEach
-            val rel = base.relativize(p).toString().replace('\\', '/')
-            if (shouldExclude(rel)) return@forEach
-            try {
-                val entry = TarArchiveEntry(p.toFile(), rel)
-                tar.putArchiveEntry(entry)
-                if (p.isRegularFile()) Files.copy(p, tar)
-                tar.closeArchiveEntry()
-            } catch (e: Throwable) {
-                log.debug(e) { "backup skip $rel: ${e.message}" }
-            }
-        }
+    // v0.60.0 — Phase 39 수동 즉시 백업 트리거 (스케줄 없이 한 번).
+    post("/backup/auto/run-now") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireAdminOrRedirect(sess)) return@post
+        com.siamakerlab.vibecoder.server.auth.CsrfTokens.verifyCsrfFromQueryOrHeader(call)
+        val ok = runCatching {
+            service.createScheduled()
+            service.deleteOldestOverRetention(authDeps.config.backup.retentionCount.coerceAtLeast(1))
+        }.isSuccess
+        call.respondRedirect("/backup?${if (ok) "ok=created" else "err=failed"}")
     }
 }
+
+// v0.60.0 — Phase 39 walk / exclusion 로직은 BackupService 로 이전됨.
 
 private data class SubdirSize(val name: String, val bytes: Long)
 
@@ -142,7 +136,13 @@ private fun esc(s: String?): String =
         .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         .replace("\"", "&quot;").replace("'", "&#39;")
 
-private fun renderPage(username: String, csrf: String?, sizes: List<SubdirSize>): String {
+private fun renderPage(
+    username: String,
+    csrf: String?,
+    sizes: List<SubdirSize>,
+    autoBackups: List<BackupService.AutoBackupEntry> = emptyList(),
+    backupCfg: com.siamakerlab.vibecoder.server.config.BackupSection? = null,
+): String {
     val total = sizes.sumOf { it.bytes }
     val rowsHtml = sizes.joinToString("") { s ->
         val excluded = s.name in setOf("postgres", "dev-tools") || s.name == ".vibecoder"
@@ -176,6 +176,44 @@ private fun renderPage(username: String, csrf: String?, sizes: List<SubdirSize>)
   <p>워크스페이스 전체를 한 파일로 stream 다운로드합니다.</p>
   <p><a href="/backup/download" class="primary" style="display:inline-block;padding:10px 18px;text-decoration:none">⬇ vibe-workspace-&lt;timestamp&gt;.tar.gz</a></p>
   <p class="hint" style="margin-top:8px">제외: <code>postgres/</code>, <code>dev-tools/gradle/caches</code>, <code>dev-tools/gradle/daemon</code>, <code>dev-tools/npm-cache</code>, <code>dev-tools/playwright</code>, 빌드 logs/. 일반 백업 크기는 위 표의 합보다 훨씬 작습니다.</p>
+</div>
+
+<div class="card" style="margin-top:14px">
+  <h2 style="margin-top:0">자동 백업 (v0.60.0+)</h2>
+  ${if (backupCfg == null || !backupCfg.enabled) """
+  <p>현재 <strong class="dim">비활성</strong>. <code>server.yml</code> 의 <code>backup.enabled: true</code> 로 켜고 컨테이너 재기동.</p>
+  <pre class="diff-block">backup:
+  enabled: true
+  cron: "03:00"        # 매일 새벽 3시
+  retentionCount: 7    # 최근 7개 보관</pre>
+  """ else """
+  <p>현재 <strong class="ok">활성</strong> · cron <code>${esc(backupCfg.cron)}</code> · 최근 <strong>${backupCfg.retentionCount}</strong> 개 보관.</p>
+  """}
+  <form method="post" action="/backup/auto/run-now?_csrf=${esc(csrf ?: "")}" style="margin-bottom:10px">
+    <button type="submit" class="chip chip-link" onclick="return confirm('지금 한 번 백업을 만들까요? rotation 도 적용됩니다.')">지금 백업 한 번 실행</button>
+  </form>
+  ${if (autoBackups.isEmpty()) """
+  <p class="dim" style="font-size:12px">아직 자동 백업 파일이 없습니다.</p>
+  """ else """
+  <table class="devices" style="margin:0">
+    <thead><tr><th>파일</th><th style="text-align:right">크기</th><th>시각</th><th></th></tr></thead>
+    <tbody>
+      ${autoBackups.joinToString("") { entry ->
+        """<tr>
+          <td><code>${esc(entry.fileName)}</code></td>
+          <td style="text-align:right">${humanBytes(entry.sizeBytes)}</td>
+          <td class="dim" style="font-size:11px">${esc(java.time.Instant.ofEpochMilli(entry.createdAtMs).toString())}</td>
+          <td>
+            <a href="/backup/auto/${esc(entry.fileName)}" class="chip chip-link" style="font-size:11px">⬇</a>
+            <form method="post" action="/backup/auto/${esc(entry.fileName)}/delete?_csrf=${esc(csrf ?: "")}" style="display:inline" onsubmit="return confirm('이 백업 파일을 삭제할까요?')">
+              <button type="submit" class="chip chip-danger" style="font-size:11px">삭제</button>
+            </form>
+          </td>
+        </tr>"""
+      }}
+    </tbody>
+  </table>
+  """}
 </div>
 
 <div class="card" style="margin-top:14px;background:rgba(80,150,255,0.06)">
