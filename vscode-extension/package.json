@@ -2,19 +2,23 @@
   "name": "vibe-coder",
   "displayName": "Vibe Coder",
   "description": "Talk to a self-hosted vibe-coder-server from VS Code.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "siamakerlab",
   "license": "AGPL-3.0-or-later",
   "engines": {
     "vscode": "^1.95.0"
   },
+  "icon": "icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/siamakerlab/vibe-coder-server.git",
     "directory": "vscode-extension"
   },
   "categories": ["Other"],
-  "activationEvents": [],
+  "keywords": ["claude", "android", "self-hosted", "vibe-coder", "remote"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "configuration": {
@@ -29,6 +33,11 @@
           "type": "string",
           "default": "",
           "description": "Bearer token from POST /api/auth/login. Use the 'Vibe Coder: Login' command to set it interactively."
+        },
+        "vibeCoder.statusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a status-bar item with the server URL and active username."
         }
       }
     },
@@ -37,17 +46,44 @@
       { "command": "vibeCoder.status", "title": "Vibe Coder: Server status" },
       { "command": "vibeCoder.listProjects", "title": "Vibe Coder: List projects" },
       { "command": "vibeCoder.sendPrompt", "title": "Vibe Coder: Send prompt to project console" },
-      { "command": "vibeCoder.buildDebug", "title": "Vibe Coder: Trigger debug build" }
-    ]
+      { "command": "vibeCoder.buildDebug", "title": "Vibe Coder: Trigger debug build" },
+      { "command": "vibeCoder.followConsole", "title": "Vibe Coder: Follow project console (WebSocket)", "icon": "$(eye)" },
+      { "command": "vibeCoder.refreshTree", "title": "Vibe Coder: Refresh projects tree", "icon": "$(refresh)" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "vibeCoder", "title": "Vibe Coder", "icon": "$(rocket)" }
+      ]
+    },
+    "views": {
+      "vibeCoder": [
+        { "id": "vibeCoder.projects", "name": "Projects" }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        { "command": "vibeCoder.refreshTree", "when": "view == vibeCoder.projects", "group": "navigation" }
+      ],
+      "view/item/context": [
+        { "command": "vibeCoder.followConsole", "when": "view == vibeCoder.projects && viewItem == project", "group": "inline" },
+        { "command": "vibeCoder.sendPrompt", "when": "view == vibeCoder.projects && viewItem == project" },
+        { "command": "vibeCoder.buildDebug", "when": "view == vibeCoder.projects && viewItem == project" }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "tsc -p ./",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "package": "npx --yes @vscode/vsce package"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.95.0",
+    "@types/ws": "^8.5.13",
     "typescript": "^5.6.0"
   }
 }

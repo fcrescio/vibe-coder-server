@@ -1,76 +1,25 @@
-// v0.39.0 — vibe-coder VS Code extension (MVP scaffold).
+// v0.43.0 — vibe-coder VS Code extension (full).
 //
-// Talks to a self-hosted vibe-coder-server via REST over Bearer auth.
 // Commands:
 //   - vibeCoder.login          : interactive login (server URL + username + password [+ TOTP])
-//   - vibeCoder.status         : show server status in an info notification
-//   - vibeCoder.listProjects   : show projects in a quick-pick
+//   - vibeCoder.status         : show server status in an info notification + update status bar
+//   - vibeCoder.listProjects   : quick-pick of projects
 //   - vibeCoder.sendPrompt     : prompt for projectId + prompt text, send to console
 //   - vibeCoder.buildDebug     : trigger a debug build
+//   - vibeCoder.followConsole  : WS subscribe to /ws/projects/{id}/console/logs → Output Channel
+//   - vibeCoder.refreshTree    : refresh projects TreeView
 //
-// Uses the workspace settings `vibeCoder.serverUrl` + `vibeCoder.token`. Token is
-// persisted via vscode.workspace.getConfiguration().update().
-//
-// Implementation is intentionally minimal — fits in a single file. A real
-// release with WebSocket subscribe (live console / build logs) would split into
-// multiple modules.
+// Sidebar: "Projects" tree (activity-bar icon $(rocket)).
+// Status bar: "Vibe Coder: <user>@<host>" — click → vibeCoder.status.
 
 import * as vscode from 'vscode';
-import * as http from 'http';
-import * as https from 'https';
+import { api, getJson, ProjectDto, serverUrl, setServerUrl, setToken } from './api';
+import { followConsole } from './ws';
+import { ProjectTreeItem, ProjectsTreeProvider } from './treeview';
 
-function config() {
-  return vscode.workspace.getConfiguration('vibeCoder');
-}
-
-function serverUrl(): string {
-  return (config().get<string>('serverUrl') || '').replace(/\/+$/, '');
-}
-
-function token(): string {
-  return config().get<string>('token') || '';
-}
-
-async function setToken(value: string) {
-  await config().update('token', value, vscode.ConfigurationTarget.Global);
-}
-
-interface ApiOpts {
-  method?: 'GET' | 'POST' | 'DELETE';
-  body?: unknown;
-  bearer?: boolean;
-}
-
-function api(path: string, opts: ApiOpts = {}): Promise<{ status: number; body: string }> {
-  return new Promise((resolve, reject) => {
-    const baseUrl = serverUrl();
-    if (!baseUrl) return reject(new Error('vibeCoder.serverUrl is not configured'));
-    const url = new URL(baseUrl + path);
-    const client = url.protocol === 'https:' ? https : http;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8' };
-    if (opts.bearer !== false) {
-      const t = token();
-      if (t) headers['Authorization'] = `Bearer ${t}`;
-    }
-    const req = client.request(
-      {
-        method: opts.method || 'GET',
-        hostname: url.hostname,
-        port: url.port || (url.protocol === 'https:' ? 443 : 80),
-        path: url.pathname + url.search,
-        headers,
-      },
-      (res) => {
-        let body = '';
-        res.on('data', (chunk) => (body += chunk.toString()));
-        res.on('end', () => resolve({ status: res.statusCode || 0, body }));
-      }
-    );
-    req.on('error', reject);
-    if (opts.body !== undefined) req.write(JSON.stringify(opts.body));
-    req.end();
-  });
-}
+let statusBarItem: vscode.StatusBarItem | undefined;
+let projectsProvider: ProjectsTreeProvider | undefined;
+const consoleDisposables = new Map<string, vscode.Disposable>();
 
 async function cmdLogin() {
   const url = await vscode.window.showInputBox({
@@ -78,7 +27,7 @@ async function cmdLogin() {
     value: serverUrl() || 'http://localhost:17880',
   });
   if (!url) return;
-  await config().update('serverUrl', url.replace(/\/+$/, ''), vscode.ConfigurationTarget.Global);
+  await setServerUrl(url);
 
   const username = await vscode.window.showInputBox({ prompt: 'Username' });
   if (!username) return;
@@ -104,6 +53,8 @@ async function cmdLogin() {
   const data = JSON.parse(res.body) as { token: string; username: string };
   await setToken(data.token);
   vscode.window.showInformationMessage(`Logged in as ${data.username}`);
+  await refreshStatusBar();
+  projectsProvider?.refresh();
 }
 
 async function cmdStatus() {
@@ -116,16 +67,12 @@ async function cmdStatus() {
   vscode.window.showInformationMessage(
     `${s.serverName} v${s.serverVersion} — ${s.projectCount} projects, ${s.runningTaskCount} running`
   );
+  await refreshStatusBar();
 }
 
-async function cmdListProjects(): Promise<string | undefined> {
-  const res = await api('/api/projects');
-  if (res.status !== 200) {
-    vscode.window.showErrorMessage(`projects: HTTP ${res.status}`);
-    return;
-  }
-  const arr = JSON.parse(res.body) as Array<{ id: string; name: string; packageName: string }>;
-  if (arr.length === 0) {
+async function pickProject(): Promise<string | undefined> {
+  const arr = await getJson<ProjectDto[]>('/api/projects');
+  if (!arr || arr.length === 0) {
     vscode.window.showInformationMessage('No projects yet — register one in the browser at /projects.');
     return;
   }
@@ -136,8 +83,13 @@ async function cmdListProjects(): Promise<string | undefined> {
   return pick?.label;
 }
 
-async function cmdSendPrompt() {
-  const projectId = await cmdListProjects();
+async function cmdListProjects() {
+  await pickProject();
+}
+
+async function cmdSendPrompt(arg?: ProjectTreeItem | string) {
+  const projectId = typeof arg === 'string' ? arg
+    : (arg && (arg as ProjectTreeItem).projectId) || (await pickProject());
   if (!projectId) return;
   const text = await vscode.window.showInputBox({
     prompt: 'Prompt to send to the Claude console',
@@ -155,27 +107,109 @@ async function cmdSendPrompt() {
   }
 }
 
-async function cmdBuildDebug() {
-  const projectId = await cmdListProjects();
+async function cmdBuildDebug(arg?: ProjectTreeItem | string) {
+  const projectId = typeof arg === 'string' ? arg
+    : (arg && (arg as ProjectTreeItem).projectId) || (await pickProject());
   if (!projectId) return;
   const res = await api(`/api/projects/${projectId}/build/debug`, { method: 'POST' });
   if (res.status >= 200 && res.status < 300) {
     vscode.window.showInformationMessage(`Debug build queued for ${projectId}`);
+    projectsProvider?.refresh();
   } else {
     vscode.window.showErrorMessage(`Build failed (${res.status}): ${res.body.slice(0, 200)}`);
   }
 }
 
+async function cmdFollowConsole(arg?: ProjectTreeItem | string, context?: vscode.ExtensionContext) {
+  const projectId = typeof arg === 'string' ? arg
+    : (arg && (arg as ProjectTreeItem).projectId) || (await pickProject());
+  if (!projectId) return;
+
+  // Toggle: if already following, close it.
+  const existing = consoleDisposables.get(projectId);
+  if (existing) {
+    existing.dispose();
+    consoleDisposables.delete(projectId);
+    vscode.window.showInformationMessage(`Stopped following ${projectId}`);
+    return;
+  }
+  const sub = followConsole(projectId);
+  consoleDisposables.set(projectId, sub);
+  if (context) context.subscriptions.push(sub);
+  vscode.window.showInformationMessage(`Following ${projectId} (open the Output panel)`);
+}
+
+async function refreshStatusBar() {
+  if (!statusBarItem) return;
+  const enabled = vscode.workspace.getConfiguration('vibeCoder').get<boolean>('statusBar', true);
+  if (!enabled) {
+    statusBarItem.hide();
+    return;
+  }
+  const url = serverUrl();
+  if (!url) {
+    statusBarItem.text = '$(rocket) Vibe Coder: setup';
+    statusBarItem.tooltip = 'Click to configure server URL and login';
+    statusBarItem.show();
+    return;
+  }
+  const host = url.replace(/^https?:\/\//, '');
+  try {
+    const s = await getJson<{ serverVersion: string; runningTaskCount: number }>('/api/server/status');
+    if (s) {
+      statusBarItem.text = `$(rocket) ${host} (v${s.serverVersion})`;
+      statusBarItem.tooltip = `Connected · ${s.runningTaskCount} running task${s.runningTaskCount === 1 ? '' : 's'}\nClick for full status`;
+    } else {
+      statusBarItem.text = `$(rocket) ${host} (auth?)`;
+      statusBarItem.tooltip = 'Status unreachable — token may be invalid';
+    }
+  } catch {
+    statusBarItem.text = `$(rocket) ${host} (offline)`;
+    statusBarItem.tooltip = 'Connection failed';
+  }
+  statusBarItem.show();
+}
+
 export function activate(context: vscode.ExtensionContext) {
+  // Status bar
+  statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  statusBarItem.command = 'vibeCoder.status';
+  context.subscriptions.push(statusBarItem);
+
+  // Projects TreeView
+  projectsProvider = new ProjectsTreeProvider();
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider('vibeCoder.projects', projectsProvider),
+  );
+
+  // Commands
   context.subscriptions.push(
     vscode.commands.registerCommand('vibeCoder.login', cmdLogin),
     vscode.commands.registerCommand('vibeCoder.status', cmdStatus),
     vscode.commands.registerCommand('vibeCoder.listProjects', cmdListProjects),
-    vscode.commands.registerCommand('vibeCoder.sendPrompt', cmdSendPrompt),
-    vscode.commands.registerCommand('vibeCoder.buildDebug', cmdBuildDebug),
+    vscode.commands.registerCommand('vibeCoder.sendPrompt', (arg) => cmdSendPrompt(arg)),
+    vscode.commands.registerCommand('vibeCoder.buildDebug', (arg) => cmdBuildDebug(arg)),
+    vscode.commands.registerCommand('vibeCoder.followConsole', (arg) => cmdFollowConsole(arg, context)),
+    vscode.commands.registerCommand('vibeCoder.refreshTree', () => projectsProvider?.refresh()),
+  );
+
+  // Initial status-bar refresh + periodic poll (every 60 s)
+  void refreshStatusBar();
+  const timer = setInterval(() => void refreshStatusBar(), 60_000);
+  context.subscriptions.push(new vscode.Disposable(() => clearInterval(timer)));
+
+  // React to settings changes
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('vibeCoder')) {
+        void refreshStatusBar();
+        projectsProvider?.refresh();
+      }
+    }),
   );
 }
 
 export function deactivate() {
-  /* nothing — settings persist via vscode.workspace.getConfiguration().update */
+  for (const d of consoleDisposables.values()) d.dispose();
+  consoleDisposables.clear();
 }
