@@ -207,6 +207,10 @@ fun main(args: Array<String>) {
     buildScheduler.start()
     val conversationArchiver = com.siamakerlab.vibecoder.server.claude.ConversationArchiver(workspace)
     conversationArchiver.start()
+    // v0.35.0 — 코드 분석 묶음 (wrapper / stats / search).
+    val gradleWrapperService = com.siamakerlab.vibecoder.server.build.GradleWrapperService(workspace)
+    val codeStatsService = com.siamakerlab.vibecoder.server.projects.CodeStatsService(workspace)
+    val codeSearchService = com.siamakerlab.vibecoder.server.projects.CodeSearchService(workspace)
     // v0.29.0 — 프로젝트 zip + 디스크 monitor (Notifiers 와 email warn percent 공유).
     val projectArchiver = com.siamakerlab.vibecoder.server.projects.ProjectArchiver(workspace)
     val diskMonitor = com.siamakerlab.vibecoder.server.disk.DiskMonitor(
@@ -274,6 +278,9 @@ fun main(args: Array<String>) {
         buildScheduler = buildScheduler,
         buildWebhookSecretRepo = buildWebhookSecretRepo,
         conversationArchiver = conversationArchiver,
+        gradleWrapperService = gradleWrapperService,
+        codeStatsService = codeStatsService,
+        codeSearchService = codeSearchService,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {

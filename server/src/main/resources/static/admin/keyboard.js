@@ -28,6 +28,7 @@
     'g a': '/audit',
     'g c': '/chat',
     'g l': '/logs',
+    'g f': '/code-search',
   };
 
   function isTypingTarget(el) {

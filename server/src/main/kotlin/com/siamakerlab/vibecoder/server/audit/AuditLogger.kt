@@ -357,6 +357,17 @@ class AuditLogger(
         )
     }
 
+    // ── Build wrapper (v0.35.0+) ─────────────────────────────────────
+
+    fun wrapperUpdate(userId: String?, ip: String?, projectId: String, version: String) = safe {
+        repo.insert(
+            action = Actions.WRAPPER_UPDATE, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "project", resourceId = projectId,
+            detail = jsonDetail { put("version", version) },
+        )
+    }
+
     object Actions {
         const val AUTH_LOGIN = "auth.login"
         const val AUTH_LOGOUT = "auth.logout"
@@ -390,6 +401,7 @@ class AuditLogger(
         const val WEBHOOK_SECRET_CREATE = "webhook.secret.create"
         const val WEBHOOK_SECRET_DELETE = "webhook.secret.delete"
         const val WEBHOOK_BUILD_TRIGGER = "webhook.build.trigger"
+        const val WRAPPER_UPDATE = "wrapper.update"
     }
 
     object Results {

@@ -11,6 +11,7 @@ import com.siamakerlab.vibecoder.server.admin.logSearchRoutes
 import com.siamakerlab.vibecoder.server.build.buildAutomationRoutes
 import com.siamakerlab.vibecoder.server.build.buildCacheRoutes
 import com.siamakerlab.vibecoder.server.build.dependencyAuditRoutes
+import com.siamakerlab.vibecoder.server.projects.codeAnalysisRoutes
 import com.siamakerlab.vibecoder.server.projects.envFilesRoutes
 import com.siamakerlab.vibecoder.server.admin.twoFactorRoutes
 import com.siamakerlab.vibecoder.server.admin.corsSettingsRoutes
@@ -162,6 +163,10 @@ data class ServerContext(
     val buildWebhookSecretRepo: com.siamakerlab.vibecoder.server.repo.BuildWebhookSecretRepository,
     /** v0.33.0 — Claude 세션 자동 archive. */
     val conversationArchiver: com.siamakerlab.vibecoder.server.claude.ConversationArchiver,
+    /** v0.35.0 — Gradle wrapper / 코드 통계 / 워크스페이스 grep. */
+    val gradleWrapperService: com.siamakerlab.vibecoder.server.build.GradleWrapperService,
+    val codeStatsService: com.siamakerlab.vibecoder.server.projects.CodeStatsService,
+    val codeSearchService: com.siamakerlab.vibecoder.server.projects.CodeSearchService,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -309,6 +314,10 @@ fun Application.module(ctx: ServerContext) {
         )
         // v0.34.0 — 백업 / 복원 UI.
         backupRoutes(adminDeps, ctx.workspace)
+        // v0.35.0 — 코드 분석 묶음 (wrapper / stats / search).
+        codeAnalysisRoutes(
+            adminDeps, ctx.projects, ctx.gradleWrapperService, ctx.codeStatsService, ctx.codeSearchService,
+        )
         emailSettingsRoutes(adminDeps, ctx.emailNotifier)
         webhookSettingsRoutes(adminDeps, ctx.webhookNotifier)
         emulatorRoutes(adminDeps, ctx.emulator)
