@@ -51,8 +51,18 @@ object AdminTemplates {
   $csrfMeta
   <title>${esc(title)} · Vibe Coder</title>
   <link rel="icon" type="image/png" href="/static/icon.png">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#0b0d12">
   <link rel="stylesheet" href="/static/admin.css">
   <script src="/static/keyboard.js" defer></script>
+  <script>
+    // v0.39.0 — PWA service worker. Same-origin install only.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/static/sw.js').catch(function(){ /* ignore */ });
+      });
+    }
+  </script>
 </head>
 <body>
   <div class="$layoutCls">

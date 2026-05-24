@@ -1,0 +1,19 @@
+{
+  "name": "Vibe Coder Server",
+  "short_name": "Vibe Coder",
+  "description": "Self-hostable Android development server orchestrating Claude Code, Gradle, and Git.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#0b0d12",
+  "background_color": "#0b0d12",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
