@@ -8,6 +8,7 @@ import com.siamakerlab.vibecoder.server.admin.AdminRoutesDeps
 import com.siamakerlab.vibecoder.server.admin.adminRoutes
 import com.siamakerlab.vibecoder.server.admin.backupRoutes
 import com.siamakerlab.vibecoder.server.admin.logSearchRoutes
+import com.siamakerlab.vibecoder.server.admin.multiConsoleRoutes
 import com.siamakerlab.vibecoder.server.build.buildAutomationRoutes
 import com.siamakerlab.vibecoder.server.build.buildCacheRoutes
 import com.siamakerlab.vibecoder.server.build.dependencyAuditRoutes
@@ -318,6 +319,8 @@ fun Application.module(ctx: ServerContext) {
         codeAnalysisRoutes(
             adminDeps, ctx.projects, ctx.gradleWrapperService, ctx.codeStatsService, ctx.codeSearchService,
         )
+        // v0.36.0 — N-pane multi-console.
+        multiConsoleRoutes(adminDeps, ctx.projects)
         emailSettingsRoutes(adminDeps, ctx.emailNotifier)
         webhookSettingsRoutes(adminDeps, ctx.webhookNotifier)
         emulatorRoutes(adminDeps, ctx.emulator)

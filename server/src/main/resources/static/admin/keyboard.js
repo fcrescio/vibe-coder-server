@@ -29,6 +29,7 @@
     'g c': '/chat',
     'g l': '/logs',
     'g f': '/code-search',
+    'g m': '/multi-console',
   };
 
   function isTypingTarget(el) {

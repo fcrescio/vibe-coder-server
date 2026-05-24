@@ -86,6 +86,7 @@ object AdminTemplates {
   <div class="nav-links">
     ${link("/", "대시보드", "dashboard")}
     ${link("/projects", "프로젝트", "projects")}
+    ${link("/multi-console", "Multi-console", "multi-console")}
     ${link("/chat", "Chat", "chat")}
     ${link("/prompts", "프롬프트", "prompts")}
     ${link("/env-setup", "빌드환경", "env-setup")}

@@ -3,12 +3,15 @@ package com.siamakerlab.vibecoder.server.env
 import com.siamakerlab.vibecoder.server.admin.AdminRoutesDeps
 import com.siamakerlab.vibecoder.server.admin.AdminTemplates
 import com.siamakerlab.vibecoder.server.admin.requireSessionOrRedirect
+import com.siamakerlab.vibecoder.server.auth.AUTH_BEARER
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.server.application.call
+import io.ktor.server.auth.authenticate
 import io.ktor.server.request.receiveParameters
+import io.ktor.server.response.respond
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
@@ -78,6 +81,20 @@ fun Routing.agentRoutes(authDeps: AdminRoutesDeps, registry: AgentRegistry) {
         authDeps.audit.agentDelete(sess.userId, call.request.local.remoteHost, name, ok)
         val q = if (ok) "ok=${enc("agent '$name' 삭제됨")}" else "err=${enc("'$name' 삭제 실패")}"
         call.respondRedirect("/agents?$q")
+    }
+
+    // v0.36.0 — JSON API for console UI agent-dispatch dropdown.
+    authenticate(AUTH_BEARER) {
+        get("/api/agents") {
+            val list = runCatching { registry.list() }.getOrElse { emptyList() }
+            call.respond(mapOf("agents" to list.map {
+                mapOf(
+                    "name" to it.name,
+                    "sizeBytes" to it.sizeBytes,
+                    "preview" to it.preview.take(200),
+                )
+            }))
+        }
     }
 }
 
