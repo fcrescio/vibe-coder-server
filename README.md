@@ -24,7 +24,7 @@ vibe-coder-server/
 └─ docker/              # Slim Docker image + compose + vibe-doctor
 ```
 
-## What's inside (v0.19.0)
+## What's inside (v0.29.0)
 
 ### Core orchestration
 - **Claude Code CLI orchestration** — one persistent child process per project,
@@ -78,12 +78,57 @@ vibe-coder-server/
 - **JSON API parity** — every admin UI feature is also exposed under `/api/*`
   with Bearer authentication for the Android companion app.
 
-### Notifications (v0.17.0+)
+### Notifications (v0.17.0+, expanded in v0.21 / v0.27 / v0.29)
 - **Email (SMTP)** alerts on build failure / first success, Claude session
   idle waiting for input, disk / quota thresholds, SSH-key / PAT expiry.
   Configure host / port / user / password / from at `/settings/email`. Jakarta
   Mail + Angus, TLS by default. Async fire-and-forget — never blocks the
   build pipeline.
+- **Slack / Discord / Telegram webhooks** (v0.27.0+) — same triggers, parallel
+  delivery. Configure at `/settings/webhook`. JDK 11+ `HttpClient`, SSRF
+  whitelist (`hooks.slack.com`, `discord.com`/`discordapp.com`, Telegram bot
+  token regex). Test message button per provider.
+- **Claude usage monitoring** (v0.21.0+) — `ClaudeUsageMonitor` polls
+  `claude /status` every 5 min (default), fires a one-shot email + webhook
+  alert on transitioning past `warnThresholdPercent` (80%) or
+  `criticalThresholdPercent` (95%). Dashboard "Claude usage" card with
+  colored bar + reset time + parsed plan/model.
+- **Disk usage monitoring** (v0.29.0+) — `DiskMonitor` polls
+  `Files.getFileStore(workspace.root)` every 10 min, alerts on transitioning
+  past `email.diskUsageWarnPercent` (85% default). Dashboard "Disk usage"
+  card with total/free GB and colored bar.
+
+### Security & sessions (v0.26.0+)
+- **2FA (TOTP)** — RFC 6238 implementation with zero external dependencies
+  (JDK `Mac` + custom Base32). Google Authenticator / 1Password / Authy
+  compatible. Setup at `/2fa` (otpauth URI + Base32 secret + 6-digit verify),
+  login flow returns `401 totp_required` after password to prompt for code.
+- **Session idle timeout** — `security.sessionIdleTimeoutMinutes` (default
+  30, `0` = unlimited). Bearer auth + SSR `requireSessionOrRedirect` both
+  enforce: `device.lastSeenAt` older than N min → automatic `device` row
+  delete + redirect to `/login?err=session_timeout`. Audit logged.
+
+### Publishing (v0.22.0–v0.23.0)
+- **Play Console upload** — build detail page has a "Play Console upload"
+  card when status=SUCCESS. Precheck verifies `google-play-publisher` MCP +
+  Service Account JSON. Trigger sends a structured prompt to the project's
+  Claude session ("upload this AAB to internal track"); MCP-delegated
+  approach keeps secrets off the server code path.
+- **TestFlight upload** — same pattern with `app-store-connect` MCP. vibe-coder
+  does not build iOS itself (macOS/Xcode required); user uploads externally
+  produced `.ipa` to the workspace then triggers the upload.
+
+### Quality of life (v0.28.0+)
+- **APK signature inspection** — `apksigner verify --verbose --print-certs`
+  parsed inline on each build detail page (active schemes v1/v2/v3/v4, Signer
+  DN, SHA-256 fingerprints). Graceful when SDK / build-tools missing.
+- **Build cache management** (v0.28.0+) — `/settings/cache` page shows
+  current size of `~/.gradle/caches`, `~/.gradle/daemon`, `~/.android/cache`,
+  `~/.npm/_cacache` with per-target "clear" buttons. CSRF + confirm dialog.
+- **Source zip download** (v0.29.0+) — `GET /projects/{id}/zip` streams the
+  project source as a zip (excludes `.git`, `build`, `.gradle`,
+  `node_modules`, `.idea`, `*.apk`, `*.aab`). Filename auto-generated as
+  `<projectId>-source-<yyyyMMdd-HHmm>.zip`.
 
 ### Git + project scaffolding (v0.18.0+)
 - **Git commit + push** — single `POST /api/projects/{id}/git/commit` (and an
@@ -96,11 +141,17 @@ vibe-coder-server/
   `android-tv`. Each template seeds a `starterPrompt` consumed by the first
   Claude console turn.
 
-### Android emulator (v0.19.0+, scaffolding)
+### Android emulator (v0.19.0 scaffolding → v0.24.0 lifecycle → v0.25.0 :full)
 - `/emulator` page reports KVM availability, AVD inventory, and running
-  devices, with a manual launch guide for the slim image. Full in-browser
-  noVNC mirroring + AVD lifecycle ships in the upcoming
-  `siamakerlab/vibe-coder-server:full` variant.
+  devices.
+- **v0.24.0** added one-click AVD lifecycle: "+ create default" (`vibe-default`,
+  API 35, Pixel 6 profile), "▶ headless start", per-device "■ stop". Each
+  audited.
+- **v0.25.0** ships the `:full` image (~3-4 GB, `siamakerlab/vibe-coder-server:full`)
+  with `qemu-system-x86`, Xvfb, x11vnc, websockify + noVNC pre-installed.
+  Use `docker/compose.full.yml` with `/dev/kvm` passthrough + `group_add KVM_GID`
+  + port `6080` for browser-based noVNC mirroring. Slim image still works for
+  CLI-only ADB workflows.
 
 ## Quick start (Docker, 3 minutes)
 
@@ -239,7 +290,7 @@ ssh user@newhost 'cd ~/vibe-coder && tar xzf vibe-coder-data-*.tar.gz && docker 
 mounts only (no named volumes by default), but watch out if you mixed
 in legacy state. For regular upgrades, always `up -d --force-recreate`.
 
-## Web routes (v0.19.0)
+## Web routes (v0.29.0)
 
 All routes below sit at the root (no `/admin/*` prefix). Bearer auth or
 session cookie required except `/setup`, `/login`, `/health`. Every SSR POST
@@ -265,15 +316,19 @@ carries a CSRF `_csrf` token (v0.12.4+).
 | `/env-setup/mcp` | MCP catalog (60+ entries, checkbox multi-select) |
 | `/env-setup/claude-login` | Semi-automatic web OAuth |
 | `/env-setup/tasks/{taskId}` | Live install progress (WS) |
-| `/emulator` | **v0.19.0** Emulator diagnostics + manual launch guide |
+| `/emulator` | **v0.19.0** diagnostics + **v0.24.0** AVD lifecycle (create / launch / stop) + **v0.25.0** `:full` setup guide |
 | `/settings/git-integrations` | PAT tokens + SSH public key |
 | `/settings/email` | **v0.17.0** SMTP configuration + trigger matrix |
+| `/settings/webhook` | **v0.27.0** Slack / Discord / Telegram webhook configuration + test |
+| `/settings/cache` | **v0.28.0** Gradle / Android / npm cache size + per-target cleanup |
 | `/settings/cors` | Read-only CORS policy viewer |
+| `/2fa` | **v0.26.0** Two-factor TOTP enable / disable |
 | `/audit` | **v0.15.0** Operational audit log (filter / paginate) |
+| `/projects/{id}/zip` | **v0.29.0** Streaming source-only zip download |
 | `/settings`, `/devices`, `/password` | Operations |
 | `/login`, `/setup`, `/logout` | Auth |
 
-## JSON API (v0.19.0 — for clients like the Android app)
+## JSON API (v0.29.0 — for clients like the Android app)
 
 Every UI feature has a matching `/api/*` endpoint with Bearer authentication.
 Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
@@ -291,6 +346,10 @@ Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
   (**v0.16.0+** — persisted conversation_turns; pagination via `before`)
 - `POST /api/projects/{id}/git/commit`
   (**v0.18.0+** — add → commit → optional push; non-interactive auth)
+- `GET  /api/prompt-templates` (**v0.13.0+** — server) / `PROMPT_TEMPLATES` wire
+  constant promoted in **v0.20.0** (`PromptTemplateDto` + list response)
+- `POST /api/auth/login` now accepts optional `totpCode: String` (**v0.26.0+**);
+  returns `401 totp_required` for 2FA-enabled users when missing
 - `GET  /api/env-setup/components`, `POST /api/env-setup/install-all`,
   `POST /api/env-setup/{componentId}/install`
 - `POST /api/env-setup/claude-auth/upload` (multipart)
@@ -302,10 +361,13 @@ Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
 - WebSocket: `/ws/projects/{id}/console/logs`, `/ws/projects/{id}/builds/{buildId}/logs`,
   `/ws/env-setup/{taskId}/logs`
 
-## Auth (v0.4.0+)
+## Auth (v0.4.0+, hardened in v0.26.0)
 
 - `POST /api/auth/setup` — first-boot admin creation (only when DB has no admin).
-- `POST /api/auth/login` — `{username, password}` → bearer token + `vibe_session` cookie.
+- `POST /api/auth/login` — `{username, password, totpCode?}` → bearer token +
+  `vibe_session` cookie. `totpCode` is optional unless the user has 2FA
+  enabled; in that case the server returns `401 totp_required` on the first
+  call and `401 invalid_totp` on a bad code.
 - `POST /api/auth/password` — change password.
 - `POST /api/auth/logout` — invalidate the device row (cookie + Bearer header both work).
 
@@ -316,6 +378,18 @@ Passwords are stored as BCrypt cost-12 hashes only. **Brute-force protection**
   credential-stuffing across multiple accounts).
 - Timing-safe dummy verify on missing users (runtime-computed valid BCrypt
   hash so the response time matches a real verification).
+
+**Two-factor authentication (v0.26.0+)** — RFC 6238 TOTP (HMAC-SHA1, 30 s
+period, 6 digits) self-implemented (zero external deps). Enable at `/2fa`:
+scan the otpauth URI with Google Authenticator / 1Password / Authy, verify a
+6-digit code, secret persisted to `admin_users.totp_secret`. Login then
+requires the code after password. Disable requires a current code.
+
+**Session idle timeout (v0.26.0+)** — `security.sessionIdleTimeoutMinutes`
+(default 30, `0` = unlimited). Bearer auth + SSR session both check
+`device.lastSeenAt`; if older than N min, the device row is deleted and the
+client is redirected to `/login?err=session_timeout`. Same policy across
+cookie and `Authorization: Bearer …`.
 
 ## Security boundaries
 
@@ -332,9 +406,10 @@ Passwords are stored as BCrypt cost-12 hashes only. **Brute-force protection**
 - **WebSocket auth** — cookie automatic on same-origin handshake; Android
   clients send `{"type":"auth","token":"..."}` as the first frame.
 - **Upload extension blacklist**: `exe`, `bat`, `cmd`, `ps1`, `sh`.
-- **No raw-shell UI.** No `git push`. No release signing. No automation
-  prompts that wait on stdin (CLAUDE.md non-interactive policy templated
-  into every new project's `.claude/settings.json`).
+- **No raw-shell UI.** No release signing. No automation prompts that wait
+  on stdin (CLAUDE.md non-interactive policy templated into every new
+  project's `.claude/settings.json`). `git push` is now exposed (v0.18.0+)
+  but only via the non-interactive commit endpoint described below.
 - **External commands** have hard timeouts; cancellation calls
   `destroyForcibly`. The `claude` child can be SIGTERM'd mid-turn via the
   ■ stop button while preserving its session-id (`--resume` later).
@@ -344,6 +419,15 @@ Passwords are stored as BCrypt cost-12 hashes only. **Brute-force protection**
   `reset`, `force-push`, `branch -d`, and other destructive ops remain
   off-limits. Auth is non-interactive (`GIT_TERMINAL_PROMPT=0`, SSH
   `BatchMode=yes`) — no credential prompt ever blocks a request.
+- **Webhook SSRF defense** (v0.27.0+) — only `hooks.slack.com`,
+  `discord.com` / `discordapp.com`, and Telegram (`api.telegram.org` via a
+  bot-token regex `^\d+:[A-Za-z0-9_-]+$`) are accepted. `HttpClient` follows
+  no redirects to prevent cross-host hops.
+- **noVNC mirroring** (`:full` image, v0.25.0+) — websockify exposes the
+  emulator screen on the container's loopback only; port 6080 is meant to be
+  reached either over LAN (single-operator assumption) or via an SSH tunnel.
+  No vibe-coder admin auth wraps it yet — production-grade integration
+  (server-side reverse proxy with cookie auth) is on the v0.26+ roadmap.
 
 ## Build matrix
 

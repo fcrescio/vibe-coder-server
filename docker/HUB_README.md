@@ -13,7 +13,8 @@
   <https://github.com/siamakerlab/vibe-coder-server/wiki>
 - **Issues**: <https://github.com/siamakerlab/vibe-coder-server/issues>
 - **Architectures**: `linux/amd64` (multi-arch builds reserved for milestones).
-- **Latest tags**: `0.19.0`, `latest`
+- **Latest tags (slim)**: `0.29.0`, `latest`
+- **Latest tags (full / emulator + noVNC)**: `0.25.0-full`, `full`
 - **Image size**: ~600 MB (Android SDK / Gradle / MCP packages live in
   bind-mounted volumes — see below). v0.14.0+ runs alongside a small
   `postgres:17-alpine` sidecar container.
@@ -45,7 +46,7 @@ docker compose up -d            # boots postgres + vibe-coder-server
 > [CHANGELOG.md](https://github.com/siamakerlab/vibe-coder-server/blob/main/CHANGELOG.md)
 > for the exact steps.
 
-## What's in the box (v0.19.0)
+## What's in the box (v0.29.0)
 
 **Core**
 - **Claude Code CLI orchestration** — one persistent child per project,
@@ -93,10 +94,38 @@ docker compose up -d            # boots postgres + vibe-coder-server
 - **JSON API parity** — every browser feature is also at `/api/*` with
   Bearer auth, for the Android companion or third-party automation.
 
-**Notifications (v0.17.0+)**
+**Notifications (v0.17.0+, expanded in v0.21 / v0.27 / v0.29)**
 - **SMTP email alerts** on build failure / first success, idle Claude
   session waiting for input, disk / quota thresholds, SSH-key / PAT expiry.
   Configure at `/settings/email`.
+- **Slack / Discord / Telegram webhooks** (v0.27.0+) — parallel delivery on
+  the same triggers. SSRF whitelist for provider hosts. Configure at
+  `/settings/webhook`.
+- **Claude usage monitor** (v0.21.0+) — polls `claude /status`, alerts on
+  warn/critical thresholds (80% / 95%). Dashboard card.
+- **Disk usage monitor** (v0.29.0+) — polls workspace filesystem, alerts at
+  85% used. Dashboard card.
+
+**Security & sessions (v0.26.0+)**
+- **2FA TOTP** (Google Authenticator / 1Password / Authy compatible) at
+  `/2fa`. Zero-dependency RFC 6238 implementation.
+- **Session idle timeout** — default 30 min for Bearer and cookie auth, both
+  enforced via `device.lastSeenAt`. `security.sessionIdleTimeoutMinutes`.
+
+**Publishing (v0.22.0–v0.23.0)**
+- **Play Console upload** (AAB → internal/alpha/beta/production) via
+  `google-play-publisher` MCP delegation.
+- **TestFlight upload** (.ipa) via `app-store-connect` MCP delegation.
+  (vibe-coder does not build iOS itself — externally produced .ipa lands in
+  the workspace first.)
+
+**Quality of life (v0.28.0+)**
+- **APK signature inspection** — inline `apksigner verify` result on each
+  build detail page (schemes v1–v4 + Signer DN + SHA-256).
+- **Build cache cleanup** — `/settings/cache` shows per-target size of
+  Gradle/Android/npm caches with per-target clear buttons.
+- **Project source zip** — `GET /projects/{id}/zip` for one-click source
+  backup (excludes build/.git/.gradle).
 
 **Git + project scaffolding (v0.18.0+)**
 - **Git commit + push** wrapped in a single non-interactive endpoint
@@ -106,10 +135,14 @@ docker compose up -d            # boots postgres + vibe-coder-server
   `compose-mvvm-room`, `wear-os`, `android-tv`) — each seeds a
   `starterPrompt` for the first Claude console turn.
 
-**Android emulator (v0.19.0+, scaffolding)**
-- `/emulator` page reports KVM availability, AVD inventory, running
-  devices, with a manual launch guide. Full in-browser noVNC mirroring
-  ships in the upcoming `siamakerlab/vibe-coder-server:full` variant.
+**Android emulator (v0.19.0 → v0.24.0 lifecycle → v0.25.0 `:full`)**
+- `/emulator` page reports KVM availability, AVD inventory, running devices.
+- **v0.24.0** added one-click AVD lifecycle (create / launch / stop).
+- **v0.25.0** ships a separate `:full` image (~3-4 GB) with `qemu`, Xvfb,
+  x11vnc, websockify, noVNC pre-installed. Use `docker/compose.full.yml`
+  with `/dev/kvm` passthrough + `group_add KVM_GID` + port `6080` for
+  browser-based noVNC mirroring (LAN / SSH tunnel only — no auth on
+  port 6080).
 
 ## Image layout (~600 MB)
 
@@ -199,7 +232,7 @@ container (UID 70 in alpine images). On the host you may need `sudo` to read
 files directly. Either use `tar` with sudo, or do logical `pg_dump` against
 the running container.
 
-## Web UI routes (v0.19.0)
+## Web UI routes (v0.29.0)
 
 All routes sit at the root (no `/admin/*` prefix from v0.4.2+). Bearer
 token or session cookie required except `/setup`, `/login`, `/health`.
@@ -220,14 +253,18 @@ SSR POST forms carry a CSRF token (v0.12.4+).
 | `/env-setup` | Build environment installer |
 | `/env-setup/mcp` | MCP catalog (60+ entries) |
 | `/env-setup/claude-login` | Semi-automatic web OAuth |
-| `/emulator` | Emulator diagnostics + manual launch guide (v0.19.0+) |
+| `/emulator` | Diagnostics + AVD lifecycle (v0.24.0+) + `:full` setup guide (v0.25.0+) |
+| `/2fa` | Two-factor TOTP enable / disable (v0.26.0+) |
 | `/settings/git-integrations` | PAT + SSH key |
 | `/settings/email` | SMTP config + notification triggers (v0.17.0+) |
+| `/settings/webhook` | Slack / Discord / Telegram webhooks (v0.27.0+) |
+| `/settings/cache` | Gradle / Android / npm cache size + cleanup (v0.28.0+) |
 | `/settings/cors` | Read-only CORS policy viewer |
 | `/audit` | Operational audit log (v0.15.0+) |
+| `/projects/{id}/zip` | Source zip download (v0.29.0+) |
 | `/settings`, `/devices`, `/password` | Operations |
 
-## JSON API (v0.19.0 — for clients)
+## JSON API (v0.29.0 — for clients)
 
 Full reference + curl examples in the
 [REST API Reference](https://github.com/siamakerlab/vibe-coder-server/wiki/REST-API-Reference)
@@ -244,7 +281,9 @@ Highlights:
 - `GET  /api/projects/{id}/history`, `GET /api/chat/history` (v0.16.0+ —
   paginate the persisted conversation_turns)
 - `POST /api/projects/{id}/git/commit` (v0.18.0+ — non-interactive commit & push)
-- `GET  /api/prompt-templates` (v0.13.0+)
+- `GET  /api/prompt-templates` (v0.13.0+ — `PROMPT_TEMPLATES` wire promoted in v0.20.0)
+- `POST /api/auth/login` accepts optional `totpCode` (v0.26.0+ — 2FA users
+  receive `401 totp_required` until code is supplied)
 - `GET  /api/env-setup/components`, `POST /api/env-setup/install-all`
 - `POST /api/env-setup/claude-auth/upload | api-key`
 - `POST /api/env-setup/claude-login/start | submit | cancel`
@@ -320,14 +359,21 @@ Full model: <https://github.com/siamakerlab/vibe-coder-server/wiki/Security-Mode
 ## Build instructions (maintainer)
 
 ```bash
-# Regular development push (amd64-only, fast 2-3 min)
+# Regular development push — slim (amd64-only, fast 2-3 min)
 docker buildx build --platform linux/amd64 \
     -f docker/Dockerfile \
     -t siamakerlab/vibe-coder-server:<ver> \
     -t siamakerlab/vibe-coder-server:latest \
     --push .
 
-# Milestone (multi-arch — slow 10-15 min via arm64 emulation)
+# :full (emulator + noVNC) — amd64-only (KVM is host-arch dependent)
+docker buildx build --platform linux/amd64 \
+    -f docker/Dockerfile.full \
+    -t siamakerlab/vibe-coder-server:<ver>-full \
+    -t siamakerlab/vibe-coder-server:full \
+    --push .
+
+# Milestone multi-arch slim (slow 10-15 min via arm64 emulation)
 docker buildx build --platform linux/amd64,linux/arm64 ...
 ```
 
