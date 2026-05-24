@@ -109,6 +109,11 @@ private suspend fun renderHistory(
     repo: ConversationTurnRepository,
 ) {
     val params = call.request.queryParameters
+    // v0.52.0 — agent filter via ?agent=. UI semantics:
+    //   omitted        → main console only (Filter.agentName = null)
+    //   ?agent=*       → all turns (main + every sub-agent)   (Filter.agentName = "")
+    //   ?agent=<name>  → that sub-agent only
+    val agentParam = params["agent"]
     val filter = ConversationTurnRepository.Filter(
         projectId = projectId,
         sessionId = params["session"]?.ifBlank { null },
@@ -117,12 +122,19 @@ private suspend fun renderHistory(
         fromTs = params["from"]?.ifBlank { null },
         toTs = params["to"]?.ifBlank { null },
         q = params["q"]?.ifBlank { null },
+        agentName = when {
+            agentParam == null -> null          // default: main only
+            agentParam == "*" -> ""             // all
+            agentParam.isBlank() -> null
+            else -> agentParam
+        },
     )
     val page = (params["p"]?.toIntOrNull() ?: 0).coerceAtLeast(0)
     val pageSize = 100
     val rows = repo.list(filter, limit = pageSize, offset = page * pageSize.toLong())
     val total = repo.count(filter)
     val sessions = repo.distinctSessions(projectId)
+    val agents = repo.distinctAgents(projectId)
     val ok = params["ok"]?.ifBlank { null }
     val err = params["err"]?.ifBlank { null }
     call.respondText(
@@ -134,6 +146,7 @@ private suspend fun renderHistory(
             rows = rows,
             filter = filter,
             sessions = sessions,
+            agents = agents,
             page = page,
             pageSize = pageSize,
             total = total,
@@ -160,6 +173,8 @@ object HistoryTemplates {
         rows: List<com.siamakerlab.vibecoder.server.repo.ConversationTurnRow>,
         filter: ConversationTurnRepository.Filter,
         sessions: List<String>,
+        /** v0.52.0 — distinct sub-agent names for the filter dropdown. */
+        agents: List<String> = emptyList(),
         page: Int,
         pageSize: Int,
         total: Long,
@@ -187,6 +202,25 @@ object HistoryTemplates {
                 val sel = if (v == filter.role) " selected" else ""
                 """<option value="${esc(v)}"$sel>${esc(label)}</option>"""
             }
+        // v0.52.0 — agent dropdown.
+        // selectedAgentParam value 결정: filter.agentName == null → "" (default = main),
+        //                              filter.agentName == "" → "*" (all),
+        //                              그 외 → 그 이름.
+        val selectedAgentParam = when (filter.agentName) {
+            null -> ""
+            "" -> "*"
+            else -> filter.agentName
+        }
+        val agentOpts = buildString {
+            val mainSel = if (selectedAgentParam == "") " selected" else ""
+            val allSel = if (selectedAgentParam == "*") " selected" else ""
+            append("""<option value=""$mainSel>(main console only)</option>""")
+            append("""<option value="*"$allSel>(all — main + sub-agents)</option>""")
+            agents.forEach { a ->
+                val sel = if (a == selectedAgentParam) " selected" else ""
+                append("""<option value="${esc(a)}"$sel>@${esc(a)}</option>""")
+            }
+        }
 
         val rowsHtml = if (rows.isEmpty()) {
             """<tr><td colspan="5" class="dim" style="text-align:center;padding:14px">no conversation history</td></tr>"""
@@ -205,9 +239,13 @@ object HistoryTemplates {
                     r.content.take(previewLen) + " …(+" + (r.content.length - previewLen) + ")"
                 else r.content
                 val toolBadge = r.toolName?.let { """<span class="dim" style="font-size:11px"> · $it</span>""" } ?: ""
+                // v0.52.0 — sub-agent 출처 표시.
+                val agentBadge = r.agentName?.let {
+                    """<div style="font-size:10px;color:#7aa;margin-top:2px">@${esc(it)}</div>"""
+                } ?: ""
                 """<tr>
                   <td class="dim" style="font-family:ui-monospace,Menlo,monospace;font-size:11px;white-space:nowrap">${esc(r.ts)}</td>
-                  <td><span class="$roleCls" style="font-size:11px;text-transform:uppercase">${esc(r.role)}</span>$toolBadge</td>
+                  <td><span class="$roleCls" style="font-size:11px;text-transform:uppercase">${esc(r.role)}</span>$toolBadge$agentBadge</td>
                   <td><pre style="margin:0;font-size:12px;white-space:pre-wrap;word-break:break-word;max-width:900px">${esc(preview)}</pre></td>
                 </tr>"""
             }
@@ -252,6 +290,9 @@ $errHtml
 </div>
 
 <form method="get" action="$baseAction" class="card" style="margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;align-items:end">
+  <label style="margin:0">Agent (v0.52.0+)
+    <select name="agent" style="width:100%">$agentOpts</select>
+  </label>
   <label style="margin:0">Session
     <select name="session" style="width:100%">$sessionOpts</select>
   </label>
@@ -309,7 +350,14 @@ $errHtml
         page: Int,
     ): String {
         val base = if (isChat) "/chat/history" else "/projects/${esc(projectId)}/history"
+        // v0.52.0 — agent param round-trip. filter.agentName == null 은 default 라 query 생략.
+        val agentQuery: String? = when (filter.agentName) {
+            null -> null
+            "" -> "agent=*"
+            else -> "agent=${enc(filter.agentName)}"
+        }
         val params = listOfNotNull(
+            agentQuery,
             filter.sessionId?.let { "session=${enc(it)}" },
             filter.role?.let { "role=${enc(it)}" },
             filter.toolName?.let { "tool=${enc(it)}" },

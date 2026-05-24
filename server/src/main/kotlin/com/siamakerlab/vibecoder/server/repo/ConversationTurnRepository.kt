@@ -110,6 +110,16 @@ class ConversationTurnRepository(private val clock: Clock) {
         val toTs: String? = null,
         /** content LIKE %query% — v0.16.0 는 단순. 다음 cycle 에서 FTS 교체. */
         val q: String? = null,
+        /**
+         * v0.52.0 — agent_name filter.
+         * - `null` (기본) → 메인 console 만 (`agent_name IS NULL`).
+         * - 빈 string `""` → 모든 turn (메인 + 모든 sub-agent).
+         * - `"<name>"` → 그 sub-agent 만.
+         *
+         * 기존 호출자는 agentName 을 안 넘기므로 메인 console 만 보임 — backward
+         * compatible. 새 UI 가 명시적으로 `""` (all) 또는 agent 이름을 전달.
+         */
+        val agentName: String? = null,
     )
 
     private fun Filter.toCondition(): Op<Boolean> {
@@ -120,6 +130,12 @@ class ConversationTurnRepository(private val clock: Clock) {
         fromTs?.let { c = c and (ConversationTurns.ts greaterEq it) }
         toTs?.let { c = c and (ConversationTurns.ts lessEq it) }
         q?.let { c = c and (ConversationTurns.content like "%${escapeLike(it)}%") }
+        // v0.52.0 — agent_name 필터링.
+        when (agentName) {
+            null -> c = c and IsNullOp(ConversationTurns.agentName)
+            "" -> {}  // 모든 turn (필터 없음)
+            else -> c = c and (ConversationTurns.agentName eq agentName)
+        }
         return c
     }
 
@@ -143,6 +159,20 @@ class ConversationTurnRepository(private val clock: Clock) {
             .select(ConversationTurns.sessionId)
             .where { ConversationTurns.projectId eq projectId }
             .map { it[ConversationTurns.sessionId] }
+            .filterNotNull()
+            .distinct()
+            .sorted()
+    }
+
+    /**
+     * v0.52.0 — Project 내 distinct agent_name 목록 (non-null).
+     * /history 페이지의 agent 필터 dropdown 을 채움.
+     */
+    fun distinctAgents(projectId: String): List<String> = transaction {
+        ConversationTurns
+            .select(ConversationTurns.agentName)
+            .where { ConversationTurns.projectId eq projectId }
+            .map { it[ConversationTurns.agentName] }
             .filterNotNull()
             .distinct()
             .sorted()
