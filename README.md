@@ -24,7 +24,7 @@ vibe-coder-server/
 └─ docker/              # Slim Docker image + compose + vibe-doctor
 ```
 
-## What's inside (v0.34.0)
+## What's inside (v0.39.0)
 
 ### Core orchestration
 - **Claude Code CLI orchestration** — one persistent child process per project,
@@ -189,6 +189,52 @@ vibe-coder-server/
   `~/.config/vibe-coder/config` with `0600`. Go/Rust port + WS subscribe on
   the roadmap.
 
+### Code analysis (v0.35.0+)
+- **Gradle wrapper management** — `/projects/{id}/wrapper` inspects
+  `gradle/wrapper/gradle-wrapper.properties`, shows the current version,
+  and lets you upgrade with a single form. Atomic write; only
+  `distributionUrl` is replaced.
+- **Code statistics** — `/projects/{id}/stats` walks the source tree and
+  reports file count / LoC / size per language across 35+ languages.
+  No external dependency (no `cloc`).
+- **Workspace grep** — `/code-search` line-by-line scans every project's
+  source tree (5 MB / file cap, binary skip, case-sensitive toggle, 200
+  match cap). Match preview links straight to `/projects/{id}/view`.
+
+### Multi-project & multi-agent (v0.36.0+)
+- **Multi-console** — `/multi-console?projects=id1,id2,…` shows up to
+  six project consoles in an iframe grid (cookie auth flows in
+  automatically). Single page for parallel work across projects.
+- **Agent dispatch API** — `GET /api/agents` (Bearer JSON). Console UI
+  and Android client consume the same list for an "agent dropdown" so the
+  user can quickly inject "Use the `<agent>` sub-agent to …" prompts.
+
+### Users & roles (v0.37.0+ — multi-tenant first step)
+- **`admin_users.role` column** — `admin` / `member` (default for new
+  users is `member`; existing users auto-migrated to `admin` for safety).
+- **`/users` SSR (admin only)** — create / list / role-toggle / delete
+  users. Last-admin demotion & self-deletion are blocked. Audit logged
+  (`user.create`, `user.role.change`, `user.delete`).
+- **`requireAdminOrRedirect(sess)` helper** — used at `/users` today;
+  other admin-only pages (`/audit`, `/settings`, `/backup`, `/2fa`,
+  `/agents`) will be hardened in v0.37.x.
+
+### Ubuntu 26.04 LTS rebase (v0.38.0+)
+- Base image moved from `eclipse-temurin:17-{jdk,jre}-noble` (24.04 LTS)
+  to `-resolute` (26.04 LTS, "Resolute Raccoon"). JDK 17.0.19 unchanged.
+  Both slim and `:full` variants rebased. LTS support window now runs
+  through 2031-04. No code or wire changes.
+
+### PWA + VS Code extension (v0.39.0+)
+- **PWA** — `static/admin/manifest.json` + `sw.js` (cache-first for
+  `/static/*`, network-only for `/api/*` and `/ws/*`). Mobile browsers can
+  "Add to Home Screen"; desktop can install as a standalone app.
+- **VS Code extension scaffold** (`vscode-extension/`) — single-file TS
+  with 5 commands (`Login`, `Server status`, `List projects`, `Send prompt`,
+  `Trigger debug build`). Zero npm runtime deps; uses Node's built-in
+  `http`/`https`. Login auto-handles `totp_required`. Not yet on the
+  Marketplace; install via `F5` in the Extension Development Host.
+
 ### Git + project scaffolding (v0.18.0+)
 - **Git commit + push** — single `POST /api/projects/{id}/git/commit` (and an
   SSR form) wraps `add → commit → push` with non-interactive auth (PAT via
@@ -349,7 +395,7 @@ ssh user@newhost 'cd ~/vibe-coder && tar xzf vibe-coder-data-*.tar.gz && docker 
 mounts only (no named volumes by default), but watch out if you mixed
 in legacy state. For regular upgrades, always `up -d --force-recreate`.
 
-## Web routes (v0.34.0)
+## Web routes (v0.39.0)
 
 All routes below sit at the root (no `/admin/*` prefix). Bearer auth or
 session cookie required except `/setup`, `/login`, `/health`. Every SSR POST
@@ -391,10 +437,15 @@ carries a CSRF `_csrf` token (v0.12.4+).
 | `/logs` | **v0.32.0** Build log grep across all projects |
 | `/agents` | **v0.31.0** Custom `.agents/*.md` CRUD |
 | `/backup` | **v0.34.0** Workspace tar.gz backup + restore guide |
+| `/projects/{id}/wrapper` | **v0.35.0** Gradle wrapper version + upgrade |
+| `/projects/{id}/stats` | **v0.35.0** Code statistics (LoC / languages) |
+| `/code-search` | **v0.35.0** Workspace-wide grep |
+| `/multi-console` | **v0.36.0** N-pane multi-project console (iframe grid) |
+| `/users` | **v0.37.0** Multi-user / role management (admin only) |
 | `/settings`, `/devices`, `/password` | Operations |
 | `/login`, `/setup`, `/logout` | Auth |
 
-## JSON API (v0.34.0 — for clients like the Android app)
+## JSON API (v0.39.0 — for clients like the Android app)
 
 Every UI feature has a matching `/api/*` endpoint with Bearer authentication.
 Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
@@ -423,6 +474,8 @@ Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
 - `POST /api/webhooks/build/{projectId}` (**v0.33.0+** — admin-auth-free
   external trigger; `X-Vibe-Secret-Id` + `X-Vibe-Secret` + optional
   `X-Vibe-Signature`)
+- `GET  /api/agents` (**v0.36.0+** — list registered Claude sub-agents for
+  console UI / Android dispatch dropdown)
 - `GET  /api/env-setup/components`, `POST /api/env-setup/install-all`,
   `POST /api/env-setup/{componentId}/install`
 - `POST /api/env-setup/claude-auth/upload` (multipart)
@@ -463,6 +516,13 @@ requires the code after password. Disable requires a current code.
 `device.lastSeenAt`; if older than N min, the device row is deleted and the
 client is redirected to `/login?err=session_timeout`. Same policy across
 cookie and `Authorization: Bearer …`.
+
+**Multi-user + role (v0.37.0+, first step)** — `admin_users.role` column
+adds `admin` / `member` distinction. The first admin (from `/setup`) is
+always `admin`; new users created via `/users` default to `member`.
+`/users` itself is admin-only. Last-admin demotion and self-deletion are
+blocked. Project-level ACLs (member who only sees a subset of projects)
+are on the roadmap for v0.38+.
 
 ## Security boundaries
 
@@ -506,7 +566,7 @@ cookie and `Authorization: Bearer …`.
 
 | Layer | Version |
 |---|---|
-| Base image | eclipse-temurin:17-jdk-noble (Ubuntu 24.04 LTS) |
+| Base image | eclipse-temurin:17-jdk-resolute (Ubuntu 26.04 LTS, since v0.38.0) |
 | Gradle wrapper | 9.5.1 |
 | Kotlin | 2.2.20 |
 | Ktor | 3.1.2 |
@@ -568,3 +628,20 @@ vibe build my-app
 Token stored at `~/.config/vibe-coder/config` with `chmod 0600`. `jq`
 optional (pretty-prints JSON). Go/Rust port with WebSocket subscribe is on
 the roadmap.
+
+## Bundled VS Code extension (`vscode-extension/`, v0.39.0+)
+
+Single-file TypeScript MVP. Talks to the same REST API from inside VS
+Code's command palette.
+
+```bash
+cd vscode-extension
+npm install && npm run compile
+# Then in VS Code: press F5 to launch the Extension Development Host.
+```
+
+Commands: **Vibe Coder: Login** (handles `totp_required` automatically) /
+**Server status** / **List projects** / **Send prompt to project console**
+/ **Trigger debug build**. Settings: `vibeCoder.serverUrl`,
+`vibeCoder.token` (Global). Not yet published to the Marketplace; install
+via dev mode for now.

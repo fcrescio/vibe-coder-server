@@ -13,8 +13,9 @@
   <https://github.com/siamakerlab/vibe-coder-server/wiki>
 - **Issues**: <https://github.com/siamakerlab/vibe-coder-server/issues>
 - **Architectures**: `linux/amd64` (multi-arch builds reserved for milestones).
-- **Latest tags (slim)**: `0.34.0`, `latest`
-- **Latest tags (full / emulator + noVNC)**: `0.25.0-full`, `full`
+- **Latest tags (slim)**: `0.39.0`, `latest`
+- **Latest tags (full / emulator + noVNC)**: `0.38.0-full`, `full`
+- **Base OS**: Ubuntu 26.04 LTS (Resolute Raccoon) since v0.38.0
 - **Image size**: ~600 MB (Android SDK / Gradle / MCP packages live in
   bind-mounted volumes — see below). v0.14.0+ runs alongside a small
   `postgres:17-alpine` sidecar container.
@@ -46,7 +47,7 @@ docker compose up -d            # boots postgres + vibe-coder-server
 > [CHANGELOG.md](https://github.com/siamakerlab/vibe-coder-server/blob/main/CHANGELOG.md)
 > for the exact steps.
 
-## What's in the box (v0.34.0)
+## What's in the box (v0.39.0)
 
 **Core**
 - **Claude Code CLI orchestration** — one persistent child per project,
@@ -164,6 +165,32 @@ docker compose up -d            # boots postgres + vibe-coder-server
 - **`cli/vibe`** — bundled `bash` + `curl` MVP. `vibe login` (handles
   `totp_required`) + projects / status / console / build.
 
+**Code analysis (v0.35.0+)**
+- **`/projects/{id}/wrapper`** — Gradle wrapper version + 1-click upgrade.
+- **`/projects/{id}/stats`** — LoC / files / size per language.
+- **`/code-search`** — workspace-wide grep with `<mark>` highlight.
+
+**Multi-project / multi-agent (v0.36.0+)**
+- **`/multi-console?projects=a,b,c`** — up to 6 project consoles in an
+  iframe grid (cookie auth flows in automatically).
+- **`GET /api/agents`** — list registered `.agents/*.md` for dispatch UI.
+
+**Multi-user / role (v0.37.0+)**
+- **`admin_users.role`** — `admin` / `member` distinction. First admin
+  always admin; new users default to `member`.
+- **`/users`** — admin-only management (create / role-toggle / delete).
+  Last-admin demotion + self-deletion blocked.
+
+**Ubuntu 26.04 LTS (v0.38.0+)**
+- Slim & `:full` images rebased on `eclipse-temurin:17-{jdk,jre}-resolute`.
+  JDK 17.0.19 unchanged. LTS support window through 2031-04.
+
+**PWA + VS Code extension (v0.39.0+)**
+- `manifest.json` + service worker → mobile/desktop browsers can
+  "install" the admin UI.
+- `vscode-extension/` scaffold: 5 commands (login / status / projects /
+  send prompt / build). Zero npm deps.
+
 **Git + project scaffolding (v0.18.0+)**
 - **Git commit + push** wrapped in a single non-interactive endpoint
   (`POST /api/projects/{id}/git/commit` + SSR form). PAT / SSH auth,
@@ -269,7 +296,7 @@ container (UID 70 in alpine images). On the host you may need `sudo` to read
 files directly. Either use `tar` with sudo, or do logical `pg_dump` against
 the running container.
 
-## Web UI routes (v0.34.0)
+## Web UI routes (v0.39.0)
 
 All routes sit at the root (no `/admin/*` prefix from v0.4.2+). Bearer
 token or session cookie required except `/setup`, `/login`, `/health`.
@@ -306,9 +333,14 @@ SSR POST forms carry a CSRF token (v0.12.4+).
 | `/logs` | Build log grep (v0.32.0+) |
 | `/agents` | Custom `.agents/*.md` CRUD (v0.31.0+) |
 | `/backup` | Workspace tar.gz backup + restore guide (v0.34.0+) |
+| `/projects/{id}/wrapper` | Gradle wrapper version + upgrade (v0.35.0+) |
+| `/projects/{id}/stats` | Code statistics (LoC / languages) (v0.35.0+) |
+| `/code-search` | Workspace-wide grep (v0.35.0+) |
+| `/multi-console` | N-pane multi-project console (v0.36.0+) |
+| `/users` | Multi-user / role management (admin only, v0.37.0+) |
 | `/settings`, `/devices`, `/password` | Operations |
 
-## JSON API (v0.34.0 — for clients)
+## JSON API (v0.39.0 — for clients)
 
 Full reference + curl examples in the
 [REST API Reference](https://github.com/siamakerlab/vibe-coder-server/wiki/REST-API-Reference)
@@ -332,6 +364,7 @@ Highlights:
 - `GET  /projects/{id}/history/export` / `POST .../history/import` (v0.31.0+)
 - `POST /api/webhooks/build/{projectId}` (v0.33.0+ — external trigger,
   multi-secret auth: `X-Vibe-Secret-Id` + `X-Vibe-Secret` + optional HMAC)
+- `GET  /api/agents` (v0.36.0+ — list `.agents/*.md` for dispatch UI)
 - `GET  /api/env-setup/components`, `POST /api/env-setup/install-all`
 - `POST /api/env-setup/claude-auth/upload | api-key`
 - `POST /api/env-setup/claude-login/start | submit | cancel`
