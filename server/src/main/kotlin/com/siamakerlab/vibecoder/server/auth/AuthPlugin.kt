@@ -17,7 +17,14 @@ const val SESSION_COOKIE = "vibe_session"
 
 data class DevicePrincipal(val device: DeviceRow)
 
-fun Application.installAuth(deviceRepo: DeviceRepository, tokens: TokenService) {
+fun Application.installAuth(
+    deviceRepo: DeviceRepository,
+    tokens: TokenService,
+    /**
+     * v0.26.0 — idle timeout 분. 0 = 무제한. provider 형태라 런타임에 /settings 로 바뀌어도 즉시 반영.
+     */
+    idleTimeoutMinutesProvider: () -> Int = { 0 },
+) {
     install(Authentication) {
         bearer(AUTH_BEARER) {
             realm = "vibe-coder"
@@ -39,6 +46,25 @@ fun Application.installAuth(deviceRepo: DeviceRepository, tokens: TokenService) 
                 if (raw.isBlank()) return@authenticate null
                 val hash = tokens.hashOf(raw)
                 val device = deviceRepo.findByTokenHash(hash) ?: return@authenticate null
+
+                // v0.26.0 — idle timeout 검사. lastSeenAt 가 N 분 이전이면 토큰 폐기.
+                val idleMin = idleTimeoutMinutesProvider().coerceAtLeast(0)
+                if (idleMin > 0) {
+                    val lastSeen = device.lastSeenAt
+                    if (lastSeen != null) {
+                        val ageMs = runCatching {
+                            val last = java.time.Instant.parse(lastSeen)
+                            java.time.Duration.between(last, java.time.Instant.now()).toMillis()
+                        }.getOrNull()
+                        if (ageMs != null && ageMs > idleMin * 60_000L) {
+                            // Idle 초과 → 토큰 자동 폐기 + 인증 거절. 클라이언트는 401 받고
+                            // 재로그인 (cookie/Bearer 둘 다 해당).
+                            deviceRepo.deleteById(device.id)
+                            return@authenticate null
+                        }
+                    }
+                }
+
                 deviceRepo.touchLastSeen(device.id)
                 DevicePrincipal(device)
             }

@@ -72,9 +72,13 @@ fun Routing.authRoutes(
                 deviceName = body.deviceName ?: "unknown",
                 channel = "app",
                 remoteIp = ip,
+                totpCode = body.totpCode,
             )
         } catch (e: ApiException) {
-            audit.loginFailure(body.username, ip, e.code)
+            // totp_required 는 정상적인 2단계 진행 신호 — audit 에 fail 로 남기지 않음.
+            if (e.code != "totp_required") {
+                audit.loginFailure(body.username, ip, e.code)
+            }
             throw e
         }
         audit.loginSuccess(outcome.user.username, outcome.user.id, outcome.device.id, ip, "app")

@@ -21,6 +21,14 @@ object AdminUsers : Table("admin_users") {
     val createdAt = varchar("created_at", 64)
     val lastLoginAt = varchar("last_login_at", 64).nullable()
     val passwordChangedAt = varchar("password_changed_at", 64)
+    /**
+     * v0.26.0 — TOTP (2FA, Google Authenticator 호환).
+     *   - totpSecret: Base32 shared secret (160 bits). null = 2FA 비활성.
+     *   - totpEnabledAt: 활성화 시각 (사용자에게 "활성 중" 표시용). null = 비활성.
+     * 활성 사용자 로그인 흐름: password 통과 → 별도 단계에서 6자리 코드 검증.
+     */
+    val totpSecret = varchar("totp_secret", 64).nullable()
+    val totpEnabledAt = varchar("totp_enabled_at", 64).nullable()
     override val primaryKey = PrimaryKey(id)
 }
 

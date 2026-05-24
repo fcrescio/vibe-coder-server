@@ -6,6 +6,7 @@ import com.siamakerlab.vibecoder.server.actions.ServerActionHandler
 import com.siamakerlab.vibecoder.server.actions.projectActionRoutes
 import com.siamakerlab.vibecoder.server.admin.AdminRoutesDeps
 import com.siamakerlab.vibecoder.server.admin.adminRoutes
+import com.siamakerlab.vibecoder.server.admin.twoFactorRoutes
 import com.siamakerlab.vibecoder.server.admin.corsSettingsRoutes
 import com.siamakerlab.vibecoder.server.admin.envSetupRoutes
 import com.siamakerlab.vibecoder.server.admin.gitIntegrationsRoutes
@@ -171,7 +172,10 @@ fun Application.module(ctx: ServerContext) {
         contentConverter = KotlinxWebsocketSerializationConverter(jsonCfg)
     }
     installStatusPages()
-    installAuth(ctx.deviceRepo, ctx.tokens)
+    installAuth(
+        ctx.deviceRepo, ctx.tokens,
+        idleTimeoutMinutesProvider = { ctx.config.security.sessionIdleTimeoutMinutes },
+    )
 
     routing {
         // 인증 없이 노출되는 헬스 프로브 (Docker HEALTHCHECK / 외부 모니터링용)
@@ -208,6 +212,8 @@ fun Application.module(ctx: ServerContext) {
             claudeUsageMonitor = ctx.claudeUsageMonitor,
         )
         adminRoutes(adminDeps)
+        // v0.26.0 — 2FA SSR routes.
+        twoFactorRoutes(adminDeps, ctx.adminUserRepo)
         envSetupRoutes(adminDeps, ctx.envSetup, ctx.claudeAuth, ctx.claudeLogin)
         mcpRoutes(adminDeps, ctx.mcp)
         gitIntegrationsRoutes(adminDeps, ctx.gitCredentials, ctx.gitClone, ctx.clock)

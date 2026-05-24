@@ -29,6 +29,12 @@ data class LoginRequestDto(
     val username: String,
     val password: String,
     val deviceName: String? = null,   // 클라이언트가 자신을 식별할 라벨. 미지정 시 "unknown"
+    /**
+     * v0.26.0 — 2FA TOTP 코드 (6자리). 사용자가 TOTP 활성화 안 했으면 null.
+     * 활성 + 누락 → 서버는 401 `totp_required`. 클라이언트가 사용자에게 코드 입력
+     * 요청 후 같은 endpoint 에 totpCode 동봉으로 재시도.
+     */
+    val totpCode: String? = null,
 )
 
 @Serializable

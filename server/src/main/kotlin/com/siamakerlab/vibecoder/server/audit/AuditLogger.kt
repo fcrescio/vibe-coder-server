@@ -269,6 +269,30 @@ class AuditLogger(
         )
     }
 
+    // ── 2FA (v0.26.0+) ───────────────────────────────────────────────
+
+    fun twoFactorEnabled(userId: String, ip: String?) = safe {
+        repo.insert(
+            action = Actions.AUTH_2FA_ENABLE, result = Results.OK,
+            userId = userId, ip = ip,
+        )
+    }
+
+    fun twoFactorDisabled(userId: String, ip: String?) = safe {
+        repo.insert(
+            action = Actions.AUTH_2FA_DISABLE, result = Results.OK,
+            userId = userId, ip = ip,
+        )
+    }
+
+    fun sessionTimeout(userId: String?, deviceId: String, ip: String?) = safe {
+        repo.insert(
+            action = Actions.AUTH_SESSION_TIMEOUT, result = Results.OK,
+            userId = userId, deviceId = deviceId, ip = ip,
+            resourceType = "device", resourceId = deviceId,
+        )
+    }
+
     object Actions {
         const val AUTH_LOGIN = "auth.login"
         const val AUTH_LOGOUT = "auth.logout"
@@ -292,6 +316,9 @@ class AuditLogger(
         const val EMULATOR_AVD_CREATE = "emulator.avd.create"
         const val EMULATOR_AVD_LAUNCH = "emulator.avd.launch"
         const val EMULATOR_AVD_STOP = "emulator.avd.stop"
+        const val AUTH_2FA_ENABLE = "auth.2fa.enable"
+        const val AUTH_2FA_DISABLE = "auth.2fa.disable"
+        const val AUTH_SESSION_TIMEOUT = "auth.session.timeout"
     }
 
     object Results {

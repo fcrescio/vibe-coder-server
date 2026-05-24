@@ -153,6 +153,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
         val params = call.receiveParameters()
         val username = params["username"]?.trim().orEmpty()
         val password = params["password"].orEmpty()
+        val totpCode = params["totpCode"]?.trim()?.takeIf { it.isNotBlank() }
         // open-redirect 방지: 외부 도메인이나 `//` 로 시작하는 schemeless URL 차단
         val next = params["next"]?.takeIf { it.startsWith("/") && !it.startsWith("//") } ?: "/"
 
@@ -164,13 +165,29 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
                 deviceName = browserDeviceName(call),
                 channel = "web",
                 remoteIp = ip,
+                totpCode = totpCode,
             )
         }.getOrElse { e ->
             val msg = (e as? ApiException)?.message ?: "로그인 실패"
             val reasonCode = (e as? ApiException)?.code ?: "unknown"
+            // v0.26.0 — TOTP 1단계 통과 → 같은 폼에 코드 입력 단계 노출.
+            if (reasonCode == "totp_required") {
+                call.respondText(
+                    AdminTemplates.loginPage(next = next, totpUsername = username, totpPassword = password),
+                    ContentType.Text.Html,
+                    HttpStatusCode.OK,
+                )
+                return@post
+            }
             deps.audit.loginFailure(username, ip, reasonCode)
             call.respondText(
-                AdminTemplates.loginPage(error = msg, next = next),
+                AdminTemplates.loginPage(
+                    error = msg,
+                    next = next,
+                    // invalid_totp 면 2단계 폼에 머무름.
+                    totpUsername = if (reasonCode == "invalid_totp") username else null,
+                    totpPassword = if (reasonCode == "invalid_totp") password else null,
+                ),
                 ContentType.Text.Html,
                 HttpStatusCode.Unauthorized,
             )
@@ -416,6 +433,21 @@ internal suspend fun io.ktor.server.routing.RoutingContext.requireSessionOrRedir
         clearSessionCookie(call)
         call.respondRedirect("/login")
         return null
+    }
+    // v0.26.0 — idle timeout 검사 (security.sessionIdleTimeoutMinutes, 0=무제한).
+    // SSR 흐름에서도 동일 정책 적용 → Bearer / cookie 양쪽이 같은 timeout.
+    val idleMin = deps.config.security.sessionIdleTimeoutMinutes.coerceAtLeast(0)
+    if (idleMin > 0 && device.lastSeenAt != null) {
+        val ageMs = runCatching {
+            java.time.Duration.between(java.time.Instant.parse(device.lastSeenAt), java.time.Instant.now()).toMillis()
+        }.getOrNull()
+        if (ageMs != null && ageMs > idleMin * 60_000L) {
+            deps.deviceRepo.deleteById(device.id)
+            clearSessionCookie(call)
+            deps.audit.sessionTimeout(device.userId, device.id, call.request.local.remoteHost)
+            call.respondRedirect("/login?err=session_timeout")
+            return null
+        }
     }
     deps.deviceRepo.touchLastSeen(device.id)
     return WebSession(

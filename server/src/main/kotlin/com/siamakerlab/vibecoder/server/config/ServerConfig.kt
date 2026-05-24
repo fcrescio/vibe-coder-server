@@ -36,6 +36,12 @@ data class SecuritySection(
     val pairingEnabled: Boolean = true,
     val pairingCodeExpireMinutes: Int = 10,
     val allowRawShell: Boolean = false,
+    /**
+     * v0.26.0 — 토큰 idle timeout (분). 0 = 무제한 (legacy behavior).
+     * device.lastSeenAt 가 N 분 이상 갱신되지 않으면 자동 로그아웃 (토큰 거절).
+     * 기본 30분.
+     */
+    val sessionIdleTimeoutMinutes: Int = 30,
 )
 
 @Serializable

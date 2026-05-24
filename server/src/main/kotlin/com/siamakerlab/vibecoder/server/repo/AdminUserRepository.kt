@@ -15,7 +15,12 @@ data class AdminUserRow(
     val createdAt: String,
     val lastLoginAt: String?,
     val passwordChangedAt: String,
-)
+    /** v0.26.0 — TOTP. null = 2FA 비활성. */
+    val totpSecret: String? = null,
+    val totpEnabledAt: String? = null,
+) {
+    val totpEnabled: Boolean get() = !totpSecret.isNullOrBlank()
+}
 
 /**
  * 단일 admin 사용자 저장소.
@@ -67,6 +72,23 @@ class AdminUserRepository(private val clock: Clock) {
         }
     }
 
+    /** v0.26.0 — TOTP 활성화. secret 은 이미 generateSecret() 으로 생성된 Base32. */
+    fun enableTotp(id: String, base32Secret: String) = transaction {
+        val now = clock.nowIso()
+        AdminUsers.update({ AdminUsers.id eq id }) {
+            it[totpSecret] = base32Secret
+            it[totpEnabledAt] = now
+        }
+    }
+
+    /** v0.26.0 — TOTP 비활성화. */
+    fun disableTotp(id: String) = transaction {
+        AdminUsers.update({ AdminUsers.id eq id }) {
+            it[totpSecret] = null
+            it[totpEnabledAt] = null
+        }
+    }
+
     private fun ResultRow.toRow() = AdminUserRow(
         id = this[AdminUsers.id],
         username = this[AdminUsers.username],
@@ -74,5 +96,7 @@ class AdminUserRepository(private val clock: Clock) {
         createdAt = this[AdminUsers.createdAt],
         lastLoginAt = this[AdminUsers.lastLoginAt],
         passwordChangedAt = this[AdminUsers.passwordChangedAt],
+        totpSecret = this[AdminUsers.totpSecret],
+        totpEnabledAt = this[AdminUsers.totpEnabledAt],
     )
 }

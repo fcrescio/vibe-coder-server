@@ -2,7 +2,7 @@ server:
   name: Vibe Coder Server
   host: 0.0.0.0
   port: 17880
-  version: 0.25.0
+  version: 0.26.0
 
 workspace:
   # Each project lives at <root>/<projectId>/.
@@ -22,6 +22,9 @@ security:
   pairingEnabled: true
   pairingCodeExpireMinutes: 10
   allowRawShell: false
+  # v0.26.0 — Bearer 토큰 / 웹 세션 idle timeout (분). 0 = 무제한 (legacy).
+  # 마지막 요청 후 N 분 idle 이면 토큰 자동 폐기 + 401.
+  sessionIdleTimeoutMinutes: 30
 
 claude:
   enabled: true

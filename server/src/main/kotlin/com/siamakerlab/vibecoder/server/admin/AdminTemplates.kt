@@ -94,6 +94,7 @@ object AdminTemplates {
     ${link("/audit", "감사 로그", "audit")}
     ${link("/settings/email", "이메일 알림", "email")}
     ${link("/password", "비밀번호", "password")}
+    ${link("/2fa", "2단계 인증", "2fa")}
   </div>
   <div class="user-box">
     ${if (username != null) "<div class=\"user\">${esc(username)}</div>" else ""}
@@ -142,9 +143,40 @@ object AdminTemplates {
     // Login
     // ────────────────────────────────────────────────────────────────────
 
-    fun loginPage(error: String? = null, next: String? = null): String {
+    fun loginPage(
+        error: String? = null,
+        next: String? = null,
+        /** v0.26.0 — TOTP 단계 진입 시 1단계 (username/password) 값을 hidden 으로 보존
+         *  하고 코드 입력 필드만 노출. null 이면 1단계 폼. */
+        totpUsername: String? = null,
+        totpPassword: String? = null,
+    ): String {
         val errHtml = if (error != null) """<div class="error">${esc(error)}</div>""" else ""
         val nextField = if (next != null) """<input type="hidden" name="next" value="${esc(next)}">""" else ""
+        // v0.26.0 — 2단계 (TOTP) 폼.
+        if (totpUsername != null && totpPassword != null) {
+            return shell(
+                title = "2단계 인증",
+                showNav = false,
+                body = """
+<div class="auth-card">
+  <h1>2단계 인증</h1>
+  <p class="hint">Authenticator 앱에 표시된 6자리 코드를 입력하세요.</p>
+  $errHtml
+  <form method="post" action="/login">
+    $nextField
+    <input type="hidden" name="username" value="${esc(totpUsername)}">
+    <input type="hidden" name="password" value="${esc(totpPassword)}">
+    <label>TOTP 코드
+      <input name="totpCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autofocus>
+    </label>
+    <button type="submit" class="primary">확인</button>
+  </form>
+  <p class="hint" style="margin-top:12px"><a href="/login">← 사용자 다시 선택</a></p>
+</div>
+"""
+            )
+        }
         return shell(
             title = "로그인",
             showNav = false,
