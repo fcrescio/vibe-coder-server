@@ -986,6 +986,8 @@ $errHtml
   <p class="hint">큐 등록 후엔 콘솔에서 실시간 로그를 볼 수 있으며, 완료되면 APK 다운로드 링크가 이 표에 나타납니다.</p>
 </div>
 
+${renderBuildHistoryChart(builds, artifactsByBuild)}
+
 <table class="devices">
   <thead>
     <tr><th>빌드 ID</th><th>상태</th><th>시작</th><th>종료</th><th>APK</th></tr>
@@ -994,6 +996,108 @@ $errHtml
 </table>
 """
         )
+    }
+
+    /**
+     * v0.30.0 — 빌드 history 차트. 최근 30 개 빌드의 duration (s) + status 를
+     * SVG line chart 로 렌더. 외부 라이브러리 없이 inline SVG.
+     *
+     * X 축: oldest 빌드 (좌) → newest (우)
+     * Y 축: duration (s). 0 = 하단, max = 상단.
+     * 점 색상: SUCCESS=초록 / FAILED/TIMEOUT=빨강 / CANCELED=회색 / 그 외=노랑.
+     * SUCCESS 라인만 연결 (실패는 점만 찍어 통계 distortion 방지).
+     *
+     * APK 크기 추세는 작은 second-axis 처럼 노란 점으로 같은 그래프에.
+     */
+    private fun renderBuildHistoryChart(
+        builds: List<BuildDto>,
+        artifacts: Map<String, ArtifactRow>,
+    ): String {
+        if (builds.size < 2) return ""
+        // builds 는 보통 최신 → 오래된 순. 차트는 시간 순.
+        val ordered = builds.reversed().takeLast(30)
+        val durations = ordered.map { b ->
+            durationSeconds(b.startedAt, b.finishedAt)
+        }
+        val maxDur = durations.filterNotNull().maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
+        val apkSizes = ordered.map { b -> artifacts[b.id]?.sizeBytes }
+        val maxApk = apkSizes.filterNotNull().maxOrNull()?.coerceAtLeast(1L) ?: 1L
+
+        val w = 720
+        val h = 160
+        val pad = 28
+        val plotW = w - pad * 2
+        val plotH = h - pad * 2
+        val n = ordered.size
+        val xStep = if (n > 1) plotW.toDouble() / (n - 1) else 0.0
+
+        fun x(i: Int) = pad + i * xStep
+        fun yDur(d: Double) = pad + plotH - (d / maxDur) * plotH
+
+        val successPath = StringBuilder()
+        var lastX: Double? = null
+        ordered.forEachIndexed { i, b ->
+            val d = durations[i] ?: return@forEachIndexed
+            if (b.status.name != "SUCCESS") return@forEachIndexed
+            val px = x(i)
+            val py = yDur(d)
+            if (lastX == null) successPath.append("M %.1f %.1f".format(px, py))
+            else successPath.append(" L %.1f %.1f".format(px, py))
+            lastX = px
+        }
+
+        val pointsSb = StringBuilder()
+        ordered.forEachIndexed { i, b ->
+            val d = durations[i]
+            val color = when (b.status.name) {
+                "SUCCESS" -> "#059669"
+                "FAILED", "TIMEOUT" -> "#dc2626"
+                "CANCELED" -> "#6b7280"
+                else -> "#d97706"
+            }
+            if (d != null) {
+                val px = x(i)
+                val py = yDur(d)
+                pointsSb.append("""<circle cx="%.1f" cy="%.1f" r="3" fill="$color"><title>${esc(b.id.take(8))} · ${b.status.name} · %.1fs</title></circle>""".format(px, py, d))
+            }
+            val apk = apkSizes[i]
+            if (apk != null) {
+                val px = x(i)
+                val py = pad + plotH - (apk.toDouble() / maxApk) * plotH * 0.6 - 4
+                val mb = "%.1f".format(apk / 1_048_576.0)
+                pointsSb.append("""<rect x="%.1f" y="%.1f" width="3" height="3" fill="#facc15"><title>APK ${mb} MB</title></rect>""".format(px - 1.5, py))
+            }
+        }
+
+        // Axes (very light, just for grounding)
+        val axes = """
+            <line x1="$pad" y1="${pad + plotH}" x2="${pad + plotW}" y2="${pad + plotH}" stroke="rgba(255,255,255,0.15)" />
+            <line x1="$pad" y1="$pad" x2="$pad" y2="${pad + plotH}" stroke="rgba(255,255,255,0.15)" />
+        """
+        val maxLabel = if (maxDur >= 60) "%.1f min".format(maxDur / 60) else "%.0fs".format(maxDur)
+
+        return """
+<div class="card" style="margin-bottom:16px">
+  <h2 style="margin-top:0">빌드 history <small class="dim" style="font-size:11px;font-weight:400">최근 ${n}개 · 초록=SUCCESS line, 빨강=실패, 노랑 사각=APK 크기 · v0.30.0</small></h2>
+  <svg viewBox="0 0 $w $h" width="100%" height="$h" style="font-family:system-ui,sans-serif">
+    $axes
+    <text x="${pad - 6}" y="${pad + 4}" text-anchor="end" font-size="10" fill="rgba(255,255,255,0.5)">$maxLabel</text>
+    <text x="${pad - 6}" y="${pad + plotH}" text-anchor="end" font-size="10" fill="rgba(255,255,255,0.5)">0</text>
+    <path d="$successPath" stroke="#059669" stroke-width="1.5" fill="none" stroke-linejoin="round" />
+    $pointsSb
+  </svg>
+  <p class="hint" style="margin:4px 0 0">점에 마우스 오버하면 빌드 id + 상태 + duration. 라인은 SUCCESS 만 연결 (실패가 평균을 왜곡하지 않도록). 노란 점은 APK 크기 추세 (오른쪽 축, 자동 스케일).</p>
+</div>"""
+    }
+
+    /** ISO timestamp 두 개에서 duration in seconds. 둘 중 하나 null 이면 null. */
+    private fun durationSeconds(startedAt: String?, finishedAt: String?): Double? {
+        if (startedAt.isNullOrBlank() || finishedAt.isNullOrBlank()) return null
+        return runCatching {
+            val s = java.time.Instant.parse(startedAt)
+            val e = java.time.Instant.parse(finishedAt)
+            java.time.Duration.between(s, e).toMillis() / 1000.0
+        }.getOrNull()
     }
 
     // ────────────────────────────────────────────────────────────────────

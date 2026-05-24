@@ -52,6 +52,7 @@ object AdminTemplates {
   <title>${esc(title)} · Vibe Coder</title>
   <link rel="icon" type="image/png" href="/static/icon.png">
   <link rel="stylesheet" href="/static/admin.css">
+  <script src="/static/keyboard.js" defer></script>
 </head>
 <body>
   <div class="$layoutCls">
@@ -93,6 +94,7 @@ object AdminTemplates {
     ${link("/settings/cache", "빌드 캐시", "cache")}
     ${link("/devices", "디바이스", "devices")}
     ${link("/audit", "감사 로그", "audit")}
+    ${link("/history", "대화 검색", "history")}
     ${link("/settings/email", "이메일 알림", "email")}
     ${link("/settings/webhook", "Webhook 알림", "webhook")}
     ${link("/password", "비밀번호", "password")}

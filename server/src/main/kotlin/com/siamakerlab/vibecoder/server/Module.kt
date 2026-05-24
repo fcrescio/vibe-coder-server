@@ -28,6 +28,7 @@ import com.siamakerlab.vibecoder.server.build.buildRoutes
 import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
 import com.siamakerlab.vibecoder.server.claude.ClaudeStatusService
 import com.siamakerlab.vibecoder.server.claude.consoleRoutes
+import com.siamakerlab.vibecoder.server.claude.globalHistorySearchRoutes
 import com.siamakerlab.vibecoder.server.claude.historyRoutes
 import com.siamakerlab.vibecoder.server.emulator.emulatorRoutes
 import com.siamakerlab.vibecoder.server.notify.emailSettingsRoutes
@@ -272,6 +273,8 @@ fun Application.module(ctx: ServerContext) {
         promptRoutes(adminDeps, ctx.promptStore)
         auditRoutes(adminDeps, ctx.auditRepo)
         historyRoutes(adminDeps, ctx.projects, ctx.conversationRepo)
+        // v0.30.0 — cross-project conversation search.
+        globalHistorySearchRoutes(adminDeps)
         emailSettingsRoutes(adminDeps, ctx.emailNotifier)
         webhookSettingsRoutes(adminDeps, ctx.webhookNotifier)
         emulatorRoutes(adminDeps, ctx.emulator)
