@@ -37,6 +37,7 @@ import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
 import com.siamakerlab.vibecoder.server.claude.SubAgentSessionManager
 import com.siamakerlab.vibecoder.server.claude.subAgentRoutes
 import com.siamakerlab.vibecoder.server.admin.projectAclRoutes
+import com.siamakerlab.vibecoder.server.projects.symbolRoutes
 import com.siamakerlab.vibecoder.server.auth.webauthnRoutes
 import com.siamakerlab.vibecoder.server.claude.usageRoutes
 import com.siamakerlab.vibecoder.server.notify.pushRoutes
@@ -188,6 +189,8 @@ data class ServerContext(
     val webauthnService: com.siamakerlab.vibecoder.server.auth.WebauthnService,
     /** v0.49.0 — Phase 28 Project ACL (member 가 일부 프로젝트만 보기). */
     val projectAclRepo: com.siamakerlab.vibecoder.server.repo.ProjectAclRepository,
+    /** v0.54.0 — Phase 33 best-effort symbol definition finder. */
+    val symbolFinder: com.siamakerlab.vibecoder.server.projects.SymbolFinder,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -359,6 +362,8 @@ fun Application.module(ctx: ServerContext) {
         webauthnRoutes(adminDeps, ctx.webauthnService, ctx.authService, ctx.tokens)
         // v0.49.0 — Phase 28 Project ACL 관리 UI.
         projectAclRoutes(adminDeps, ctx.projects, ctx.adminUserRepo, ctx.projectAclRepo)
+        // v0.54.0 — Phase 33 symbol definition lookup (best-effort regex).
+        symbolRoutes(adminDeps, ctx.projects, ctx.symbolFinder)
         wsRoutes(ctx.hub, ctx.deviceRepo, ctx.tokens, ctx.sessionManager,
             ctx.actionRegistry, ctx.actionHandler, ctx.subAgentManager, ctx.adminUserRepo, ctx.projects)
     }

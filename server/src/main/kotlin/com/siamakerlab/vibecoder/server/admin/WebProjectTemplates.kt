@@ -566,6 +566,7 @@ $errHtml
       <a href="/projects/${esc(p.id)}/history" class="chip chip-link">히스토리 →</a>
       <a href="/projects/${esc(p.id)}/files" class="chip chip-link">파일 →</a>
       <a href="/projects/${esc(p.id)}/git" class="chip chip-link">git →</a>
+      <a href="/projects/${esc(p.id)}/symbols" class="chip chip-link" title="v0.54.0+ — Kotlin/Java 정의 jump (best-effort regex)">⇢ 정의 검색</a>
       <a href="/projects/${esc(p.id)}/agents" class="chip chip-link" title="v0.44.0+ — 별도 Claude child process 로 sub-agent 병렬 실행">@ sub-agents →</a>"""
 
         return AdminTemplates.shell(
@@ -1655,6 +1656,27 @@ $errHtml
     try { hljs.highlightElement(document.getElementById('file-view-code')); }
     catch (e) { console.warn('hljs failed:', e); }
   }
+
+  // v0.54.0 — ?line=N 으로 들어오면 해당 라인으로 스크롤 + 짧게 강조 (심볼 검색
+  // 결과에서 jump 한 경우). highlight.js 가 끝난 뒤 DOM 측정해야 위치 정확.
+  try {
+    var sp = new URLSearchParams(location.search);
+    var lineParam = parseInt(sp.get('line') || '0', 10);
+    if (lineParam > 0) {
+      var code = document.getElementById('file-view-code');
+      if (code) {
+        var lineHeight = parseFloat(getComputedStyle(code).lineHeight) || 19.5;
+        var topOffset = code.getBoundingClientRect().top + window.scrollY;
+        // 1-based → 0-based, 그리고 화면 상단에서 1/3 지점에 오도록 보정.
+        var target = topOffset + (lineParam - 1) * lineHeight - window.innerHeight / 3;
+        window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+        // 강조: 노란색 outline 1.5초.
+        var orig = code.style.outline;
+        code.style.outline = '2px solid #facc15';
+        setTimeout(function() { code.style.outline = orig; }, 1500);
+      }
+    }
+  } catch (e) { /* ignore */ }
 
   var ta = document.getElementById('file-content');
   var form = document.getElementById('file-form');

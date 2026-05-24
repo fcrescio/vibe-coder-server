@@ -247,6 +247,8 @@ fun main(args: Array<String>) {
     val gradleWrapperService = com.siamakerlab.vibecoder.server.build.GradleWrapperService(workspace)
     val codeStatsService = com.siamakerlab.vibecoder.server.projects.CodeStatsService(workspace)
     val codeSearchService = com.siamakerlab.vibecoder.server.projects.CodeSearchService(workspace)
+    // v0.54.0 — Phase 33 best-effort symbol definition finder.
+    val symbolFinder = com.siamakerlab.vibecoder.server.projects.SymbolFinder(workspace)
     // v0.29.0 — 프로젝트 zip + 디스크 monitor (Notifiers 와 email warn percent 공유).
     val projectArchiver = com.siamakerlab.vibecoder.server.projects.ProjectArchiver(workspace)
     val diskMonitor = com.siamakerlab.vibecoder.server.disk.DiskMonitor(
@@ -323,6 +325,7 @@ fun main(args: Array<String>) {
         webPushNotifier = webPushNotifier,
         webauthnService = webauthnService,
         projectAclRepo = projectAclRepo,
+        symbolFinder = symbolFinder,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {
