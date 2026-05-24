@@ -13,7 +13,7 @@
   <https://github.com/siamakerlab/vibe-coder-server/wiki>
 - **Issues**: <https://github.com/siamakerlab/vibe-coder-server/issues>
 - **Architectures**: `linux/amd64` (multi-arch builds reserved for milestones).
-- **Latest tags**: `0.15.0`, `latest`
+- **Latest tags**: `0.19.0`, `latest`
 - **Image size**: ~600 MB (Android SDK / Gradle / MCP packages live in
   bind-mounted volumes — see below). v0.14.0+ runs alongside a small
   `postgres:17-alpine` sidecar container.
@@ -45,7 +45,7 @@ docker compose up -d            # boots postgres + vibe-coder-server
 > [CHANGELOG.md](https://github.com/siamakerlab/vibe-coder-server/blob/main/CHANGELOG.md)
 > for the exact steps.
 
-## What's in the box (v0.15.0)
+## What's in the box (v0.19.0)
 
 **Core**
 - **Claude Code CLI orchestration** — one persistent child per project,
@@ -81,14 +81,35 @@ docker compose up -d            # boots postgres + vibe-coder-server
 
 **Persistence & security**
 - **PostgreSQL backend** (v0.14.0+) — sidecar `postgres:17-alpine`, Exposed +
-  Hikari pool, ready for JSONB tool-history features.
+  Hikari pool.
+- **Conversation history** (v0.16.0+) — every prompt / assistant turn / tool
+  call written to `conversation_turns`. Browse per-project at
+  `/projects/{id}/history` and scratch chat at `/chat/history`.
 - **CSRF protection on every SSR POST** (v0.12.4+).
 - **IP-based brute-force throttling** (v0.12.4+) — account lock + IP block.
 - **Audit log** (v0.15.0+) — `/audit` page with filter + paginate. Every
-  operational action (login, project, build, MCP, settings, git, console)
-  recorded with user / IP / result.
+  operational action (login, project, build, MCP, settings, git, console,
+  git commit) recorded with user / IP / result.
 - **JSON API parity** — every browser feature is also at `/api/*` with
   Bearer auth, for the Android companion or third-party automation.
+
+**Notifications (v0.17.0+)**
+- **SMTP email alerts** on build failure / first success, idle Claude
+  session waiting for input, disk / quota thresholds, SSH-key / PAT expiry.
+  Configure at `/settings/email`.
+
+**Git + project scaffolding (v0.18.0+)**
+- **Git commit + push** wrapped in a single non-interactive endpoint
+  (`POST /api/projects/{id}/git/commit` + SSR form). PAT / SSH auth,
+  push failure keeps the commit, destructive ops disabled by design.
+- **Project templates** (`empty`, `compose-basic`, `compose-mvvm-hilt`,
+  `compose-mvvm-room`, `wear-os`, `android-tv`) — each seeds a
+  `starterPrompt` for the first Claude console turn.
+
+**Android emulator (v0.19.0+, scaffolding)**
+- `/emulator` page reports KVM availability, AVD inventory, running
+  devices, with a manual launch guide. Full in-browser noVNC mirroring
+  ships in the upcoming `siamakerlab/vibe-coder-server:full` variant.
 
 ## Image layout (~600 MB)
 
@@ -178,7 +199,7 @@ container (UID 70 in alpine images). On the host you may need `sudo` to read
 files directly. Either use `tar` with sudo, or do logical `pg_dump` against
 the running container.
 
-## Web UI routes (v0.15.0)
+## Web UI routes (v0.19.0)
 
 All routes sit at the root (no `/admin/*` prefix from v0.4.2+). Bearer
 token or session cookie required except `/setup`, `/login`, `/health`.
@@ -191,17 +212,22 @@ SSR POST forms carry a CSRF token (v0.12.4+).
 | `/projects/{id}/console` | Live Claude chat + ▼ template picker + ■ stop |
 | `/projects/{id}/builds` | Queue debug build + APK download |
 | `/projects/{id}/tree`, `/projects/{id}/view` | File tree + read-only highlight ↔ edit (v0.13.0+) |
+| `/projects/{id}/history` | Persistent prompt/response history (v0.16.0+) |
+| `/projects/{id}/git` | Read-only status/diff/log + commit & push form (v0.18.0+) |
 | `/chat` | General Chat — project-less Claude session (v0.13.0+) |
+| `/chat/history` | Scratch-project persistent history (v0.16.0+) |
 | `/prompts` | Prompt template CRUD (v0.13.0+) |
 | `/env-setup` | Build environment installer |
 | `/env-setup/mcp` | MCP catalog (60+ entries) |
 | `/env-setup/claude-login` | Semi-automatic web OAuth |
+| `/emulator` | Emulator diagnostics + manual launch guide (v0.19.0+) |
 | `/settings/git-integrations` | PAT + SSH key |
+| `/settings/email` | SMTP config + notification triggers (v0.17.0+) |
 | `/settings/cors` | Read-only CORS policy viewer |
 | `/audit` | Operational audit log (v0.15.0+) |
 | `/settings`, `/devices`, `/password` | Operations |
 
-## JSON API (v0.15.0 — for clients)
+## JSON API (v0.19.0 — for clients)
 
 Full reference + curl examples in the
 [REST API Reference](https://github.com/siamakerlab/vibe-coder-server/wiki/REST-API-Reference)
@@ -211,9 +237,13 @@ wiki. Retrofit interfaces in the
 Highlights:
 
 - `POST /api/auth/login` → Bearer token
-- `GET  /api/projects`, `POST /api/projects/register` (with `sourceType=clone`)
+- `GET  /api/projects`, `POST /api/projects/register` (with `sourceType=clone`
+  or `templateId` for built-in scaffolds, v0.18.0+)
 - `POST /api/projects/{id}/claude/console/prompt | new | cancel` (`.../cancel` is v0.13.0+)
 - `POST /api/projects/{id}/builds/{buildId}/cancel`
+- `GET  /api/projects/{id}/history`, `GET /api/chat/history` (v0.16.0+ —
+  paginate the persisted conversation_turns)
+- `POST /api/projects/{id}/git/commit` (v0.18.0+ — non-interactive commit & push)
 - `GET  /api/prompt-templates` (v0.13.0+)
 - `GET  /api/env-setup/components`, `POST /api/env-setup/install-all`
 - `POST /api/env-setup/claude-auth/upload | api-key`

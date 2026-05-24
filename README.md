@@ -24,7 +24,7 @@ vibe-coder-server/
 └─ docker/              # Slim Docker image + compose + vibe-doctor
 ```
 
-## What's inside (v0.15.0)
+## What's inside (v0.19.0)
 
 ### Core orchestration
 - **Claude Code CLI orchestration** — one persistent child process per project,
@@ -64,15 +64,43 @@ vibe-coder-server/
 ### Persistence & security
 - **PostgreSQL backend** (v0.14.0+) — sidecar `postgres:17-alpine` container,
   Exposed ORM + Hikari pool, JSONB-ready for future history features.
+- **Conversation history** (v0.16.0+) — every prompt, assistant message, and
+  `tool_use` lands in `conversation_turns` with session/turn indices. Browse
+  per-project at `/projects/{id}/history` and scratch chat at `/chat/history`.
 - **CSRF protection on every SSR POST** (v0.12.4+) — HMAC-SHA256 deterministic
   derivation from the device cookie. REST API (Bearer header) is exempt.
 - **IP-based brute-force throttling** (v0.12.4+) — account lock at 10 fails /
   15 min, IP block at 30 fails / 24 h. Timing-safe dummy verify on missing users.
 - **Audit log** (v0.15.0+) — every operational action (login / device revoke /
-  project / build / MCP / settings / git token / console new-cancel) lands in
-  `audit_log` with user, IP, result, ts. `/audit` page with filter + paginate.
+  project / build / MCP / settings / git token / console new-cancel / git commit)
+  lands in `audit_log` with user, IP, result, ts. `/audit` page with filter +
+  paginate.
 - **JSON API parity** — every admin UI feature is also exposed under `/api/*`
   with Bearer authentication for the Android companion app.
+
+### Notifications (v0.17.0+)
+- **Email (SMTP)** alerts on build failure / first success, Claude session
+  idle waiting for input, disk / quota thresholds, SSH-key / PAT expiry.
+  Configure host / port / user / password / from at `/settings/email`. Jakarta
+  Mail + Angus, TLS by default. Async fire-and-forget — never blocks the
+  build pipeline.
+
+### Git + project scaffolding (v0.18.0+)
+- **Git commit + push** — single `POST /api/projects/{id}/git/commit` (and an
+  SSR form) wraps `add → commit → push` with non-interactive auth (PAT via
+  `~/.git-credentials` or SSH `BatchMode=yes`). Push failure keeps the commit
+  so retries are safe. Destructive ops (reset / force-push / branch delete)
+  intentionally not exposed.
+- **Project templates** — `templateId` on register chooses from `empty`,
+  `compose-basic`, `compose-mvvm-hilt`, `compose-mvvm-room`, `wear-os`,
+  `android-tv`. Each template seeds a `starterPrompt` consumed by the first
+  Claude console turn.
+
+### Android emulator (v0.19.0+, scaffolding)
+- `/emulator` page reports KVM availability, AVD inventory, and running
+  devices, with a manual launch guide for the slim image. Full in-browser
+  noVNC mirroring + AVD lifecycle ships in the upcoming
+  `siamakerlab/vibe-coder-server:full` variant.
 
 ## Quick start (Docker, 3 minutes)
 
@@ -211,7 +239,7 @@ ssh user@newhost 'cd ~/vibe-coder && tar xzf vibe-coder-data-*.tar.gz && docker 
 mounts only (no named volumes by default), but watch out if you mixed
 in legacy state. For regular upgrades, always `up -d --force-recreate`.
 
-## Web routes (v0.15.0)
+## Web routes (v0.19.0)
 
 All routes below sit at the root (no `/admin/*` prefix). Bearer auth or
 session cookie required except `/setup`, `/login`, `/health`. Every SSR POST
@@ -228,32 +256,41 @@ carries a CSRF `_csrf` token (v0.12.4+).
 | `/projects/{id}/tree` | **v0.13.0** Filesystem browser inside the project workspace |
 | `/projects/{id}/view?path=...` | **v0.13.0** Read-only view (highlight.js) ↔ Edit mode (textarea) |
 | `/projects/{id}/files` | Upload / download / delete (the upload area) |
-| `/projects/{id}/git` | git status / diff / log (read-only) |
+| `/projects/{id}/git` | git status / diff / log (read-only) + **v0.18.0** commit & push form |
+| `/projects/{id}/history` | **v0.16.0** Persistent prompt/response history (filter / paginate) |
 | `/chat` | **v0.13.0** General Chat — project-less Claude session (`__scratch__` workspace) |
+| `/chat/history` | **v0.16.0** Scratch-project persistent history |
 | `/prompts` | **v0.13.0** Prompt template CRUD (used by the ▼ dropdown) |
 | `/env-setup` | Build-environment status + one-click installers |
 | `/env-setup/mcp` | MCP catalog (60+ entries, checkbox multi-select) |
 | `/env-setup/claude-login` | Semi-automatic web OAuth |
 | `/env-setup/tasks/{taskId}` | Live install progress (WS) |
+| `/emulator` | **v0.19.0** Emulator diagnostics + manual launch guide |
 | `/settings/git-integrations` | PAT tokens + SSH public key |
+| `/settings/email` | **v0.17.0** SMTP configuration + trigger matrix |
 | `/settings/cors` | Read-only CORS policy viewer |
 | `/audit` | **v0.15.0** Operational audit log (filter / paginate) |
 | `/settings`, `/devices`, `/password` | Operations |
 | `/login`, `/setup`, `/logout` | Auth |
 
-## JSON API (v0.15.0 — for clients like the Android app)
+## JSON API (v0.19.0 — for clients like the Android app)
 
 Every UI feature has a matching `/api/*` endpoint with Bearer authentication.
 Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
 
 - `GET  /api/server/status`, `GET /api/server/environment`, `GET /api/server/environment/check`
-- `GET  /api/projects`, `POST /api/projects/register` (with `sourceType=clone` for git clone)
+- `GET  /api/projects`, `POST /api/projects/register` (with `sourceType=clone`
+  for git clone; **v0.18.0+** `templateId` field for built-in scaffolds)
 - `POST /api/projects/{id}/build/debug`, `GET /api/projects/{id}/builds`
 - `POST /api/projects/{id}/builds/{buildId}/cancel`
 - `POST /api/projects/{id}/claude/console/prompt | new | cancel`
   (`.../cancel` is **v0.13.0+** — Android `shared/` v0.6.11+ required)
 - `GET  /api/projects/{id}/claude/status`
 - `GET  /api/prompt-templates` (v0.13.0+ — prompt library)
+- `GET  /api/projects/{id}/history`, `GET /api/chat/history`
+  (**v0.16.0+** — persisted conversation_turns; pagination via `before`)
+- `POST /api/projects/{id}/git/commit`
+  (**v0.18.0+** — add → commit → optional push; non-interactive auth)
 - `GET  /api/env-setup/components`, `POST /api/env-setup/install-all`,
   `POST /api/env-setup/{componentId}/install`
 - `POST /api/env-setup/claude-auth/upload` (multipart)
@@ -303,6 +340,10 @@ Passwords are stored as BCrypt cost-12 hashes only. **Brute-force protection**
   ■ stop button while preserving its session-id (`--resume` later).
 - **Audit log** (v0.15.0+) — `/audit` shows every operational action with
   user / IP / result / detail for post-incident review.
+- **Git push policy** (v0.18.0+) — the new write endpoint adds `commit` only;
+  `reset`, `force-push`, `branch -d`, and other destructive ops remain
+  off-limits. Auth is non-interactive (`GIT_TERMINAL_PROMPT=0`, SSH
+  `BatchMode=yes`) — no credential prompt ever blocks a request.
 
 ## Build matrix
 
