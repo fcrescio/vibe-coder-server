@@ -162,7 +162,12 @@ fun main(args: Array<String>) {
         workspace = workspace,
         subscriptionListProvider = {
             pushSubscriptionRepo.list().map {
-                com.siamakerlab.vibecoder.server.notify.WebPushNotifier.PushSubscription(it.id, it.endpoint)
+                com.siamakerlab.vibecoder.server.notify.WebPushNotifier.PushSubscription(
+                    id = it.id,
+                    endpoint = it.endpoint,
+                    p256dh = it.p256dh.takeIf { v -> v.isNotBlank() },
+                    auth = it.auth.takeIf { v -> v.isNotBlank() },
+                )
             }
         },
         onGoneSubscription = { id -> runCatching { pushSubscriptionRepo.deleteById(id) } },

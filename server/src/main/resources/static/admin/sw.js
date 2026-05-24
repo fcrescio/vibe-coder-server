@@ -1,12 +1,15 @@
 // v0.39.0 — vibe-coder-server PWA service worker.
-// v0.46.0 — adds push event handler (Web Push, payload-less).
+// v0.46.0 — adds push event handler (payload-less Web Push).
+// v0.50.0 — payload-encrypted (RFC 8291) push event reads title/body/url
+// from event.data.json(); falls back to generic title/body when no payload
+// is attached (legacy subscriptions or fallback path).
 //
 // Minimal "cache-first for static assets, network-first for HTML" strategy.
 // Avoid caching anything under /api/* or /ws/* (real-time state) and /admin/*
 // SSR pages (always fresh).
 //
 // Bump CACHE_VERSION on each release to invalidate old SW caches.
-const CACHE_VERSION = 'vibe-coder-v0.46.0';
+const CACHE_VERSION = 'vibe-coder-v0.50.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/static/admin.css',
@@ -69,16 +72,20 @@ self.addEventListener('fetch', (event) => {
   // SSR pages — let the browser handle (no cache). Online-first by default.
 });
 
-// v0.46.0 — Web Push handler. The server sends payload-less push frames so we
-// just show a generic notification; click opens the dashboard.
+// v0.46.0 — Web Push handler. payload-less mode shows a generic notification.
+// v0.50.0 — when the server attaches an RFC 8291 aes128gcm payload, the
+// browser transparently decrypts it before invoking `push` and `event.data`
+// is the cleartext JSON. We surface real title/body/url from it.
 self.addEventListener('push', (event) => {
   let title = 'Vibe Coder';
   let body = '서버에서 알림이 도착했습니다.';
+  let url = '/';
   try {
     if (event.data) {
       const j = event.data.json();
-      title = j.title || title;
-      body = j.body || body;
+      if (j.title) title = j.title;
+      if (j.body) body = j.body;
+      if (j.url) url = j.url;
     }
   } catch (_) { /* payload-less or non-JSON — ignore */ }
   event.waitUntil(self.registration.showNotification(title, {
@@ -86,15 +93,19 @@ self.addEventListener('push', (event) => {
     icon: '/static/icon.png',
     badge: '/static/icon.png',
     tag: 'vibe-coder',
+    data: { url: url },
   }));
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || '/';
   event.waitUntil(self.clients.matchAll({ type: 'window' }).then((wins) => {
     for (const c of wins) {
-      if ('focus' in c) return c.focus();
+      if ('focus' in c) {
+        if (c.url.endsWith(target)) return c.focus();
+      }
     }
-    return self.clients.openWindow('/');
+    return self.clients.openWindow(target);
   }));
 });

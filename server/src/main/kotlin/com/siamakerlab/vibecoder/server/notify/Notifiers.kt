@@ -21,6 +21,7 @@ class Notifiers(
         webPush?.broadcast(
             title = "빌드 $status",
             body = "프로젝트 $projectId / 빌드 $buildId — ${errorMessage ?: "성공"}",
+            url = "/projects/$projectId/builds/$buildId",
         )
     }
 
@@ -30,6 +31,7 @@ class Notifiers(
         webPush?.broadcast(
             title = "Claude 사용량 임계치",
             body = "남은 ${remainingPercent}% (리셋 ${resetAt ?: "예정 미상"})",
+            url = "/usage",
         )
     }
 
@@ -39,6 +41,7 @@ class Notifiers(
         webPush?.broadcast(
             title = "디스크 사용량 경고",
             body = "${usedPercent}% 사용중 — 여유 ${"%.1f".format(freeGb)} GB",
+            url = "/",
         )
     }
 

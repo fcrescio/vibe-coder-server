@@ -51,6 +51,10 @@ class WebPushNotifier(
     data class PushSubscription(
         val id: String,
         val endpoint: String,
+        /** v0.50.0 — UA P-256 public key (base64url, 65 bytes raw uncompressed). */
+        val p256dh: String? = null,
+        /** v0.50.0 — UA auth secret (base64url, 16 bytes). */
+        val auth: String? = null,
     )
 
     private val http: HttpClient = HttpClient.newBuilder()
@@ -94,13 +98,19 @@ class WebPushNotifier(
      * Fan-out a push to every subscription. Each push is independent: 410/404 → DELETE
      * via [onGoneSubscription]; other errors logged + skipped.
      */
-    fun broadcast(title: String, body: String) {
+    fun broadcast(title: String, body: String, url: String? = null) {
         val subs = runCatching { subscriptionListProvider() }.getOrDefault(emptyList())
         if (subs.isEmpty()) return
-        // Encode generic title/body so the service-worker can still show distinct messages
-        // even though we don't actually encrypt — the body just doesn't reach the SW until
-        // we add AES-GCM. Keep it as a placeholder so the SW code path is exercised.
-        val payloadJson = """{"title":${jsonQuote(title)},"body":${jsonQuote(body)}}"""
+        // v0.50.0 — payload encryption (RFC 8291) is now done in sendOne when the subscription
+        // has p256dh + auth. Without those keys we still fall back to a payload-less POST and
+        // the service worker shows a generic notification.
+        val payloadJson = buildString {
+            append('{')
+            append("\"title\":").append(jsonQuote(title)).append(',')
+            append("\"body\":").append(jsonQuote(body))
+            if (url != null) append(",\"url\":").append(jsonQuote(url))
+            append('}')
+        }
         log.info { "webpush broadcast → ${subs.size} subscription(s): $title — $body" }
         for (sub in subs) {
             try {
@@ -113,15 +123,33 @@ class WebPushNotifier(
 
     private fun sendOne(sub: PushSubscription, payloadJson: String) {
         val jwt = buildVapidJwt(sub.endpoint)
-        val req = HttpRequest.newBuilder(URI.create(sub.endpoint))
+        // v0.50.0 — Phase 29 RFC 8291 aes128gcm payload encryption.
+        // 사용자가 subscribe 시 p256dh + auth 를 보내지 않은 (legacy v0.46.0 row 또는 v0.46-only
+        // 클라이언트) 경우 payload-less fallback (Content-Length 0).
+        val builder = HttpRequest.newBuilder(URI.create(sub.endpoint))
             .timeout(Duration.ofSeconds(8))
             .header("Authorization", "vapid t=$jwt, k=${publicKeyBase64Url()}")
             .header("TTL", "60")
-            .header("Content-Type", "application/json")
             .header("Urgency", "normal")
-            .POST(HttpRequest.BodyPublishers.ofString(payloadJson, StandardCharsets.UTF_8))
-            .build()
-        val res = http.send(req, HttpResponse.BodyHandlers.discarding())
+        val p256dh = sub.p256dh?.takeIf { it.isNotBlank() }
+        val auth = sub.auth?.takeIf { it.isNotBlank() }
+        if (p256dh != null && auth != null) {
+            val encrypted = Aes128GcmEncrypt.encrypt(
+                payload = payloadJson.toByteArray(StandardCharsets.UTF_8),
+                uaPublicRaw = base64UrlDecode(p256dh),
+                authSecret = base64UrlDecode(auth),
+            )
+            builder
+                .header("Content-Type", "application/octet-stream")
+                .header("Content-Encoding", "aes128gcm")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(encrypted))
+        } else {
+            // payload-less — service worker shows generic notification.
+            builder
+                .header("Content-Length", "0")
+                .POST(HttpRequest.BodyPublishers.noBody())
+        }
+        val res = http.send(builder.build(), HttpResponse.BodyHandlers.discarding())
         when (res.statusCode()) {
             201, 202, 204 -> { /* delivered */ }
             404, 410 -> {
