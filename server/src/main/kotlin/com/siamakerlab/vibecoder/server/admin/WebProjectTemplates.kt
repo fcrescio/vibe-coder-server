@@ -612,11 +612,15 @@ $authBannerHtml
 
 <div id="console-log" class="console-log" aria-live="polite"></div>
 
-<div style="display:flex;justify-content:flex-end;margin-bottom:6px">
-  <select id="template-picker" style="font-size:12px;padding:4px 8px;background:#1a1a1a;color:var(--text);border:1px solid #333">
-    <option value="">▼ 프롬프트 템플릿 가져오기 …</option>
+<div style="display:flex;justify-content:flex-end;margin-bottom:6px;gap:4px;flex-wrap:wrap">
+  <select id="agent-picker" style="font-size:12px;padding:4px 8px;background:#1a1a1a;color:var(--text);border:1px solid #333" title="v0.41.0+ — 등록된 sub-agent 를 prompt 에 dispatch (Use the @&lt;agent&gt; sub-agent to ...)">
+    <option value="">@ Agent dispatch …</option>
   </select>
-  <a href="/prompts" class="chip chip-link" style="font-size:11px;margin-left:6px">관리</a>
+  <a href="/agents" class="chip chip-link" style="font-size:11px;margin-left:0">관리</a>
+  <select id="template-picker" style="font-size:12px;padding:4px 8px;background:#1a1a1a;color:var(--text);border:1px solid #333">
+    <option value="">▼ 프롬프트 템플릿 …</option>
+  </select>
+  <a href="/prompts" class="chip chip-link" style="font-size:11px;margin-left:0">관리</a>
 </div>
 
 <form id="prompt-form" class="prompt-form" autocomplete="off">
@@ -910,6 +914,59 @@ $authBannerHtml
       }
       input.focus();
       picker.selectedIndex = 0;
+    });
+  }
+
+  // v0.41.0 — agent dispatch dropdown.
+  // GET /api/agents 결과로 등록된 sub-agent 목록을 채운 뒤 선택 시
+  // "Use the <agent> sub-agent to " prefix 를 input 에 삽입.
+  // Claude Code 의 표준 sub-agent dispatch 메커니즘을 1-click 으로 활용.
+  var aPicker = document.getElementById('agent-picker');
+  if (aPicker) {
+    fetch('/api/agents', { credentials: 'same-origin' })
+      .then(function(r) { return r.ok ? r.json() : { agents: [] }; })
+      .then(function(d) {
+        var arr = (d.agents || []).slice().sort(function(a, b) {
+          return a.name.localeCompare(b.name);
+        });
+        if (arr.length === 0) {
+          var none = document.createElement('option');
+          none.value = '';
+          none.textContent = '(등록된 agent 없음 — /agents)';
+          none.disabled = true;
+          aPicker.appendChild(none);
+          return;
+        }
+        arr.forEach(function(a) {
+          var opt = document.createElement('option');
+          opt.value = a.name;
+          opt.textContent = '@' + a.name;
+          opt.title = (a.preview || '').substring(0, 200);
+          aPicker.appendChild(opt);
+        });
+      })
+      .catch(function() { /* 빈 채로 두기 */ });
+
+    aPicker.addEventListener('change', function() {
+      var opt = aPicker.options[aPicker.selectedIndex];
+      if (!opt || !opt.value) return;
+      var prefix = 'Use the ' + opt.value + ' sub-agent to ';
+      var input = document.getElementById('prompt-input');
+      if (input.value && input.value.trim().length > 0) {
+        // 이미 prefix 가 있으면 중복 안 함.
+        if (input.value.startsWith('Use the ')) {
+          // 기존 agent 이름만 교체.
+          input.value = input.value.replace(/^Use the [^ ]+ sub-agent to /, prefix);
+        } else {
+          input.value = prefix + input.value;
+        }
+      } else {
+        input.value = prefix;
+      }
+      input.focus();
+      // 커서를 맨 뒤로.
+      input.selectionStart = input.selectionEnd = input.value.length;
+      aPicker.selectedIndex = 0;
     });
   }
 })();
