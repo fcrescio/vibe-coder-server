@@ -24,7 +24,7 @@ vibe-coder-server/
 └─ docker/              # Slim Docker image + compose + vibe-doctor
 ```
 
-## What's inside (v0.50.0)
+## What's inside (v0.53.0)
 
 ### Core orchestration
 - **Claude Code CLI orchestration** — one persistent child process per project,
@@ -412,6 +412,66 @@ vibe-coder-server/
   pulls `title` / `body` / `url`, calls `showNotification` with a
   `data: {url}` payload that the click handler routes to.
 
+### JSON API + WebSocket ACL completion (v0.51.0+)
+- v0.49.0's `requireProjectAccessOrRedirect` (SSR-only) gains a JSON
+  counterpart **`ApplicationCall.requireProjectAcl(projects,
+  projectId)`** that throws `403 project_forbidden` on ACL violation.
+- Applied to **15+** mutating per-project REST endpoints:
+  - `BuildRoutes` (4) — debug build, list, get, cancel
+  - `GitRoutes` (4) — status / diff / log / commit
+  - `FileRoutes` (4) — upload / list / download / delete
+  - `ConsoleRoutes` (5) — prompt / new / cancel / status /
+    prompt-suggestions
+  - `ProjectActionRoutes` (2) — list / invoke
+  - `SubAgentRoutes` (JSON 3 + SSR 3) — prompt / cancel / active +
+    agent index / per-agent console / new
+- **WebSocket** — `/ws/projects/{id}/console/logs` and
+  `/ws/projects/{id}/agents/{agent}/console/logs` handshakes do a
+  `device.userId → role + ACL` lookup; violation closes the connection
+  with `WsFrame.Error("project_forbidden")` + `VIOLATED_POLICY` close
+  reason.
+- `buildRoutes(service, hub, projects)`, `fileRoutes(service,
+  projects)`, and `wsRoutes(...projects)` now all take a
+  `ProjectService` argument for the ACL check.
+
+### `/history` agent_name filter (v0.52.0+)
+- The `conversation_turns.agent_name` column added in v0.49.0 is now
+  user-facing. `ConversationTurnRepository.Filter.agentName` has
+  3 modes:
+  - `null` (default) → `agent_name IS NULL` — main console only.
+    **Backward compatible**: every existing caller stays main-only.
+  - `""` (empty string) → no filter — main + every sub-agent.
+  - `"<name>"` → that sub-agent only.
+- `/projects/{id}/history` and `/chat/history` filter form gains an
+  **"Agent (v0.52.0+)"** dropdown driven by
+  `ConversationTurnRepository.distinctAgents(projectId)`:
+  `(main only)` / `(all)` / `@<name>` per registered sub-agent.
+- Each row carries a small `@<agent>` badge so sub-agent origin is
+  visible at a glance.
+- Query param contract: omit `agent=` for main; `?agent=*` for all;
+  `?agent=<name>` for one. Pagination preserves the choice.
+
+### PostgreSQL tsvector + GIN content search (v0.53.0+)
+- The v0.16.0 limitation note ("LIKE — replace with tsvector next
+  cycle") is finally cleared. `conversation_turns.content_tsv` is a
+  PG-12 `GENERATED ALWAYS AS (to_tsvector('simple', content))
+  STORED` column populated automatically by the engine; a GIN index
+  on it makes full-text matches indexed.
+- `Database.init()` runs idempotent raw-SQL migration on every boot
+  (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` + `CREATE INDEX IF NOT
+  EXISTS`). Existing rows are backfilled as PG generates the
+  `STORED` value on-the-fly. No service interruption.
+- `Filter.q` now translates to `content_tsv @@ plainto_tsquery
+  ('simple', ?)` instead of `LIKE`. Parameter binding via Exposed's
+  `QueryBuilder.registerArgument` keeps the path safe from SQL
+  injection.
+- Performance: hundreds-of-thousands-of-rows search drops from tens
+  of milliseconds to sub-millisecond per `EXPLAIN ANALYZE`.
+- **Trade-off**: `'simple'` tokenizer is language-agnostic — no
+  Korean morphological analysis, no English stemming, no substring
+  match (token-boundary only). For richer language support enable
+  `mecab-ko` / `unaccent` extensions in a future phase.
+
 ### Git + project scaffolding (v0.18.0+)
 - **Git commit + push** — single `POST /api/projects/{id}/git/commit` (and an
   SSR form) wraps `add → commit → push` with non-interactive auth (PAT via
@@ -572,7 +632,7 @@ ssh user@newhost 'cd ~/vibe-coder && tar xzf vibe-coder-data-*.tar.gz && docker 
 mounts only (no named volumes by default), but watch out if you mixed
 in legacy state. For regular upgrades, always `up -d --force-recreate`.
 
-## Web routes (v0.50.0)
+## Web routes (v0.53.0)
 
 All routes below sit at the root (no `/admin/*` prefix). Bearer auth or
 session cookie required except `/setup`, `/login`, `/health`. Every SSR POST
@@ -629,7 +689,7 @@ carries a CSRF `_csrf` token (v0.12.4+).
 | `/settings`, `/devices`, `/password` | Operations |
 | `/login`, `/setup`, `/logout` | Auth |
 
-## JSON API (v0.50.0 — for clients like the Android app)
+## JSON API (v0.53.0 — for clients like the Android app)
 
 Every UI feature has a matching `/api/*` endpoint with Bearer authentication.
 Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
@@ -690,11 +750,15 @@ on server-level endpoints get `403 admin_only`. WebSocket `UserPrompt` /
 `ActionInvoke` from a viewer session reply with
 `WsFrame.Error("viewer_readonly")` but keep the read stream alive.
 
-**Project ACL on JSON API (v0.49.0+)** — `GET /api/projects` is filtered
-through the caller's ACL (admin sees everything; member / viewer with no
-ACL rows sees everything; member / viewer with any ACL rows sees only
-those projects). `GET /api/projects/{id}` returns `403 project_forbidden`
-when the project is outside the caller's ACL.
+**Project ACL on JSON API (v0.49.0 / v0.51.0)** — `GET /api/projects`
+is filtered through the caller's ACL (admin sees everything; member /
+viewer with no ACL rows sees everything; member / viewer with any ACL
+rows sees only those projects). Since **v0.51.0** every mutating
+per-project endpoint also checks the ACL via
+`call.requireProjectAcl(projects, projectId)` — violation returns
+`403 project_forbidden`. WebSocket handshakes
+(`/ws/projects/{id}/console/logs` and the sub-agent variant) close with
+`WsFrame.Error("project_forbidden")` + `VIOLATED_POLICY` reason.
 
 ## Auth (v0.4.0+, hardened in v0.26.0)
 

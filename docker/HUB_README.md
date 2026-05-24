@@ -47,7 +47,7 @@ docker compose up -d            # boots postgres + vibe-coder-server
 > [CHANGELOG.md](https://github.com/siamakerlab/vibe-coder-server/blob/main/CHANGELOG.md)
 > for the exact steps.
 
-## What's in the box (v0.50.0)
+## What's in the box (v0.53.0)
 
 **Core**
 - **Claude Code CLI orchestration** — one persistent child per project,
@@ -269,6 +269,28 @@ docker compose up -d            # boots postgres + vibe-coder-server
   web-push-java). Notifications carry real title / body / URL — the
   service worker focuses the relevant page on click.
 
+**JSON API + WebSocket ACL completion (v0.51.0+)**
+- v0.49.0 made project ACL SSR-only; v0.51.0 extends the same check
+  to every mutating per-project REST endpoint
+  (`call.requireProjectAcl(...)` returns `403 project_forbidden`)
+  and to the console + sub-agent WebSocket handshakes (close with
+  `WsFrame.Error("project_forbidden")`). No more bypass via Bearer
+  token.
+
+**/history agent_name filter (v0.52.0+)**
+- The `agent_name` column added in v0.49.0 is now user-facing. The
+  history page gets a dropdown — main only / all / per-agent — and
+  every row carries an `@<agent>` badge so sub-agent origin is
+  visible at a glance.
+
+**PostgreSQL tsvector + GIN content search (v0.53.0+)**
+- The v0.16.0 LIKE-only limitation is finally lifted. A
+  `content_tsv` `GENERATED ... STORED` column + GIN index turns
+  `Filter.q` into `plainto_tsquery('simple', ?)` matching. Sub-ms
+  search on hundreds of thousands of rows. `'simple'` tokenizer is
+  language-agnostic (no Korean stemming; richer extensions are
+  optional and a future phase).
+
 **Git + project scaffolding (v0.18.0+)**
 - **Git commit + push** wrapped in a single non-interactive endpoint
   (`POST /api/projects/{id}/git/commit` + SSR form). PAT / SSH auth,
@@ -374,7 +396,7 @@ container (UID 70 in alpine images). On the host you may need `sudo` to read
 files directly. Either use `tar` with sudo, or do logical `pg_dump` against
 the running container.
 
-## Web UI routes (v0.50.0)
+## Web UI routes (v0.53.0)
 
 All routes sit at the root (no `/admin/*` prefix from v0.4.2+). Bearer
 token or session cookie required except `/setup`, `/login`, `/health`.
@@ -425,7 +447,7 @@ SSR POST forms carry a CSRF token (v0.12.4+).
 | `/users/{userId}/projects` | Project ACL editor — admin only (v0.49.0+) |
 | `/settings`, `/devices`, `/password` | Operations |
 
-## JSON API (v0.50.0 — for clients)
+## JSON API (v0.53.0 — for clients)
 
 Full reference + curl examples in the
 [REST API Reference](https://github.com/siamakerlab/vibe-coder-server/wiki/REST-API-Reference)
@@ -465,9 +487,12 @@ Highlights:
   setup endpoints require admin — non-admins get `403 admin_only`.
   WebSocket `UserPrompt`/`ActionInvoke` from a viewer reply with
   `viewer_readonly` error frame but keep the read stream open.
-- **Project ACL (v0.49.0+)**: `GET /api/projects` is filtered by the
-  caller's ACL. `GET /api/projects/{id}` returns
-  `403 project_forbidden` on violation.
+- **Project ACL (v0.49.0+ / v0.51.0+)**: `GET /api/projects` is
+  filtered by the caller's ACL; `GET /api/projects/{id}` returns
+  `403 project_forbidden` on violation. **v0.51.0** extends the
+  check to every mutating per-project REST endpoint and to the
+  console + sub-agent WebSocket handshakes (close with
+  `WsFrame.Error("project_forbidden")`).
 - `GET  /api/env-setup/components`, `POST /api/env-setup/install-all`
 - `POST /api/env-setup/claude-auth/upload | api-key`
 - `POST /api/env-setup/claude-login/start | submit | cancel`
