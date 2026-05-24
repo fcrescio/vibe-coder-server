@@ -100,6 +100,77 @@ object WebProjectTemplates {
         else -> "sys"
     }
 
+    /**
+     * v0.22.0 — Play Console 업로드 카드.
+     *
+     * 빌드 상태가 SUCCESS 가 아니면 카드 미표시. SUCCESS 면 precheck (MCP 설치/등록)
+     * 결과 + AAB 경로 입력 폼 + Internal/Alpha/Beta/Production 선택 + Release Notes.
+     * 사전조건이 모자라더라도 폼은 노출 — 사용자가 우선 prompt 를 보내본 후 Claude
+     * 응답에서 부족한 점을 다시 확인할 수 있도록.
+     */
+    private fun renderPlayUploadCard(
+        p: ProjectDto,
+        b: BuildDto,
+        precheck: com.siamakerlab.vibecoder.server.publish.PlayPublishService.Precheck?,
+        flashOk: String?,
+        flashErr: String?,
+        csrf: String?,
+    ): String {
+        if (b.status.name != "SUCCESS") return ""
+        val readyBadge = when {
+            precheck == null -> """<span class="dim">precheck 미실행</span>"""
+            precheck.ready -> """<span class="ok">✓ 준비됨</span>"""
+            else -> """<span class="warn">⚠ 사전조건 부족</span>"""
+        }
+        val mcpStatusLine = precheck?.let { """<dt>MCP</dt><dd>${esc(it.mcpStatus)}</dd>""" } ?: ""
+        val pkgLine = precheck?.configuredPackageName?.let {
+            """<dt>MCP packageName</dt><dd><code>${esc(it)}</code></dd>"""
+        } ?: ""
+        val warnHtml = if (precheck != null && precheck.warnings.isNotEmpty()) {
+            val items = precheck.warnings.joinToString("") { """<li>${esc(it)}</li>""" }
+            """<ul class="hint" style="margin:8px 0 0 18px">$items</ul>"""
+        } else ""
+        val okBanner = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
+        val errBanner = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
+        // .aab 기본 경로 추정 — 사용자가 다른 위치면 수정 가능.
+        val defaultAab = "app/build/outputs/bundle/release/app-release.aab"
+        return """
+<div class="card" style="margin-bottom:16px">
+  <h2>Play Console 업로드 (v0.22.0)</h2>
+  <p>$readyBadge — google-play-publisher MCP 를 통해 Claude 가 Internal Track 으로 AAB 를 업로드합니다.</p>
+  $okBanner
+  $errBanner
+  <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;margin-top:8px">
+    <dt>프로젝트 패키지</dt><dd><code>${esc(p.packageName)}</code></dd>
+    $pkgLine
+    $mcpStatusLine
+  </dl>
+  $warnHtml
+  <form method="post" action="/projects/${esc(p.id)}/builds/${esc(b.id)}/play-upload" style="margin-top:12px;display:grid;gap:8px">
+    ${CsrfTokens.hiddenInput(csrf)}
+    <label>AAB 경로 (project root 기준)
+      <input name="aabPath" value="${esc(defaultAab)}" required>
+    </label>
+    <label>Track
+      <select name="track">
+        <option value="internal" selected>internal (테스터만, 즉시 반영)</option>
+        <option value="alpha">alpha</option>
+        <option value="beta">beta</option>
+        <option value="production">production</option>
+      </select>
+    </label>
+    <label>Release notes (선택)
+      <textarea name="releaseNotes" rows="3" placeholder="비우면 Claude 가 git log 등으로 추론"></textarea>
+    </label>
+    <div>
+      <button type="submit" class="primary">Claude 에게 업로드 위임</button>
+      <a href="/env-setup/mcp" class="chip chip-link">MCP 설정으로</a>
+    </div>
+  </form>
+  <p class="hint" style="margin-top:8px">업로드 진행 / 결과는 콘솔 페이지에서 실시간으로 확인합니다. publish 단계는 Claude 가 자동 commit 하지 않고 review 상태로 남깁니다.</p>
+</div>"""
+    }
+
     /** 종료된 빌드의 파일 로그를 prerender. null 이면 빈 문자열. */
     private fun renderReplay(replay: BuildLogReplay?): String {
         if (replay == null) return ""
@@ -835,6 +906,9 @@ $errHtml
         b: BuildDto,
         artifact: ArtifactRow?,
         replay: BuildLogReplay? = null,
+        playPrecheck: com.siamakerlab.vibecoder.server.publish.PlayPublishService.Precheck? = null,
+        playFlashOk: String? = null,
+        playFlashErr: String? = null,
         csrf: String? = null,
     ): String {
         val statusCls = when (b.status.name) {
@@ -908,6 +982,8 @@ $errHtml
   <h2>APK</h2>
   $downloadHtml
 </div>
+
+${renderPlayUploadCard(p, b, playPrecheck, playFlashOk, playFlashErr, csrf)}
 
 <div class="card">
   <h2>로그 ${if (attachWs) """<small class="dim" style="font-size:11px;text-transform:none;letter-spacing:0">실시간</small>""" else """<small class="dim" style="font-size:11px;text-transform:none;letter-spacing:0">파일 replay</small>"""}</h2>

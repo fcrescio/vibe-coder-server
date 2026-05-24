@@ -123,6 +123,8 @@ data class ServerContext(
     val claudeStatusService: ClaudeStatusService,
     /** v0.21.0 — 백그라운드 사용량 폴링 + 임계치 알림. */
     val claudeUsageMonitor: com.siamakerlab.vibecoder.server.claude.ClaudeUsageMonitor,
+    /** v0.22.0 — Play Console 업로드 트리거 (MCP google-play-publisher 위임). */
+    val playPublishService: com.siamakerlab.vibecoder.server.publish.PlayPublishService,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -231,6 +233,7 @@ fun Application.module(ctx: ServerContext) {
             gitWriter = ctx.gitWriter,
             workspace = ctx.workspace,
             fileBrowser = ctx.fileBrowser,
+            playPublishService = ctx.playPublishService,
         )
         envRoutes(ctx.status, ctx.env)
         projectRoutes(ctx.projects)

@@ -198,6 +198,28 @@ class AuditLogger(
         )
     }
 
+    // ── Publish (v0.22.0+) ───────────────────────────────────────────
+
+    fun playUploadTriggered(userId: String?, projectId: String, buildId: String, ip: String?, track: String) = safe {
+        repo.insert(
+            action = Actions.PLAY_UPLOAD,
+            result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "build", resourceId = "$projectId/$buildId",
+            detail = jsonDetail { put("track", track) },
+        )
+    }
+
+    fun playUploadFailed(userId: String?, projectId: String, buildId: String, ip: String?, message: String?) = safe {
+        repo.insert(
+            action = Actions.PLAY_UPLOAD,
+            result = Results.FAIL,
+            userId = userId, ip = ip,
+            resourceType = "build", resourceId = "$projectId/$buildId",
+            detail = jsonDetail { put("error", message ?: "unknown") },
+        )
+    }
+
     object Actions {
         const val AUTH_LOGIN = "auth.login"
         const val AUTH_LOGOUT = "auth.logout"
@@ -216,6 +238,8 @@ class AuditLogger(
         const val GIT_TOKEN_REGISTER = "git.token.register"
         const val GIT_TOKEN_DELETE = "git.token.delete"
         const val GIT_COMMIT = "git.commit"
+        const val PLAY_UPLOAD = "publish.play.upload"
+        const val TESTFLIGHT_UPLOAD = "publish.testflight.upload"
     }
 
     object Results {

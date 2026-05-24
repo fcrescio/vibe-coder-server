@@ -57,6 +57,8 @@ fun Routing.webProjectRoutes(
     gitWriter: GitWriter,
     workspace: WorkspacePath,
     fileBrowser: ProjectFileBrowser,
+    /** v0.22.0 — Play Console 업로드 트리거 (MCP google-play-publisher 위임). */
+    playPublishService: com.siamakerlab.vibecoder.server.publish.PlayPublishService,
 ) {
 
     // ── 목록 + 등록 폼 ────────────────────────────────────────────────
@@ -282,10 +284,64 @@ fun Routing.webProjectRoutes(
         val isTerminal = row.status.name in setOf("SUCCESS", "FAILED", "CANCELED", "TIMEOUT")
         val replay = if (isTerminal) loadBuildLog(workspace, id, buildId, row.logPath) else null
 
+        // v0.22.0 — Play 업로드 카드용 precheck. 빌드 성공일 때만 의미 있음.
+        val playPrecheck = if (row.status.name == "SUCCESS") {
+            runCatching { playPublishService.precheck(p.packageName) }.getOrNull()
+        } else null
+
         call.respondText(
-            WebProjectTemplates.buildDetailPage(sess.username, p, dto, artifact, replay, csrf = sess.csrf),
+            WebProjectTemplates.buildDetailPage(
+                sess.username, p, dto, artifact, replay,
+                playPrecheck = playPrecheck,
+                playFlashOk = call.request.queryParameters["play_ok"],
+                playFlashErr = call.request.queryParameters["play_err"],
+                csrf = sess.csrf,
+            ),
             ContentType.Text.Html,
         )
+    }
+
+    /**
+     * v0.22.0 — Play Console (Internal/Alpha/Beta/Production) 업로드 트리거.
+     *
+     * 사전조건이 충족되지 않아도 (예: MCP 미설치) 그대로 prompt 전송 — Claude 가
+     * 첫 응답에서 즉시 오류를 보고하므로 사용자가 어디서 막혔는지 명확.
+     * 단 ProjectService.get(id) 통과 + AAB 경로 입력 필수.
+     */
+    post("/projects/{id}/builds/{buildId}/play-upload") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
+        val id = call.parameters["id"]!!
+        val buildId = call.parameters["buildId"]!!
+        val p = runCatching { projects.get(id) }.getOrElse {
+            call.respondRedirect("/projects?err=${"프로젝트 '$id' 를 찾을 수 없습니다.".encodeUrl()}")
+            return@post
+        }
+        val form = call.receiveParameters()
+        val aabPath = form["aabPath"]?.trim().orEmpty()
+        val track = form["track"]?.trim().orEmpty().ifBlank { "internal" }
+        val notes = form["releaseNotes"]?.trim()
+        if (aabPath.isBlank()) {
+            call.respondRedirect("/projects/$id/builds/$buildId?play_err=${"AAB 경로를 입력하세요.".encodeUrl()}")
+            return@post
+        }
+        runCatching {
+            playPublishService.trigger(
+                projectId = id,
+                aabRelativePath = aabPath,
+                track = track,
+                releaseNotes = notes,
+            )
+        }.onFailure { e ->
+            log.warn(e) { "play upload trigger failed: $id $buildId" }
+            authDeps.audit.playUploadFailed(sess.userId, id, buildId, call.request.local.remoteHost, e.message)
+            call.respondRedirect("/projects/$id/builds/$buildId?play_err=${("업로드 prompt 전송 실패: ${e.message}").encodeUrl()}")
+            return@post
+        }
+        log.info { "play upload prompt sent: project=$id build=$buildId track=$track aab=$aabPath by ${sess.username}" }
+        authDeps.audit.playUploadTriggered(sess.userId, id, buildId, call.request.local.remoteHost, track)
+        // 사용자를 콘솔로 이동 — Claude 의 진행이 라이브로 보이는 곳.
+        call.respondRedirect("/projects/$id/console")
     }
 
     post("/projects/{id}/builds/{buildId}/cancel") {

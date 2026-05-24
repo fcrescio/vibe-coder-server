@@ -178,6 +178,11 @@ fun main(args: Array<String>) {
         activeProjectsProvider = { projectRepo.list().map { it.id } },
     )
     claudeUsageMonitor.start()
+    // v0.22.0 — Play Console 업로드 트리거 (MCP google-play-publisher 위임).
+    val playPublishService = com.siamakerlab.vibecoder.server.publish.PlayPublishService(
+        mcpService = mcp,
+        sessionManager = sessionManager,
+    )
 
     val ctx = ServerContext(
         config = config,
@@ -222,6 +227,7 @@ fun main(args: Array<String>) {
         capabilityService = capabilityService,
         claudeStatusService = claudeStatusService,
         claudeUsageMonitor = claudeUsageMonitor,
+        playPublishService = playPublishService,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {
