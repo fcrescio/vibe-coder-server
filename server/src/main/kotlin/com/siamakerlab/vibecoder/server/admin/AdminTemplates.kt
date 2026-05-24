@@ -90,6 +90,7 @@ object AdminTemplates {
     ${link("/env-setup", "빌드환경", "env-setup")}
     ${link("/emulator", "Emulator", "emulator")}
     ${link("/settings", "설정", "settings")}
+    ${link("/settings/cache", "빌드 캐시", "cache")}
     ${link("/devices", "디바이스", "devices")}
     ${link("/audit", "감사 로그", "audit")}
     ${link("/settings/email", "이메일 알림", "email")}

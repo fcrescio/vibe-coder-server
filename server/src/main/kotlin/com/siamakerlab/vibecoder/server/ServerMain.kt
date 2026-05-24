@@ -191,6 +191,9 @@ fun main(args: Array<String>) {
         mcpService = mcp,
         sessionManager = sessionManager,
     )
+    // v0.28.0 — APK 서명 검사 + 빌드 캐시 관리.
+    val apkSignerInspector = com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector()
+    val buildCacheService = com.siamakerlab.vibecoder.server.build.BuildCacheService()
 
     val ctx = ServerContext(
         config = config,
@@ -238,6 +241,8 @@ fun main(args: Array<String>) {
         claudeUsageMonitor = claudeUsageMonitor,
         playPublishService = playPublishService,
         testFlightPublishService = testFlightPublishService,
+        apkSignerInspector = apkSignerInspector,
+        buildCacheService = buildCacheService,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {

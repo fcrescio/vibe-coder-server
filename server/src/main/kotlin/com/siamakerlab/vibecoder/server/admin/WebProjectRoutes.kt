@@ -61,6 +61,8 @@ fun Routing.webProjectRoutes(
     playPublishService: com.siamakerlab.vibecoder.server.publish.PlayPublishService,
     /** v0.23.0 — TestFlight 업로드 트리거 (MCP app-store-connect 위임). */
     testFlightPublishService: com.siamakerlab.vibecoder.server.publish.TestFlightPublishService,
+    /** v0.28.0 — APK 서명 검사 (apksigner verify). */
+    apkSignerInspector: com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector,
 ) {
 
     // ── 목록 + 등록 폼 ────────────────────────────────────────────────
@@ -293,6 +295,11 @@ fun Routing.webProjectRoutes(
         // v0.23.0 — TestFlight precheck 는 빌드 상태와 무관 (vibe-coder 는 iOS 빌드 안 함).
         val testFlightPrecheck = runCatching { testFlightPublishService.precheck() }.getOrNull()
 
+        // v0.28.0 — APK 서명 검사. SUCCESS + artifact 가 .apk 일 때만.
+        val signerInspection = if (artifact != null && artifact.fileName.endsWith(".apk", ignoreCase = true)) {
+            runCatching { apkSignerInspector.inspect(java.nio.file.Path.of(artifact.filePath)) }.getOrNull()
+        } else null
+
         call.respondText(
             WebProjectTemplates.buildDetailPage(
                 sess.username, p, dto, artifact, replay,
@@ -302,6 +309,7 @@ fun Routing.webProjectRoutes(
                 testFlightPrecheck = testFlightPrecheck,
                 tfFlashOk = call.request.queryParameters["tf_ok"],
                 tfFlashErr = call.request.queryParameters["tf_err"],
+                signerInspection = signerInspection,
                 csrf = sess.csrf,
             ),
             ContentType.Text.Html,

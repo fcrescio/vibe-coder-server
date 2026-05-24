@@ -6,6 +6,7 @@ import com.siamakerlab.vibecoder.server.actions.ServerActionHandler
 import com.siamakerlab.vibecoder.server.actions.projectActionRoutes
 import com.siamakerlab.vibecoder.server.admin.AdminRoutesDeps
 import com.siamakerlab.vibecoder.server.admin.adminRoutes
+import com.siamakerlab.vibecoder.server.build.buildCacheRoutes
 import com.siamakerlab.vibecoder.server.admin.twoFactorRoutes
 import com.siamakerlab.vibecoder.server.admin.corsSettingsRoutes
 import com.siamakerlab.vibecoder.server.admin.envSetupRoutes
@@ -131,6 +132,10 @@ data class ServerContext(
     val playPublishService: com.siamakerlab.vibecoder.server.publish.PlayPublishService,
     /** v0.23.0 — TestFlight 업로드 트리거 (MCP app-store-connect 위임). */
     val testFlightPublishService: com.siamakerlab.vibecoder.server.publish.TestFlightPublishService,
+    /** v0.28.0 — APK 서명 검사 (apksigner verify). */
+    val apkSignerInspector: com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector,
+    /** v0.28.0 — Gradle / Android / npm 캐시 측정 + 정리. */
+    val buildCacheService: com.siamakerlab.vibecoder.server.build.BuildCacheService,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -246,7 +251,10 @@ fun Application.module(ctx: ServerContext) {
             fileBrowser = ctx.fileBrowser,
             playPublishService = ctx.playPublishService,
             testFlightPublishService = ctx.testFlightPublishService,
+            apkSignerInspector = ctx.apkSignerInspector,
         )
+        // v0.28.0 — /settings/cache 라우트.
+        buildCacheRoutes(adminDeps, ctx.buildCacheService)
         envRoutes(ctx.status, ctx.env)
         projectRoutes(ctx.projects)
         consoleRoutes(ctx.projects, ctx.sessionManager, ctx.hub, ctx.claudeStatusService, ctx.env, ctx.auditLogger)

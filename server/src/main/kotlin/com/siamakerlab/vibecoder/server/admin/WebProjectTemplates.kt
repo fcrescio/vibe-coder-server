@@ -231,6 +231,45 @@ object WebProjectTemplates {
 </div>"""
     }
 
+    /**
+     * v0.28.0 — APK 서명 검사 결과 (apksigner verify).
+     */
+    private fun renderSignerInspection(insp: com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector.Inspection?): String {
+        if (insp == null) return ""
+        if (!insp.verified && insp.errorMessage != null && insp.schemes.isEmpty() && insp.signers.isEmpty()) {
+            return """
+<div style="margin-top:14px;padding:10px;border-radius:6px;background:rgba(255,150,80,0.08)">
+  <strong>⚠ 서명 검사 실패</strong>
+  <div class="dim" style="font-size:13px;margin-top:4px">${esc(insp.errorMessage)}</div>
+</div>"""
+        }
+        val verifiedBadge = if (insp.verified)
+            """<span class="ok">✓ verified</span>"""
+        else
+            """<span class="warn">✗ not verified</span>"""
+        val schemes = if (insp.schemes.isNotEmpty()) insp.schemes.joinToString(", ")
+        else "(없음)"
+        val signersHtml = if (insp.signers.isEmpty()) {
+            """<p class="dim" style="font-size:13px">서명자 정보를 추출하지 못했습니다.</p>"""
+        } else {
+            insp.signers.joinToString("") { s ->
+                val fp = s.sha256?.let { it.chunked(4).joinToString(" ").take(80) } ?: "-"
+                """
+                <div style="margin-top:8px;padding:6px 10px;background:rgba(255,255,255,0.04);border-radius:6px;font-size:12px">
+                  <div><strong>Signer #${s.signerIndex}</strong></div>
+                  <div class="dim">DN: <code>${esc(s.subjectDn ?: "-")}</code></div>
+                  <div class="dim">SHA-256: <code style="word-break:break-all">${esc(fp)}</code></div>
+                </div>"""
+            }
+        }
+        return """
+<div style="margin-top:14px">
+  <h3 style="margin:0 0 8px 0;font-size:14px">서명 검사 (v0.28.0)</h3>
+  <p style="margin:0">$verifiedBadge — 활성 schemes: <code>$schemes</code></p>
+  $signersHtml
+</div>"""
+    }
+
     /** 종료된 빌드의 파일 로그를 prerender. null 이면 빈 문자열. */
     private fun renderReplay(replay: BuildLogReplay?): String {
         if (replay == null) return ""
@@ -972,6 +1011,7 @@ $errHtml
         testFlightPrecheck: com.siamakerlab.vibecoder.server.publish.TestFlightPublishService.Precheck? = null,
         tfFlashOk: String? = null,
         tfFlashErr: String? = null,
+        signerInspection: com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector.Inspection? = null,
         csrf: String? = null,
     ): String {
         val statusCls = when (b.status.name) {
@@ -1044,6 +1084,7 @@ $errHtml
 <div class="card" style="margin-bottom:16px">
   <h2>APK</h2>
   $downloadHtml
+  ${renderSignerInspection(signerInspection)}
 </div>
 
 ${renderPlayUploadCard(p, b, playPrecheck, playFlashOk, playFlashErr, csrf)}
