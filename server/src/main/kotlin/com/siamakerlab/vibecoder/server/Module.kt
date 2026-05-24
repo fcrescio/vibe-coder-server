@@ -38,6 +38,7 @@ import com.siamakerlab.vibecoder.server.claude.SubAgentSessionManager
 import com.siamakerlab.vibecoder.server.claude.subAgentRoutes
 import com.siamakerlab.vibecoder.server.admin.projectAclRoutes
 import com.siamakerlab.vibecoder.server.metrics.metricsRoutes
+import com.siamakerlab.vibecoder.server.security.installRateLimit
 import com.siamakerlab.vibecoder.server.projects.symbolRoutes
 import com.siamakerlab.vibecoder.server.auth.webauthnRoutes
 import com.siamakerlab.vibecoder.server.claude.usageRoutes
@@ -194,6 +195,9 @@ data class ServerContext(
     val symbolFinder: com.siamakerlab.vibecoder.server.projects.SymbolFinder,
     /** v0.55.0 — Phase 34 Prometheus metrics registry. */
     val metrics: com.siamakerlab.vibecoder.server.metrics.MetricsRegistry,
+    /** v0.56.0 — Phase 35 per-IP rate limiters (api + auth buckets). */
+    val rateLimitApi: com.siamakerlab.vibecoder.server.security.RateLimiter,
+    val rateLimitAuth: com.siamakerlab.vibecoder.server.security.RateLimiter,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -238,6 +242,18 @@ fun Application.module(ctx: ServerContext) {
         contentConverter = KotlinxWebsocketSerializationConverter(jsonCfg)
     }
     installStatusPages()
+    // v0.56.0 — Phase 35 per-IP rate limit. Runs BEFORE auth so credential-stuffing
+    // attempts get throttled even when they fail. Disabled if config flag off.
+    if (ctx.config.security.rateLimit.enabled) {
+        installRateLimit(
+            api = ctx.rateLimitApi,
+            auth = ctx.rateLimitAuth,
+            deviceRepo = ctx.deviceRepo,
+            tokens = ctx.tokens,
+            userRepo = ctx.adminUserRepo,
+            metrics = ctx.metrics,
+        )
+    }
     installAuth(
         ctx.deviceRepo, ctx.tokens,
         idleTimeoutMinutesProvider = { ctx.config.security.sessionIdleTimeoutMinutes },

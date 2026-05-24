@@ -293,6 +293,22 @@ fun main(args: Array<String>) {
     // 앞에 와이어업되므로), 여기서 뒤늦게 metrics 를 set. 이후 buildResult / claudeUsageWarn /
     // diskUsageWarn 트리거가 카운터를 증가시킴.
     notifiers.metrics = metrics
+
+    // v0.56.0 — Phase 35 per-IP rate limiters. api bucket 은 console / build 트리거가
+    // 빈번한 정상 사용 흐름에서 절대 거치지 않도록 capacity 120 + 2 tok/s. auth bucket 은
+    // 로그인 시도를 분당 12회 정도로 강하게 제한.
+    val rlCfg = config.security.rateLimit
+    val rateLimitApi = com.siamakerlab.vibecoder.server.security.RateLimiter(
+        capacity = rlCfg.apiCapacity, refillTokensPerSecond = rlCfg.apiRefillPerSecond,
+    )
+    val rateLimitAuth = com.siamakerlab.vibecoder.server.security.RateLimiter(
+        capacity = rlCfg.authCapacity, refillTokensPerSecond = rlCfg.authRefillPerSecond,
+    )
+    // 추가 gauge: 두 limiter 의 현재 활성 IP 수.
+    metrics.gauge("vibe_rate_limit_buckets_active", "Active IP buckets in the API limiter",
+        labels = mapOf("bucket" to "api")) { rateLimitApi.currentBucketCount() }
+    metrics.gauge("vibe_rate_limit_buckets_active", "Active IP buckets in the auth limiter",
+        labels = mapOf("bucket" to "auth")) { rateLimitAuth.currentBucketCount() }
     // v0.29.0 — 프로젝트 zip + 디스크 monitor (Notifiers 와 email warn percent 공유).
     val projectArchiver = com.siamakerlab.vibecoder.server.projects.ProjectArchiver(workspace)
     val diskMonitor = com.siamakerlab.vibecoder.server.disk.DiskMonitor(
@@ -371,6 +387,8 @@ fun main(args: Array<String>) {
         projectAclRepo = projectAclRepo,
         symbolFinder = symbolFinder,
         metrics = metrics,
+        rateLimitApi = rateLimitApi,
+        rateLimitAuth = rateLimitAuth,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {

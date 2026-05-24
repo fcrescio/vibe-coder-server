@@ -63,6 +63,28 @@ data class SecuritySection(
      * 기본 30분.
      */
     val sessionIdleTimeoutMinutes: Int = 30,
+    /** v0.56.0 — Phase 35 per-IP rate limit. */
+    val rateLimit: RateLimitSection = RateLimitSection(),
+)
+
+/**
+ * v0.56.0 — Phase 35 per-IP token bucket rate limit (default: lenient for LAN single-user).
+ *
+ * - [enabled] turns the entire feature off if you're running behind a reverse proxy that
+ *   already does rate limiting (nginx, Cloudflare, etc).
+ * - The **api** bucket covers /api/ and /ws/ paths — generous because the browser console
+ *   easily fires 30+ requests per minute on a long Claude session.
+ * - The **auth** bucket covers `/login` (SSR) and `/api/auth/login` — strict, since
+ *   credential-stuffing wants high throughput.
+ * - Admin Bearer tokens / admin cookie sessions bypass both buckets.
+ */
+@Serializable
+data class RateLimitSection(
+    val enabled: Boolean = true,
+    val apiCapacity: Int = 120,
+    val apiRefillPerSecond: Double = 2.0,
+    val authCapacity: Int = 10,
+    val authRefillPerSecond: Double = 0.2,
 )
 
 @Serializable
