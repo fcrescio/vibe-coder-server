@@ -32,7 +32,7 @@
 # ------------------------------------------------------------------------------
 # Stage 1: 서버 빌드 (Dockerfile 슬림본과 동일)
 # ------------------------------------------------------------------------------
-FROM eclipse-temurin:17-jdk-noble AS builder
+FROM eclipse-temurin:17-jdk-resolute AS builder
 
 WORKDIR /src
 COPY gradle ./gradle
@@ -51,9 +51,9 @@ RUN --mount=type=cache,target=/root/.gradle \
 # ------------------------------------------------------------------------------
 # Stage 2: :full 런타임 — 슬림 + 에뮬레이터 + noVNC 스택
 # ------------------------------------------------------------------------------
-FROM eclipse-temurin:17-jre-noble AS runtime
+FROM eclipse-temurin:17-jre-resolute AS runtime
 
-LABEL org.opencontainers.image.title="Vibe Coder Server (full / emulator variant)"
+LABEL org.opencontainers.image.title="Vibe Coder Server (full / emulator variant · Ubuntu 26.04 LTS)"
 LABEL org.opencontainers.image.description="Slim 이미지 + Android Emulator (KVM) + noVNC (in-browser AVD mirroring)"
 LABEL org.opencontainers.image.source="https://github.com/siamakerlab/vibe-coder-server"
 LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"

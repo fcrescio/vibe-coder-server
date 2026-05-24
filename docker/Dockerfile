@@ -19,8 +19,10 @@
 
 # ------------------------------------------------------------------------------
 # Stage 1: 서버 빌드 (Gradle installDist)
+# v0.38.0 — Ubuntu 26.04 LTS (Resolute Raccoon) rebase. eclipse-temurin 의
+# resolute 태그가 26.04 LTS 매핑 확정 (`/etc/os-release`: Ubuntu 26.04 LTS).
 # ------------------------------------------------------------------------------
-FROM eclipse-temurin:17-jdk-noble AS builder
+FROM eclipse-temurin:17-jdk-resolute AS builder
 
 WORKDIR /src
 
@@ -41,12 +43,12 @@ RUN --mount=type=cache,target=/root/.gradle \
     ./gradlew -PskipAndroidModule=true :server:installDist --no-daemon -x test
 
 # ------------------------------------------------------------------------------
-# Stage 2: 런타임 (슬림)
+# Stage 2: 런타임 (슬림) — v0.38.0 Ubuntu 26.04 LTS rebase
 # ------------------------------------------------------------------------------
-FROM eclipse-temurin:17-jre-noble AS runtime
+FROM eclipse-temurin:17-jre-resolute AS runtime
 
 LABEL org.opencontainers.image.title="Vibe Coder Server"
-LABEL org.opencontainers.image.description="Ktor 기반 vibe-coder 서버 (LAN 페어링 1인 개발 도구)"
+LABEL org.opencontainers.image.description="Ktor 기반 vibe-coder 서버 (LAN 1인 개발 도구) · Ubuntu 26.04 LTS"
 LABEL org.opencontainers.image.source="https://github.com/siamakerlab/vibe-coder"
 LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 LABEL org.opencontainers.image.source="https://github.com/siamakerlab/vibe-coder-server"
