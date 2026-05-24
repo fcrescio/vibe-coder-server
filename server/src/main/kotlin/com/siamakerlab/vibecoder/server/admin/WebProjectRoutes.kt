@@ -59,6 +59,8 @@ fun Routing.webProjectRoutes(
     fileBrowser: ProjectFileBrowser,
     /** v0.22.0 — Play Console 업로드 트리거 (MCP google-play-publisher 위임). */
     playPublishService: com.siamakerlab.vibecoder.server.publish.PlayPublishService,
+    /** v0.23.0 — TestFlight 업로드 트리거 (MCP app-store-connect 위임). */
+    testFlightPublishService: com.siamakerlab.vibecoder.server.publish.TestFlightPublishService,
 ) {
 
     // ── 목록 + 등록 폼 ────────────────────────────────────────────────
@@ -288,6 +290,8 @@ fun Routing.webProjectRoutes(
         val playPrecheck = if (row.status.name == "SUCCESS") {
             runCatching { playPublishService.precheck(p.packageName) }.getOrNull()
         } else null
+        // v0.23.0 — TestFlight precheck 는 빌드 상태와 무관 (vibe-coder 는 iOS 빌드 안 함).
+        val testFlightPrecheck = runCatching { testFlightPublishService.precheck() }.getOrNull()
 
         call.respondText(
             WebProjectTemplates.buildDetailPage(
@@ -295,6 +299,9 @@ fun Routing.webProjectRoutes(
                 playPrecheck = playPrecheck,
                 playFlashOk = call.request.queryParameters["play_ok"],
                 playFlashErr = call.request.queryParameters["play_err"],
+                testFlightPrecheck = testFlightPrecheck,
+                tfFlashOk = call.request.queryParameters["tf_ok"],
+                tfFlashErr = call.request.queryParameters["tf_err"],
                 csrf = sess.csrf,
             ),
             ContentType.Text.Html,
@@ -341,6 +348,44 @@ fun Routing.webProjectRoutes(
         log.info { "play upload prompt sent: project=$id build=$buildId track=$track aab=$aabPath by ${sess.username}" }
         authDeps.audit.playUploadTriggered(sess.userId, id, buildId, call.request.local.remoteHost, track)
         // 사용자를 콘솔로 이동 — Claude 의 진행이 라이브로 보이는 곳.
+        call.respondRedirect("/projects/$id/console")
+    }
+
+    /**
+     * v0.23.0 — TestFlight 업로드 트리거. PlayPublish 와 동일 패턴.
+     */
+    post("/projects/{id}/builds/{buildId}/testflight-upload") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
+        val id = call.parameters["id"]!!
+        val buildId = call.parameters["buildId"]!!
+        runCatching { projects.get(id) }.getOrElse {
+            call.respondRedirect("/projects?err=${"프로젝트 '$id' 를 찾을 수 없습니다.".encodeUrl()}")
+            return@post
+        }
+        val form = call.receiveParameters()
+        val ipaPath = form["ipaPath"]?.trim().orEmpty()
+        val groups = form["distributionGroups"]?.trim()?.takeIf { it.isNotBlank() }
+        val notes = form["releaseNotes"]?.trim()
+        if (ipaPath.isBlank()) {
+            call.respondRedirect("/projects/$id/builds/$buildId?tf_err=${".ipa 경로를 입력하세요.".encodeUrl()}")
+            return@post
+        }
+        runCatching {
+            testFlightPublishService.trigger(
+                projectId = id,
+                ipaRelativePath = ipaPath,
+                distributionGroups = groups,
+                releaseNotes = notes,
+            )
+        }.onFailure { e ->
+            log.warn(e) { "testflight upload trigger failed: $id $buildId" }
+            authDeps.audit.testFlightUploadFailed(sess.userId, id, buildId, call.request.local.remoteHost, e.message)
+            call.respondRedirect("/projects/$id/builds/$buildId?tf_err=${("업로드 prompt 전송 실패: ${e.message}").encodeUrl()}")
+            return@post
+        }
+        log.info { "testflight upload prompt sent: project=$id build=$buildId ipa=$ipaPath groups=$groups by ${sess.username}" }
+        authDeps.audit.testFlightUploadTriggered(sess.userId, id, buildId, call.request.local.remoteHost, groups)
         call.respondRedirect("/projects/$id/console")
     }
 

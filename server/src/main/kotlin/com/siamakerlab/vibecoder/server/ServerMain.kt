@@ -183,6 +183,11 @@ fun main(args: Array<String>) {
         mcpService = mcp,
         sessionManager = sessionManager,
     )
+    // v0.23.0 — TestFlight 업로드 트리거 (MCP app-store-connect 위임).
+    val testFlightPublishService = com.siamakerlab.vibecoder.server.publish.TestFlightPublishService(
+        mcpService = mcp,
+        sessionManager = sessionManager,
+    )
 
     val ctx = ServerContext(
         config = config,
@@ -228,6 +233,7 @@ fun main(args: Array<String>) {
         claudeStatusService = claudeStatusService,
         claudeUsageMonitor = claudeUsageMonitor,
         playPublishService = playPublishService,
+        testFlightPublishService = testFlightPublishService,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {

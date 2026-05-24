@@ -125,6 +125,8 @@ data class ServerContext(
     val claudeUsageMonitor: com.siamakerlab.vibecoder.server.claude.ClaudeUsageMonitor,
     /** v0.22.0 — Play Console 업로드 트리거 (MCP google-play-publisher 위임). */
     val playPublishService: com.siamakerlab.vibecoder.server.publish.PlayPublishService,
+    /** v0.23.0 — TestFlight 업로드 트리거 (MCP app-store-connect 위임). */
+    val testFlightPublishService: com.siamakerlab.vibecoder.server.publish.TestFlightPublishService,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -234,6 +236,7 @@ fun Application.module(ctx: ServerContext) {
             workspace = ctx.workspace,
             fileBrowser = ctx.fileBrowser,
             playPublishService = ctx.playPublishService,
+            testFlightPublishService = ctx.testFlightPublishService,
         )
         envRoutes(ctx.status, ctx.env)
         projectRoutes(ctx.projects)

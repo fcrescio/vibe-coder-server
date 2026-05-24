@@ -171,6 +171,66 @@ object WebProjectTemplates {
 </div>"""
     }
 
+    /**
+     * v0.23.0 — TestFlight 업로드 카드.
+     *
+     * vibe-coder 는 iOS 빌드를 직접 수행하지 않으므로 BuildDto 의 status 와 무관
+     * 하게 항상 노출 (다만 이 페이지 자체는 빌드 detail). .ipa 경로 입력만 받으면
+     * MCP `app-store-connect` 가 처리하므로 빌드 SUCCESS 와 연동할 의미 없음.
+     */
+    private fun renderTestFlightUploadCard(
+        p: ProjectDto,
+        b: BuildDto,
+        precheck: com.siamakerlab.vibecoder.server.publish.TestFlightPublishService.Precheck?,
+        flashOk: String?,
+        flashErr: String?,
+        csrf: String?,
+    ): String {
+        val readyBadge = when {
+            precheck == null -> """<span class="dim">precheck 미실행</span>"""
+            precheck.ready -> """<span class="ok">✓ 준비됨</span>"""
+            else -> """<span class="warn">⚠ 사전조건 부족</span>"""
+        }
+        val mcpStatusLine = precheck?.let { """<dt>MCP</dt><dd>${esc(it.mcpStatus)}</dd>""" } ?: ""
+        val warnHtml = if (precheck != null && precheck.warnings.isNotEmpty()) {
+            val items = precheck.warnings.joinToString("") { """<li>${esc(it)}</li>""" }
+            """<ul class="hint" style="margin:8px 0 0 18px">$items</ul>"""
+        } else ""
+        val okBanner = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
+        val errBanner = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
+        // 사용자가 별도 머신에서 빌드한 .ipa 를 워크스페이스에 올린 시나리오.
+        val defaultIpa = "out/app-release.ipa"
+        return """
+<div class="card" style="margin-bottom:16px">
+  <h2>TestFlight 업로드 (v0.23.0)</h2>
+  <p>$readyBadge — app-store-connect MCP 를 통해 Claude 가 TestFlight 로 .ipa 를 업로드합니다.</p>
+  <p class="hint">vibe-coder 는 iOS 빌드를 직접 수행하지 않습니다. macOS+Xcode 빌드 농장에서 산출된 .ipa 를 워크스페이스에 미리 올려 두세요 (scp / git lfs / shared mount).</p>
+  $okBanner
+  $errBanner
+  <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;margin-top:8px">
+    $mcpStatusLine
+  </dl>
+  $warnHtml
+  <form method="post" action="/projects/${esc(p.id)}/builds/${esc(b.id)}/testflight-upload" style="margin-top:12px;display:grid;gap:8px">
+    ${CsrfTokens.hiddenInput(csrf)}
+    <label>.ipa 경로 (project root 기준)
+      <input name="ipaPath" value="${esc(defaultIpa)}" required>
+    </label>
+    <label>외부 테스터 그룹 (선택, 콤마 구분)
+      <input name="distributionGroups" placeholder="QA, Beta-Insiders">
+    </label>
+    <label>Release notes (선택)
+      <textarea name="releaseNotes" rows="3" placeholder="비우면 Claude 가 최근 커밋 / CHANGELOG 로 추론"></textarea>
+    </label>
+    <div>
+      <button type="submit" class="primary">Claude 에게 업로드 위임</button>
+      <a href="/env-setup/mcp" class="chip chip-link">MCP 설정으로</a>
+    </div>
+  </form>
+  <p class="hint" style="margin-top:8px">processing 시간이 길 수 있으므로 진행은 콘솔에서 monitor. compliance / export-compliance 같은 사용자 결정이 필요한 단계는 자동 진행 안 함.</p>
+</div>"""
+    }
+
     /** 종료된 빌드의 파일 로그를 prerender. null 이면 빈 문자열. */
     private fun renderReplay(replay: BuildLogReplay?): String {
         if (replay == null) return ""
@@ -909,6 +969,9 @@ $errHtml
         playPrecheck: com.siamakerlab.vibecoder.server.publish.PlayPublishService.Precheck? = null,
         playFlashOk: String? = null,
         playFlashErr: String? = null,
+        testFlightPrecheck: com.siamakerlab.vibecoder.server.publish.TestFlightPublishService.Precheck? = null,
+        tfFlashOk: String? = null,
+        tfFlashErr: String? = null,
         csrf: String? = null,
     ): String {
         val statusCls = when (b.status.name) {
@@ -984,6 +1047,7 @@ $errHtml
 </div>
 
 ${renderPlayUploadCard(p, b, playPrecheck, playFlashOk, playFlashErr, csrf)}
+${renderTestFlightUploadCard(p, b, testFlightPrecheck, tfFlashOk, tfFlashErr, csrf)}
 
 <div class="card">
   <h2>로그 ${if (attachWs) """<small class="dim" style="font-size:11px;text-transform:none;letter-spacing:0">실시간</small>""" else """<small class="dim" style="font-size:11px;text-transform:none;letter-spacing:0">파일 replay</small>"""}</h2>

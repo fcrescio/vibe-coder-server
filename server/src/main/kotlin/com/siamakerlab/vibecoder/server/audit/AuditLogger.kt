@@ -220,6 +220,26 @@ class AuditLogger(
         )
     }
 
+    fun testFlightUploadTriggered(userId: String?, projectId: String, buildId: String, ip: String?, groups: String?) = safe {
+        repo.insert(
+            action = Actions.TESTFLIGHT_UPLOAD,
+            result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "build", resourceId = "$projectId/$buildId",
+            detail = jsonDetail { put("groups", groups ?: "") },
+        )
+    }
+
+    fun testFlightUploadFailed(userId: String?, projectId: String, buildId: String, ip: String?, message: String?) = safe {
+        repo.insert(
+            action = Actions.TESTFLIGHT_UPLOAD,
+            result = Results.FAIL,
+            userId = userId, ip = ip,
+            resourceType = "build", resourceId = "$projectId/$buildId",
+            detail = jsonDetail { put("error", message ?: "unknown") },
+        )
+    }
+
     object Actions {
         const val AUTH_LOGIN = "auth.login"
         const val AUTH_LOGOUT = "auth.logout"
