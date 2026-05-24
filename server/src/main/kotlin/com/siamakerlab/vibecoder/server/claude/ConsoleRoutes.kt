@@ -41,6 +41,8 @@ fun Routing.consoleRoutes(
     statusService: ClaudeStatusService,
     envDiagnostics: EnvDiagnostics,
     audit: AuditLogger,
+    /** v0.31.0 — prompt 자동완성. */
+    promptSuggestionService: PromptSuggestionService,
 ) {
     authenticate(AUTH_BEARER) {
         post("/api/projects/{projectId}/claude/console/prompt") {
@@ -107,6 +109,17 @@ fun Routing.consoleRoutes(
                 ?: throw ApiException(400, "bad_request", "projectId is required")
             projects.rowOrThrow(projectId)
             call.respond(statusService.snapshot(projectId))
+        }
+
+        // v0.31.0 — prompt 자동완성 (history 기반 prefix 매치).
+        get("/api/projects/{projectId}/claude/prompt-suggestions") {
+            val projectId = call.parameters["projectId"]
+                ?: throw ApiException(400, "bad_request", "projectId is required")
+            projects.rowOrThrow(projectId)
+            val prefix = call.request.queryParameters["prefix"]?.trim().orEmpty()
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, 20) ?: 8
+            val suggestions = promptSuggestionService.suggest(projectId, prefix, limit)
+            call.respond(mapOf("suggestions" to suggestions))
         }
     }
 }

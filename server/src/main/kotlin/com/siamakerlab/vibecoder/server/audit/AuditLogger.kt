@@ -293,6 +293,25 @@ class AuditLogger(
         )
     }
 
+    // ── Agents (v0.31.0+) ────────────────────────────────────────────
+
+    fun agentSave(userId: String?, ip: String?, name: String) = safe {
+        repo.insert(
+            action = Actions.AGENT_SAVE, result = Results.OK,
+            userId = userId, ip = ip,
+            resourceType = "agent", resourceId = name,
+        )
+    }
+
+    fun agentDelete(userId: String?, ip: String?, name: String, ok: Boolean) = safe {
+        repo.insert(
+            action = Actions.AGENT_DELETE,
+            result = if (ok) Results.OK else Results.FAIL,
+            userId = userId, ip = ip,
+            resourceType = "agent", resourceId = name,
+        )
+    }
+
     object Actions {
         const val AUTH_LOGIN = "auth.login"
         const val AUTH_LOGOUT = "auth.logout"
@@ -319,6 +338,8 @@ class AuditLogger(
         const val AUTH_2FA_ENABLE = "auth.2fa.enable"
         const val AUTH_2FA_DISABLE = "auth.2fa.disable"
         const val AUTH_SESSION_TIMEOUT = "auth.session.timeout"
+        const val AGENT_SAVE = "agent.save"
+        const val AGENT_DELETE = "agent.delete"
     }
 
     object Results {

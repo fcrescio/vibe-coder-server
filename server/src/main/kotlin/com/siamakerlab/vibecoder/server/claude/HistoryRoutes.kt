@@ -4,12 +4,23 @@ import com.siamakerlab.vibecoder.server.admin.AdminRoutesDeps
 import com.siamakerlab.vibecoder.server.admin.AdminTemplates
 import com.siamakerlab.vibecoder.server.admin.requireSessionOrRedirect
 import com.siamakerlab.vibecoder.server.projects.ProjectService
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.server.application.call
+import io.ktor.server.request.receiveMultipart
+import io.ktor.server.response.header
+import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.http.content.PartData
+import io.ktor.http.content.forEachPart
+import io.ktor.utils.io.jvm.javaio.toInputStream
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 /**
  * v0.16.0 — `/projects/{id}/history` + `/chat/history` 페이지.
@@ -21,6 +32,8 @@ fun Routing.historyRoutes(
     authDeps: AdminRoutesDeps,
     projects: ProjectService,
     repo: ConversationTurnRepository,
+    /** v0.31.0 — conversation export/import. */
+    exportService: ConversationExportService,
 ) {
     get("/projects/{id}/history") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
@@ -37,7 +50,54 @@ fun Routing.historyRoutes(
         val p = projects.ensureScratchProject()
         renderHistory(call, sess.username, sess.csrf, p.id, p.name, isChat = true, repo = repo)
     }
+
+    // v0.31.0 — JSON export. Application/json + Content-Disposition.
+    get("/projects/{id}/history/export") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@get
+        val id = call.parameters["id"]!!
+        val json = exportService.exportProject(id)
+        val ts = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")
+            .withZone(java.time.ZoneId.systemDefault())
+            .format(java.time.Instant.now())
+        val fname = "$id-conversation-$ts.json"
+        call.response.header(HttpHeaders.ContentDisposition, "attachment; filename=\"$fname\"")
+        call.respondText(json, ContentType.Application.Json)
+    }
+
+    // v0.31.0 — multipart import. CSRF query string.
+    post("/projects/{id}/history/import") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        // multipart 는 requireCsrf() (form param 기반) 안 됨 — _csrf query param 으로 검증.
+        val csrfQuery = call.request.queryParameters["_csrf"] ?: ""
+        if (csrfQuery != sess.csrf) {
+            call.respondRedirect(
+                "/projects/${call.parameters["id"]}/history?err=${enc("CSRF 검증 실패 — 새로고침 후 재시도")}"
+            )
+            return@post
+        }
+        val id = call.parameters["id"]!!
+        val dryRun = call.request.queryParameters["dryRun"] != "false"
+
+        var json: String? = null
+        call.receiveMultipart().forEachPart { part ->
+            if (part is PartData.FileItem && json == null) {
+                json = part.provider().toInputStream().bufferedReader().readText().take(5 * 1024 * 1024)
+            }
+            part.dispose()
+        }
+        if (json == null) {
+            call.respondRedirect("/projects/$id/history?err=${enc("파일이 첨부되지 않았습니다")}")
+            return@post
+        }
+        val result = exportService.importToProject(id, json!!, dryRun = dryRun)
+        val mode = if (dryRun) "dry-run" else "imported"
+        val msg = "$mode: accepted=${result.accepted}, skipped=${result.skipped}" +
+            if (result.warnings.isNotEmpty()) "; warnings=${result.warnings.size}" else ""
+        call.respondRedirect("/projects/$id/history?ok=${enc(msg)}")
+    }
 }
+
+private fun enc(s: String) = URLEncoder.encode(s, StandardCharsets.UTF_8)
 
 private suspend fun renderHistory(
     call: io.ktor.server.application.ApplicationCall,
@@ -63,6 +123,8 @@ private suspend fun renderHistory(
     val rows = repo.list(filter, limit = pageSize, offset = page * pageSize.toLong())
     val total = repo.count(filter)
     val sessions = repo.distinctSessions(projectId)
+    val ok = params["ok"]?.ifBlank { null }
+    val err = params["err"]?.ifBlank { null }
     call.respondText(
         HistoryTemplates.page(
             username = username,
@@ -75,6 +137,8 @@ private suspend fun renderHistory(
             page = page,
             pageSize = pageSize,
             total = total,
+            flashOk = ok,
+            flashErr = err,
             csrf = csrf,
         ),
         ContentType.Text.Html,
@@ -99,8 +163,12 @@ object HistoryTemplates {
         page: Int,
         pageSize: Int,
         total: Long,
+        flashOk: String? = null,
+        flashErr: String? = null,
         csrf: String? = null,
     ): String {
+        val okHtml = flashOk?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
+        val errHtml = flashErr?.let { """<div class="error">${esc(it)}</div>""" } ?: ""
         val navPath = if (isChat) "/chat" else "/projects"
         val backLink = if (isChat)
             """<a href="/chat" class="chip chip-link">← Chat</a>"""
@@ -166,6 +234,22 @@ object HistoryTemplates {
     <small class="dim" style="font-size:14px;font-weight:400">${esc(displayName)} · $total turns</small>
   </h1>
 </header>
+
+$okHtml
+$errHtml
+
+<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+  <a href="/projects/${esc(projectId)}/history/export" class="chip chip-link" title="모든 turn 을 JSON 으로 다운로드 (v0.31.0+)">📥 JSON 다운로드</a>
+  <details style="display:inline-block">
+    <summary class="chip chip-link" style="cursor:pointer">📤 JSON 가져오기</summary>
+    <form method="post" action="/projects/${esc(projectId)}/history/import?_csrf=${esc(csrf ?: "")}&dryRun=false" enctype="multipart/form-data" style="margin-top:8px;display:flex;gap:6px;align-items:center;background:rgba(255,255,255,0.04);padding:8px;border-radius:6px">
+      <input type="file" name="file" accept=".json,application/json" required>
+      <label style="margin:0;font-size:12px"><input type="checkbox" onclick="this.form.action=this.form.action.replace('dryRun=false','dryRun='+!this.checked)" checked> dry-run 미리보기</label>
+      <button type="submit" class="primary" style="padding:6px 12px">업로드</button>
+    </form>
+    <p class="hint" style="margin:6px 0 0;font-size:11px">v0.31.0+ — 같은 sessionId 가 이미 존재하면 wholesale skip (idempotent).</p>
+  </details>
+</div>
 
 <form method="get" action="$baseAction" class="card" style="margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;align-items:end">
   <label style="margin:0">Session

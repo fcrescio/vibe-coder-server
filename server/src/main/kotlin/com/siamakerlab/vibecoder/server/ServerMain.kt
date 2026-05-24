@@ -194,6 +194,10 @@ fun main(args: Array<String>) {
     // v0.28.0 — APK 서명 검사 + 빌드 캐시 관리.
     val apkSignerInspector = com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector()
     val buildCacheService = com.siamakerlab.vibecoder.server.build.BuildCacheService()
+    // v0.31.0 — Claude .agents/ UI + 대화 export/import + prompt suggestion.
+    val agentRegistry = com.siamakerlab.vibecoder.server.env.AgentRegistry()
+    val conversationExport = com.siamakerlab.vibecoder.server.claude.ConversationExportService(conversationRepo)
+    val promptSuggestionService = com.siamakerlab.vibecoder.server.claude.PromptSuggestionService()
     // v0.29.0 — 프로젝트 zip + 디스크 monitor (Notifiers 와 email warn percent 공유).
     val projectArchiver = com.siamakerlab.vibecoder.server.projects.ProjectArchiver(workspace)
     val diskMonitor = com.siamakerlab.vibecoder.server.disk.DiskMonitor(
@@ -253,6 +257,9 @@ fun main(args: Array<String>) {
         buildCacheService = buildCacheService,
         projectArchiver = projectArchiver,
         diskMonitor = diskMonitor,
+        agentRegistry = agentRegistry,
+        conversationExport = conversationExport,
+        promptSuggestionService = promptSuggestionService,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {

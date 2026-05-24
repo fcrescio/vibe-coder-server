@@ -36,6 +36,7 @@ import com.siamakerlab.vibecoder.server.notify.webhookSettingsRoutes
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.Clock
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
+import com.siamakerlab.vibecoder.server.env.agentRoutes
 import com.siamakerlab.vibecoder.server.env.ClaudeAuthService
 import com.siamakerlab.vibecoder.server.env.ClaudeLoginService
 import com.siamakerlab.vibecoder.server.env.EnvDiagnostics
@@ -141,6 +142,12 @@ data class ServerContext(
     val projectArchiver: com.siamakerlab.vibecoder.server.projects.ProjectArchiver,
     /** v0.29.0 — 디스크 사용량 monitor + 임계치 알림. */
     val diskMonitor: com.siamakerlab.vibecoder.server.disk.DiskMonitor,
+    /** v0.31.0 — Claude `.agents/` UI 관리. */
+    val agentRegistry: com.siamakerlab.vibecoder.server.env.AgentRegistry,
+    /** v0.31.0 — 대화 export/import. */
+    val conversationExport: com.siamakerlab.vibecoder.server.claude.ConversationExportService,
+    /** v0.31.0 — prompt 자동완성. */
+    val promptSuggestionService: com.siamakerlab.vibecoder.server.claude.PromptSuggestionService,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -264,7 +271,7 @@ fun Application.module(ctx: ServerContext) {
         buildCacheRoutes(adminDeps, ctx.buildCacheService)
         envRoutes(ctx.status, ctx.env)
         projectRoutes(ctx.projects)
-        consoleRoutes(ctx.projects, ctx.sessionManager, ctx.hub, ctx.claudeStatusService, ctx.env, ctx.auditLogger)
+        consoleRoutes(ctx.projects, ctx.sessionManager, ctx.hub, ctx.claudeStatusService, ctx.env, ctx.auditLogger, ctx.promptSuggestionService)
         projectActionRoutes(ctx.projects, ctx.actionRegistry, ctx.actionHandler, ctx.capabilityService)
         buildRoutes(ctx.build, ctx.hub)
         artifactRoutes(ctx.artifactRepo, ctx.workspace, ctx.artifacts)
@@ -272,9 +279,11 @@ fun Application.module(ctx: ServerContext) {
         fileRoutes(ctx.uploads)
         promptRoutes(adminDeps, ctx.promptStore)
         auditRoutes(adminDeps, ctx.auditRepo)
-        historyRoutes(adminDeps, ctx.projects, ctx.conversationRepo)
+        historyRoutes(adminDeps, ctx.projects, ctx.conversationRepo, ctx.conversationExport)
         // v0.30.0 — cross-project conversation search.
         globalHistorySearchRoutes(adminDeps)
+        // v0.31.0 — `.agents/` 디렉토리 UI.
+        agentRoutes(adminDeps, ctx.agentRegistry)
         emailSettingsRoutes(adminDeps, ctx.emailNotifier)
         webhookSettingsRoutes(adminDeps, ctx.webhookNotifier)
         emulatorRoutes(adminDeps, ctx.emulator)
