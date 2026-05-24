@@ -74,9 +74,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxrandr2 libxkbcommon0 libatk1.0-0 libatk-bridge2.0-0 libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# ---- Node.js 20 LTS + Claude Code CLI ----------------------------------------
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
+# ---- Node.js + Claude Code CLI ----------------------------------------------
+# v0.38.0 — Ubuntu 26.04 (resolute) 는 기본 nodejs 22.x 가 deb 로 제공됨.
+# NodeSource setup_20.x 와 충돌하므로, 시스템 nodejs + npm 패키지를 직접 설치.
+# Claude Code CLI 는 Node 18+ 라 22.x 도 OK.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        nodejs npm \
     && rm -rf /var/lib/apt/lists/* \
     && npm config set fund false \
     && npm config set update-notifier false \
