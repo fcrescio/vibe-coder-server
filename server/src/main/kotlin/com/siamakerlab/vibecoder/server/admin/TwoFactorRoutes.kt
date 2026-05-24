@@ -39,6 +39,8 @@ fun Routing.twoFactorRoutes(deps: AdminRoutesDeps, users: AdminUserRepository) {
 
     get("/2fa") {
         val sess = requireSessionOrRedirect(deps) ?: return@get
+        // v0.40.0 — 2FA 는 개인 보안 설정 — admin/member/viewer 모두 자기 자신 관리 허용.
+        // 단 viewer 는 일반적으로 enable 후 forgot 만 위험하므로 별도 가드 안 함.
         val u = users.findById(sess.userId) ?: run {
             call.respondRedirect("/login"); return@get
         }

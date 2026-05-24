@@ -1,6 +1,7 @@
 package com.siamakerlab.vibecoder.server.audit
 
 import com.siamakerlab.vibecoder.server.admin.AdminRoutesDeps
+import com.siamakerlab.vibecoder.server.admin.requireAdminOrRedirect
 import com.siamakerlab.vibecoder.server.admin.requireSessionOrRedirect
 import com.siamakerlab.vibecoder.server.repo.AuditLogRepository
 import io.ktor.http.ContentType
@@ -12,6 +13,7 @@ import io.ktor.server.routing.get
 fun Routing.auditRoutes(authDeps: AdminRoutesDeps, repo: AuditLogRepository) {
     get("/audit") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
+        if (!requireAdminOrRedirect(sess)) return@get
         val params = call.request.queryParameters
         val filter = AuditLogRepository.Filter(
             action = params["action"]?.ifBlank { null },

@@ -68,7 +68,7 @@ fun Routing.usersRoutes(
         val form = call.receiveParameters()
         val username = form["username"]?.trim().orEmpty()
         val password = form["password"].orEmpty()
-        val role = form["role"]?.trim()?.takeIf { it in setOf("admin", "member") } ?: "member"
+        val role = form["role"]?.trim()?.takeIf { it in setOf("admin", "member", "viewer") } ?: "member"
 
         UsernamePolicy.violation(username)?.let {
             call.respondRedirect("/users?err=${enc(it)}")
@@ -99,7 +99,7 @@ fun Routing.usersRoutes(
         }
         val targetId = call.parameters["id"]!!
         val form = call.receiveParameters()
-        val newRole = form["role"]?.trim()?.takeIf { it in setOf("admin", "member") } ?: run {
+        val newRole = form["role"]?.trim()?.takeIf { it in setOf("admin", "member", "viewer") } ?: run {
             call.respondRedirect("/users?err=${enc("invalid role")}")
             return@post
         }
@@ -173,15 +173,21 @@ private object UsersTemplates {
             """<tr><td colspan="5" class="dim" style="text-align:center;padding:14px">no users</td></tr>"""
         } else users.joinToString("") { u ->
             val isMe = u.id == currentUserId
-            val roleBadge = if (u.isAdmin)
-                """<span class="ok">admin</span>"""
-            else
-                """<span class="dim">member</span>"""
+            val roleBadge = when (u.role) {
+                "admin" -> """<span class="ok">admin</span>"""
+                "viewer" -> """<span class="dim" style="opacity:0.6">viewer</span>"""
+                else -> """<span class="dim">member</span>"""
+            }
             val totpBadge = if (u.totpEnabled) """ <span class="dim" style="font-size:11px">🔐 2FA</span>""" else ""
             val canDemote = !isMe && (!u.isAdmin || adminCount > 1)
             val canDelete = !isMe && (!u.isAdmin || adminCount > 1)
-            val newRole = if (u.isAdmin) "member" else "admin"
-            val roleBtnLabel = if (u.isAdmin) "↓ member" else "↑ admin"
+            // Cycle: admin → member → viewer → admin
+            val nextRole = when (u.role) {
+                "admin" -> "member"
+                "member" -> "viewer"
+                else -> "admin"
+            }
+            val roleBtnLabel = "→ $nextRole"
 
             """<tr>
               <td><strong>${esc(u.username)}</strong>${if (isMe) " <small class=\"dim\">(나)</small>" else ""}$totpBadge</td>
@@ -192,8 +198,8 @@ private object UsersTemplates {
                 ${if (canDemote) """
                 <form method="post" action="/users/${esc(u.id)}/role" style="display:inline">
                   ${CsrfTokens.hiddenInput(csrf)}
-                  <input type="hidden" name="role" value="$newRole">
-                  <button type="submit" class="chip chip-link" onclick="return confirm('${esc(u.username)} → $newRole?')">$roleBtnLabel</button>
+                  <input type="hidden" name="role" value="$nextRole">
+                  <button type="submit" class="chip chip-link" onclick="return confirm('${esc(u.username)} → $nextRole?')">$roleBtnLabel</button>
                 </form>""" else ""}
                 ${if (canDelete) """
                 <form method="post" action="/users/${esc(u.id)}/delete" style="display:inline">
@@ -235,6 +241,7 @@ $errHtml
     <label style="margin:0">role
       <select name="role">
         <option value="member" selected>member</option>
+        <option value="viewer">viewer (read-only)</option>
         <option value="admin">admin</option>
       </select>
     </label>
@@ -243,9 +250,11 @@ $errHtml
     </div>
   </form>
   <p class="hint" style="margin-top:10px;font-size:12px">
-    Role 정책: <strong>admin</strong> = 사용자 관리 / 설정 / audit / backup / 2FA / agents 등 관리 페이지 접근.
-    <strong>member</strong> = 프로젝트 / 콘솔 / 빌드 등 작업 페이지만. 마지막 admin 은 강등/삭제 불가.
-    팀 사용은 v0.37.0 의 첫 단계 — 프로젝트별 ACL 은 후속 minor.
+    Role 정책 (v0.40.0+):<br>
+    <strong>admin</strong> = 모든 권한 (사용자 관리 / 설정 / audit / backup / 2FA / agents 등).<br>
+    <strong>member</strong> = 프로젝트 / 콘솔 / 빌드 등 작업 페이지 (모든 write 가능).<br>
+    <strong>viewer</strong> = read-only. 콘솔 prompt / 빌드 큐 / git commit / settings 변경 등 차단.<br>
+    마지막 admin 은 강등/삭제 불가. 프로젝트별 ACL 은 후속 minor.
   </p>
 </div>
 """

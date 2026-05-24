@@ -41,12 +41,14 @@ private val log = KotlinLogging.logger {}
 fun Routing.backupRoutes(authDeps: AdminRoutesDeps, workspace: WorkspacePath) {
     get("/backup") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
+        if (!requireAdminOrRedirect(sess)) return@get
         val sizes = measureSubdirs(workspace.root)
         call.respondText(renderPage(sess.username, sess.csrf, sizes), ContentType.Text.Html)
     }
 
     get("/backup/download") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
+        if (!requireAdminOrRedirect(sess)) return@get
         val ts = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")
             .withZone(java.time.ZoneId.systemDefault())
             .format(java.time.Instant.now())

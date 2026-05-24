@@ -233,6 +233,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
 
     get("/settings") {
         val sess = requireSessionOrRedirect(deps) ?: return@get
+        if (!requireAdminOrRedirect(sess)) return@get
         val cfg = deps.config
         val view = AdminTemplates.SettingsView(
             serverName = cfg.server.name,
@@ -260,6 +261,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
 
     post("/settings") {
         val sess = requireSessionOrRedirect(deps) ?: return@post
+        if (!requireAdminOrRedirect(sess)) return@post
         val params = requireCsrf()
 
         // 파싱 — 부재/빈 값은 기존 값 유지
@@ -414,10 +416,15 @@ internal data class WebSession(
      * 로 검증한다.
      */
     val csrf: String,
-    /** v0.37.0 — "admin" | "member". 관리 페이지 가드용. */
+    /**
+     * v0.37.0 — "admin" | "member". 관리 페이지 가드용.
+     * v0.40.0 — "viewer" 추가. read-only.
+     */
     val role: String = "admin",
 ) {
     val isAdmin: Boolean get() = role == "admin"
+    /** v0.40.0 — admin / member 만 write. viewer 는 read-only. */
+    val canWrite: Boolean get() = role == "admin" || role == "member"
 }
 
 /** 세션 유효 시 WebSession, 아니면 적절한 곳으로 redirect 후 null 반환. */
@@ -475,6 +482,19 @@ internal suspend fun io.ktor.server.routing.RoutingContext.requireAdminOrRedirec
 ): Boolean {
     if (sess.isAdmin) return true
     val msg = java.net.URLEncoder.encode("관리자 전용 페이지입니다.", Charsets.UTF_8)
+    call.respondRedirect("/?err=$msg")
+    return false
+}
+
+/**
+ * v0.40.0 — write 권한 가드. viewer 는 read-only 라 거절.
+ * POST 핸들러 (콘솔 prompt / 빌드 enqueue / git commit / settings 등) 에 chain.
+ */
+internal suspend fun io.ktor.server.routing.RoutingContext.requireWriteAccessOrRedirect(
+    sess: WebSession,
+): Boolean {
+    if (sess.canWrite) return true
+    val msg = java.net.URLEncoder.encode("viewer 권한으로는 변경할 수 없습니다.", Charsets.UTF_8)
     call.respondRedirect("/?err=$msg")
     return false
 }

@@ -20,11 +20,17 @@ data class AdminUserRow(
     /** v0.26.0 — TOTP. null = 2FA 비활성. */
     val totpSecret: String? = null,
     val totpEnabledAt: String? = null,
-    /** v0.37.0 — "admin" | "member". 첫 admin (setup) 은 항상 admin. */
+    /**
+     * v0.37.0 — "admin" | "member". 첫 admin (setup) 은 항상 admin.
+     * v0.40.0 — "viewer" 추가. read-only 작업만 허용 (콘솔 입력 / 빌드 큐 /
+     * git commit 등 차단). UI 의 write button 도 숨김.
+     */
     val role: String = "admin",
 ) {
     val totpEnabled: Boolean get() = !totpSecret.isNullOrBlank()
     val isAdmin: Boolean get() = role == "admin"
+    /** v0.40.0 — admin / member 만 write 가능. viewer 는 read-only. */
+    val canWrite: Boolean get() = role == "admin" || role == "member"
 }
 
 /**

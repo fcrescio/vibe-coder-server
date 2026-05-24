@@ -84,6 +84,7 @@ fun Routing.webProjectRoutes(
 
     post("/projects") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
         val params = requireCsrf()
         val projectId = params["projectId"]?.trim().orEmpty()
         val appName = params["appName"]?.trim().orEmpty()
@@ -175,6 +176,7 @@ fun Routing.webProjectRoutes(
 
     post("/projects/{id}/delete") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
         requireCsrf()
         val id = call.parameters["id"]!!
         val removed = projects.delete(id)
@@ -212,6 +214,7 @@ fun Routing.webProjectRoutes(
 
     post("/projects/{id}/console/new") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
         requireCsrf()
         val id = call.parameters["id"]!!
         runCatching { sessionManager.startNew(id) }
@@ -253,6 +256,7 @@ fun Routing.webProjectRoutes(
 
     post("/projects/{id}/builds") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
         requireCsrf()
         val id = call.parameters["id"]!!
         val row = runCatching { builds.enqueueDebug(id, hub) }.getOrElse { e ->
@@ -436,6 +440,7 @@ fun Routing.webProjectRoutes(
 
     post("/projects/{id}/files/upload") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
         // multipart 라 receiveParameters 못 씀 → query string `?_csrf=...` 또는 헤더로 받음.
         CsrfTokens.verifyCsrfFromQueryOrHeader(call)
         val id = call.parameters["id"]!!
@@ -566,6 +571,7 @@ fun Routing.webProjectRoutes(
 
     post("/projects/{id}/edit") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
         val params = requireCsrf()
         val id = call.parameters["id"]!!
         val relPath = params["path"].orEmpty()
@@ -612,6 +618,7 @@ fun Routing.webProjectRoutes(
     // v0.18.0 — commit / push from the git page form
     post("/projects/{id}/git/commit") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
         val params = requireCsrf()
         val id = call.parameters["id"]!!
         val message = params["message"].orEmpty()
@@ -688,6 +695,7 @@ fun Routing.webProjectRoutes(
     // ── 콘솔: 액션 chip 전송 (form action) ─────────────────────────────
     post("/projects/{id}/console/slash") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
         val id = call.parameters["id"]!!
         val params = requireCsrf()
         val cmd = params["command"]?.trim().orEmpty()

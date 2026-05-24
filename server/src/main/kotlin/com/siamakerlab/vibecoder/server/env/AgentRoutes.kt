@@ -3,6 +3,7 @@ package com.siamakerlab.vibecoder.server.env
 import com.siamakerlab.vibecoder.server.admin.AdminRoutesDeps
 import com.siamakerlab.vibecoder.server.admin.AdminTemplates
 import com.siamakerlab.vibecoder.server.admin.requireSessionOrRedirect
+import com.siamakerlab.vibecoder.server.admin.requireWriteAccessOrRedirect
 import com.siamakerlab.vibecoder.server.auth.AUTH_BEARER
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
@@ -56,6 +57,7 @@ fun Routing.agentRoutes(authDeps: AdminRoutesDeps, registry: AgentRegistry) {
 
     post("/agents/save") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
         requireCsrf()
         val params = call.receiveParameters()
         val name = params["name"]?.trim().orEmpty()
@@ -73,6 +75,7 @@ fun Routing.agentRoutes(authDeps: AdminRoutesDeps, registry: AgentRegistry) {
 
     post("/agents/{name}/delete") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
         requireCsrf()
         val name = call.parameters["name"] ?: run {
             call.respondRedirect("/agents"); return@post
