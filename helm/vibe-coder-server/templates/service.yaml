@@ -13,3 +13,12 @@ spec:
       targetPort: 17880
       protocol: TCP
       name: http
+{{- if .Values.fullImage.enabled }}
+    # v0.57.0+ — noVNC port for `:full` image. Usually proxied via /emulator/vnc/*
+    # over the main HTTP port (admin-authenticated), so this is mostly for direct
+    # debug access from cluster-internal tools.
+    - port: {{ .Values.fullImage.novncPort }}
+      targetPort: {{ .Values.fullImage.novncPort }}
+      protocol: TCP
+      name: novnc
+{{- end }}

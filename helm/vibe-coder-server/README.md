@@ -47,14 +47,33 @@ helm install vibe ./helm/vibe-coder-server \
   --set-string secretEnv.VIBECODER_DB_PASSWORD=$DB_PASSWORD
 ```
 
+## `:full` image (Android emulator + noVNC, v0.57.0+)
+
+```bash
+helm install vibe ./helm/vibe-coder-server \
+  --set postgres.password=$(openssl rand -hex 24) \
+  --set fullImage.enabled=true
+```
+
+This switches the image tag to `:full` (`:0.57.0-full`), mounts
+`/dev/kvm` from the node, runs the container `privileged`, and exposes
+`port 6080` (noVNC) on the Service. Prerequisites:
+
+- **Node KVM support** — `ls -l /dev/kvm` must succeed on the node
+  (Linux with KVM module loaded). Cloud kubernetes typically requires
+  bare-metal or nested-virt nodes.
+- **PodSecurity policies** must allow `privileged: true` for the
+  namespace (`pod-security.kubernetes.io/enforce: privileged`).
+
+The slim image's `/emulator/vnc/*` reverse proxy still works, so
+external clients don't usually need to reach port 6080 directly — it's
+exposed mostly for direct debug from cluster-internal tools.
+
 ## Limitations
 
 - **Single replica only.** workspace + agent-sessions live on RWO PVC.
 - **No HA postgres.** Sidecar is single-instance; use external managed PG
   for prod.
-- **`:full` image (emulator + noVNC) not yet supported.** Needs KVM
-  passthrough + privileged container — out of scope for the base chart.
-  See [Wiki/Emulator](https://github.com/siamakerlab/vibe-coder-server/wiki/Emulator).
 
 ## Values reference
 

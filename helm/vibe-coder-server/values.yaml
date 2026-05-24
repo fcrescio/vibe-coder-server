@@ -7,8 +7,18 @@
 
 image:
   repository: siamakerlab/vibe-coder-server
-  tag: "0.47.0"
+  tag: "0.57.0"
   pullPolicy: IfNotPresent
+
+# v0.57.0+ — Android emulator + noVNC support. Set fullImage.enabled=true to use
+# the `:full` image tag instead of the slim one. This requires:
+#   - KVM passthrough (`/dev/kvm` device mount; node must support KVM)
+#   - privileged container (Linux capabilities + cgroup access)
+#   - extra port 6080 for noVNC (already proxied via /emulator/vnc/* — exposed via Service)
+fullImage:
+  enabled: false
+  tag: "0.57.0-full"
+  novncPort: 6080
 
 # Built-in postgres sidecar via bitnami/postgresql Pod (NOT a chart dep — kept inline to
 # keep the chart self-contained and dep-free). For prod, set `postgres.enabled: false`

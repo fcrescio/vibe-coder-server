@@ -3,8 +3,8 @@ name: vibe-coder-server
 description: Self-hostable Android development server orchestrating Claude Code, Gradle, and Git.
 type: application
 # Bumped together with the app version. appVersion mirrors siamakerlab/vibe-coder-server:<tag>.
-version: 0.47.0
-appVersion: "0.47.0"
+version: 0.57.0
+appVersion: "0.57.0"
 home: https://github.com/siamakerlab/vibe-coder-server
 sources:
   - https://github.com/siamakerlab/vibe-coder-server

@@ -42,6 +42,13 @@ object AdminUsers : Table("admin_users") {
      * (단일 사용자 환경 가정의 안전한 default — 권한 축소를 자동 적용하지 않음.)
      */
     val role = varchar("role", 16).default("admin")
+    /**
+     * v0.57.0 — passwordless-only. When `true` AND the user has at least one registered
+     * WebAuthn credential, password / TOTP login is rejected — the user MUST log in via
+     * passkey. Default `false` for backward compatibility and to avoid lock-out on a
+     * lost authenticator with no recovery flow yet.
+     */
+    val passwordlessOnly = bool("passwordless_only").default(false)
     override val primaryKey = PrimaryKey(id)
 }
 

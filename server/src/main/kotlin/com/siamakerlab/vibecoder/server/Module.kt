@@ -280,6 +280,7 @@ fun Application.module(ctx: ServerContext) {
             userRepo = ctx.adminUserRepo,
             authService = ctx.authService,
             audit = ctx.auditLogger,
+            webauthn = ctx.webauthnService,
         )
         val adminDeps = AdminRoutesDeps(
             config = ctx.config,
@@ -294,6 +295,7 @@ fun Application.module(ctx: ServerContext) {
             audit = ctx.auditLogger,
             claudeUsageMonitor = ctx.claudeUsageMonitor,
             diskMonitor = ctx.diskMonitor,
+            webauthnService = ctx.webauthnService,
         )
         adminRoutes(adminDeps)
         // v0.26.0 — 2FA SSR routes.

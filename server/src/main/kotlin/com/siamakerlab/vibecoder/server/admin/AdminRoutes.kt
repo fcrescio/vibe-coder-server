@@ -46,6 +46,8 @@ data class AdminRoutesDeps(
     val claudeUsageMonitor: com.siamakerlab.vibecoder.server.claude.ClaudeUsageMonitor,
     /** v0.29.0 — 대시보드 디스크 사용량 카드. */
     val diskMonitor: com.siamakerlab.vibecoder.server.disk.DiskMonitor,
+    /** v0.57.0 — Phase 36 passwordless-only 검사용 hasCredentials lookup. */
+    val webauthnService: com.siamakerlab.vibecoder.server.auth.WebauthnService,
 )
 
 /**
@@ -171,6 +173,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
                 channel = "web",
                 remoteIp = ip,
                 totpCode = totpCode,
+                hasPasskey = { uid -> deps.webauthnService.hasCredentials(uid) },
             )
         }.getOrElse { e ->
             val msg = (e as? ApiException)?.message ?: "로그인 실패"

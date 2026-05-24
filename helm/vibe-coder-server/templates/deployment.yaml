@@ -22,11 +22,22 @@ spec:
       serviceAccountName: {{ include "vibe.serviceAccountName" . }}
       containers:
         - name: server
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ if .Values.fullImage.enabled }}{{ .Values.fullImage.tag }}{{ else }}{{ .Values.image.tag }}{{ end }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+{{- if .Values.fullImage.enabled }}
+          # v0.57.0+ — `:full` image runs `qemu-system-x86` for Android emulators inside
+          # the pod. Needs `/dev/kvm` device + privileged for cgroup + capability access.
+          # Make sure the node supports KVM (`ls -l /dev/kvm` on the host).
+          securityContext:
+            privileged: true
+{{- end }}
           ports:
             - containerPort: 17880
               name: http
+{{- if .Values.fullImage.enabled }}
+            - containerPort: {{ .Values.fullImage.novncPort }}
+              name: novnc
+{{- end }}
           env:
             - name: VIBECODER_WORKSPACE_ROOT
               value: "/workspace"
@@ -57,6 +68,10 @@ spec:
           volumeMounts:
             - name: workspace
               mountPath: /workspace
+{{- if .Values.fullImage.enabled }}
+            - name: kvm
+              mountPath: /dev/kvm
+{{- end }}
           readinessProbe:
             httpGet:
               path: /api/health
@@ -74,3 +89,9 @@ spec:
         - name: workspace
           persistentVolumeClaim:
             claimName: {{ include "vibe.fullname" . }}-workspace
+{{- if .Values.fullImage.enabled }}
+        - name: kvm
+          hostPath:
+            path: /dev/kvm
+            type: CharDevice
+{{- end }}

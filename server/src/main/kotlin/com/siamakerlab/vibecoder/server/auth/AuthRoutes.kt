@@ -31,6 +31,8 @@ fun Routing.authRoutes(
     userRepo: AdminUserRepository,
     authService: AuthService,
     audit: AuditLogger,
+    /** v0.57.0 — passwordless-only check via hasCredentials lookup. */
+    webauthn: WebauthnService,
 ) {
     // ── 신규 통합 인증 (v0.4.0+) ──────────────────────────────────────────
 
@@ -73,6 +75,7 @@ fun Routing.authRoutes(
                 channel = "app",
                 remoteIp = ip,
                 totpCode = body.totpCode,
+                hasPasskey = { uid -> webauthn.hasCredentials(uid) },
             )
         } catch (e: ApiException) {
             // totp_required 는 정상적인 2단계 진행 신호 — audit 에 fail 로 남기지 않음.

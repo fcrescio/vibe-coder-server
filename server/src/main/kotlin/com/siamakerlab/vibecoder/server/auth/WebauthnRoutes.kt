@@ -47,13 +47,15 @@ fun Routing.webauthnRoutes(
     get("/webauthn") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val creds = webauthn.listCredentials(sess.userId)
+        val me = authDeps.userRepo.findById(sess.userId)
+        val passwordlessOnly = me?.passwordlessOnly == true
         call.respondText(
             AdminTemplates.shell(
                 title = "WebAuthn (passkey)",
                 username = sess.username,
                 currentPath = "/webauthn",
                 csrf = sess.csrf,
-                body = renderWebauthnPage(sess.username, sess.userId, creds, sess.csrf),
+                body = renderWebauthnPage(sess.username, sess.userId, creds, passwordlessOnly, sess.csrf),
             ),
             ContentType.Text.Html,
         )
@@ -65,6 +67,24 @@ fun Routing.webauthnRoutes(
             ?: return@post call.respondRedirect("/webauthn?err=missing_id")
         val removed = webauthn.deleteCredential(sess.userId, rowId)
         call.respondRedirect("/webauthn?${if (removed) "ok=deleted" else "err=not_found"}")
+    }
+
+    // v0.57.0 — passwordless-only toggle. passkey 가 0개일 때 켜는 건 lockout 이라 거절.
+    post("/webauthn/passwordless") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        com.siamakerlab.vibecoder.server.auth.CsrfTokens.verifyCsrfFromQueryOrHeader(call)
+        val enable = call.request.queryParameters["enabled"]?.toBoolean() ?: false
+        if (enable && !webauthn.hasCredentials(sess.userId)) {
+            return@post call.respondRedirect("/webauthn?err=" +
+                java.net.URLEncoder.encode("passkey 가 하나 이상 등록되어야 활성화 가능합니다 (lockout 방지).", Charsets.UTF_8))
+        }
+        authDeps.userRepo.setPasswordlessOnly(sess.userId, enable)
+        call.respondRedirect("/webauthn?ok=" +
+            java.net.URLEncoder.encode(
+                if (enable) "passwordless-only 모드 활성. 이제 passkey 로만 로그인 가능."
+                else "passwordless-only 모드 비활성. password + TOTP 로그인 복구.",
+                Charsets.UTF_8,
+            ))
     }
 
     // ── JSON API: registration ──────────────────────────────────────────────
@@ -197,6 +217,7 @@ private fun renderWebauthnPage(
     username: String,
     userId: String,
     creds: List<com.siamakerlab.vibecoder.server.repo.WebauthnCredentialRow>,
+    passwordlessOnly: Boolean,
     csrf: String?,
 ): String {
     val rows = if (creds.isEmpty()) {
@@ -243,6 +264,24 @@ private fun renderWebauthnPage(
   <input type="text" id="passkey-name" placeholder="이름 (예: MacBook Touch ID)" maxlength="64"
          style="margin-left:8px;padding:6px 10px;background:#1a1a1a;color:var(--text);border:1px solid #333">
   <p class="dim" id="webauthn-status" style="margin:10px 0 0;font-size:12px">대기 중…</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;${if (passwordlessOnly) "border-color:var(--ok)" else ""}">
+  <h2 style="margin-top:0;font-size:16px">Passwordless-only 모드 (v0.57.0+)</h2>
+  <p style="margin:0 0 8px">
+    상태: <strong>${if (passwordlessOnly) """<span class="ok">✓ 활성</span> — password / TOTP 로그인 차단됨""" else """<span class="dim">비활성</span> — password / TOTP / passkey 모두 가능"""}</strong>
+  </p>
+  <p class="dim" style="margin:0 0 10px;font-size:12px">
+    켜면 이 계정은 <strong>passkey 로만</strong> 로그인 가능. password / TOTP 시도는 401 <code>passkey_required</code>.
+    인증기 분실 / 리셋 시 복구 흐름이 없으니 ⚠ <em>예비 passkey 1개 이상</em> 등록 권장 (다른 디바이스).
+  </p>
+  <form method="post" action="/webauthn/passwordless?enabled=${(!passwordlessOnly)}&_csrf=${esc(csrf ?: "")}"
+        style="display:inline"
+        onsubmit="return confirm('${if (passwordlessOnly) "비활성화하면 password / TOTP 로그인이 다시 허용됩니다." else "passkey 만으로 로그인 가능해집니다. 등록된 passkey 가 모두 작동하는지 먼저 확인하세요."} 진행할까요?')">
+    <button type="submit" class="${if (passwordlessOnly) "chip chip-danger" else "primary"}" style="width:auto;padding:6px 14px">
+      ${if (passwordlessOnly) "비활성화" else "활성화"}
+    </button>
+  </form>
 </div>
 
 <div class="card">
