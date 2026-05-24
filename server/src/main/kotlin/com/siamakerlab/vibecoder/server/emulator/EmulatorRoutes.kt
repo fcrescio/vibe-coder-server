@@ -194,14 +194,33 @@ exit</pre>
 </div>
 
 <div class="card" style="margin-top:14px;background:rgba(80,150,255,0.05)">
-  <h2 style="margin-top:0">Roadmap — v0.20+ "full" 이미지</h2>
-  <ul style="font-size:13px;line-height:1.7">
-    <li>별도 image <code>siamakerlab/vibe-coder-server:full</code> 에 qemu + KVM
-      + noVNC + websockify 사전 설치 (~+800MB).</li>
-    <li>EmulatorService 자동 launch (avd 자동 생성, system-image lazy download).</li>
-    <li><code>/emulator/{avd}</code> 에 noVNC iframe — 브라우저에서 화면 확인.</li>
-    <li>빌드 페이지에 "build → install to emulator → screenshot" 원클릭 버튼.</li>
-  </ul>
+  <h2 style="margin-top:0">:full 변형 — Xvfb + noVNC 사전 설치 (v0.25.0)</h2>
+  <p style="font-size:13px;line-height:1.6">
+    슬림 이미지엔 Xvfb / x11vnc / websockify / noVNC 가 없습니다. 브라우저에서
+    emulator 화면을 보려면 <code>siamakerlab/vibe-coder-server:full</code> (~3-4GB)
+    + compose KVM passthrough 가 필요합니다.
+  </p>
+  <h3 style="margin-top:12px;font-size:13px">1. compose override 파일 추가</h3>
+  <pre class="diff-block">curl -fsSL https://raw.githubusercontent.com/siamakerlab/vibe-coder-server/main/docker/compose.full.yml -o compose.full.yml
+echo "VIBECODER_IMAGE_FULL=siamakerlab/vibe-coder-server:full" >> .env
+echo "KVM_GID=$(getent group kvm | cut -d: -f3)" >> .env
+echo "VIBE_NOVNC_PORT=6080" >> .env
+docker compose -f compose.yml -f compose.full.yml up -d --force-recreate vibe-coder-server</pre>
+
+  <h3 style="margin-top:12px;font-size:13px">2. AVD 생성 + 시작</h3>
+  <p class="hint">위의 lifecycle 카드의 [+ 디폴트 AVD 생성] → [▶ headless 시작]
+    그대로 동작. <strong>:full 이미지 안에선</strong> Xvfb 가 entrypoint 단계에서
+    이미 떠 있어 emulator GUI 가 가상 디스플레이 <code>:99</code> 에 렌더링됨.</p>
+
+  <h3 style="margin-top:12px;font-size:13px">3. noVNC 로 화면 확인</h3>
+  <p class="hint">브라우저에서 <code>http://&lt;host&gt;:6080/vnc.html</code> 열기 →
+    "Connect" → emulator 화면. <strong>인증 없는 raw VNC</strong> 이므로 LAN
+    격리 또는 SSH 터널 사용:</p>
+  <pre class="diff-block">ssh -L 6080:localhost:6080 user@vibe-host
+# 그 다음 브라우저에서: http://localhost:6080/vnc.html</pre>
+
+  <p class="hint">인증된 reverse-proxy 통합 (vibe-coder admin 세션 + iframe
+    임베드) 은 v0.26+ 예정. 현재는 운영자 본인 책임 하의 별도 인증 레이어.</p>
 </div>
 """
         )
