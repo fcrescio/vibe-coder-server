@@ -282,11 +282,25 @@ data class EnvSetupTaskDto(val taskId: String)
 @Serializable
 data class ClaudeApiKeyRequestDto(val apiKey: String)
 
+/**
+ * `POST /api/env-setup/claude-auth/upload` 응답.
+ *
+ * v0.64.0 — vibe-coder-android v0.7.x 호환을 위해 dual emit:
+ * - `targetPath` / `expiresAt: Long` : 기존 (v0.5.4+) SSR/외부 client 가 사용.
+ * - `path`       / `expiresAtIso: String?` : Android v0.7.x 가 사용 (필드명/타입 정렬).
+ *
+ * 다음 wire change 사이클에서 `targetPath` / `expiresAt` 을 deprecate 하고
+ * `path` / `expiresAtIso` 로 단일화 예정.
+ */
 @Serializable
 data class ClaudeCredentialsUploadResponseDto(
     val targetPath: String,
     val backup: String?,
     val expiresAt: Long,
+    /** v0.64.0 — Android v0.7.x alias (= [targetPath]). */
+    val path: String = targetPath,
+    /** v0.64.0 — [expiresAt] 의 ISO-8601 String 표현 (Android v0.7.x 가 String 기대). */
+    val expiresAtIso: String? = null,
 )
 
 @Serializable
@@ -363,6 +377,13 @@ data class McpUnregisterRequestDto(val ids: List<String>)
 
 // region v0.10.0 — Git 통합 (PAT + SSH)
 
+/**
+ * Git Integrations 목록 한 행.
+ *
+ * v0.64.0 — vibe-coder-android v0.7.x 호환을 위해 `token` alias 추가
+ * (Android shared/ 가 `GitTokenDto.token` 으로 정의). 다음 wire change 에서
+ * `tokenMasked` 를 deprecate 하고 `token` 으로 단일화 예정.
+ */
 @Serializable
 data class GitTokenViewDto(
     val provider: String,
@@ -371,6 +392,8 @@ data class GitTokenViewDto(
     val tokenMasked: String,
     val createdAt: String,
     val note: String? = null,
+    /** v0.64.0 — Android v0.7.x alias (= [tokenMasked]). */
+    val token: String = tokenMasked,
 )
 
 @Serializable
@@ -420,5 +443,39 @@ data class ApiErrorDto(
     val message: String,
     val detail: String? = null,
 )
+
+/**
+ * v0.64.0 — 서버가 [ApiErrorDto.code] 로 보내는 표준 에러 코드.
+ * REST 응답(주로 401/403/429) 과 WebSocket [com.siamakerlab.vibecoder.shared.ws.WsFrame.Error]
+ * 양쪽에서 공유. Android shared/ 와 동일한 상수 묶음 (SSOT).
+ */
+object ApiErrorCode {
+    // 2FA (v0.26+)
+    const val TOTP_REQUIRED = "totp_required"
+    const val INVALID_TOTP = "invalid_totp"
+
+    // Role (v0.45+)
+    /** 403 — viewer 토큰이 mutating endpoint 를 호출. */
+    const val VIEWER_READONLY = "viewer_readonly"
+    /** 403 — admin 전용 endpoint 를 admin 이 아닌 토큰이 호출. */
+    const val ADMIN_ONLY = "admin_only"
+
+    // Project ACL (v0.49+)
+    /** 403 — 사용자 ACL 에 포함되지 않은 프로젝트의 endpoint 호출. */
+    const val PROJECT_FORBIDDEN = "project_forbidden"
+
+    // Rate limit (v0.56+)
+    /** 429 — per-IP token bucket 한도 초과. 응답 헤더 `Retry-After: <seconds>`. */
+    const val RATE_LIMITED = "rate_limited"
+
+    // 기존 (v0.10+)
+    const val MANUAL_INSTALL_ONLY = "manual_install_only"
+    const val MISSING_CLONE_URL = "missing_clone_url"
+    const val BAD_URL_SCHEME = "bad_url_scheme"
+    const val IN_PROGRESS = "in_progress"
+    const val WRONG_STATE = "wrong_state"
+    const val TOO_LARGE = "too_large"
+    const val EXPIRED = "expired"
+}
 
 // endregion

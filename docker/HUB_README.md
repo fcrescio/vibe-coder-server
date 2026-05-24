@@ -47,7 +47,7 @@ docker compose up -d            # boots postgres + vibe-coder-server
 > [CHANGELOG.md](https://github.com/siamakerlab/vibe-coder-server/blob/main/CHANGELOG.md)
 > for the exact steps.
 
-## What's in the box (v0.63.0)
+## What's in the box (v0.64.0)
 
 **Core**
 - **Claude Code CLI orchestration** — one persistent child per project,
@@ -445,7 +445,7 @@ container (UID 70 in alpine images). On the host you may need `sudo` to read
 files directly. Either use `tar` with sudo, or do logical `pg_dump` against
 the running container.
 
-## Web UI routes (v0.63.0)
+## Web UI routes (v0.64.0)
 
 All routes sit at the root (no `/admin/*` prefix from v0.4.2+). Bearer
 token or session cookie required except `/setup`, `/login`, `/health`.
@@ -498,12 +498,28 @@ SSR POST forms carry a CSRF token (v0.12.4+).
 | `/metrics` | Prometheus exposition (admin; v0.55.0+) |
 | `/settings`, `/devices`, `/password` | Operations |
 
-## JSON API (v0.63.0 — for clients)
+## JSON API (v0.64.0 — for clients)
 
 Full reference + curl examples in the
 [REST API Reference](https://github.com/siamakerlab/vibe-coder-server/wiki/REST-API-Reference)
 wiki. Retrofit interfaces in the
 [Android Client Guide](https://github.com/siamakerlab/vibe-coder-server/wiki/Android-Client-Guide).
+
+**v0.64.0 — Android client wire 정렬**: 그동안 `ApiPath` SSOT 밖에서 단독
+운영되던 14 endpoint 를 회수 + JSON variant 6개 신규 추가:
+
+- `GET  /api/projects/{id}/history` / `GET /api/chat/history` — history page
+  (Bearer 토큰; v0.16 이후 SSR-only 였던 것을 정식 JSON 분리)
+- `GET  /api/history/search?q=...` — cross-project search JSON (admin)
+- `GET  /api/projects/{id}/history/export` / `POST .../history/import` —
+  export/import JSON variant
+- `GET  /api/usage` — Anthropic 토큰/캐시 누적 합산
+- `POST /api/projects/{id}/history/{turnId}/memo|star` — v0.61.0 endpoint 가
+  v0.64.0 부터 Bearer 토큰 dual-auth (헤더 있으면 CSRF skip)
+
+Wire shape align: `ClaudeCredentialsUploadResponseDto`/`GitTokenViewDto` 에
+Android-friendly alias 추가, `McpEntryDto.status` 소문자 emit, `ApiErrorCode.RATE_LIMITED`
+신규 (v0.56 429 응답).
 
 Highlights:
 

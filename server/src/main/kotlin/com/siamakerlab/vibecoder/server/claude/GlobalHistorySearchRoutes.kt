@@ -43,6 +43,13 @@ fun Routing.globalHistorySearchRoutes(authDeps: AdminRoutesDeps) {
     }
 }
 
+/**
+ * v0.64.0 — JSON variant (`/api/history/search`) 가 같은 검색 로직을 재사용하도록
+ * internal 로 노출. SSR `/history` 와 동일한 escape/limit 정책.
+ */
+internal fun globalSearchAll(q: String, role: String?, limit: Int): List<ConversationTurnRow> =
+    searchAll(q, role, limit)
+
 private fun searchAll(q: String, role: String?, limit: Int): List<ConversationTurnRow> = transaction {
     val escapedQ = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     var cond: Op<Boolean> = ConversationTurns.content like "%$escapedQ%"

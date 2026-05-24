@@ -37,6 +37,9 @@ fun Routing.historyRoutes(
     repo: ConversationTurnRepository,
     /** v0.31.0 — conversation export/import. */
     exportService: ConversationExportService,
+    /** v0.64.0 — memo/star endpoint 의 Bearer 토큰 dual-auth 용. */
+    tokens: com.siamakerlab.vibecoder.server.auth.TokenService,
+    deviceRepo: com.siamakerlab.vibecoder.server.repo.DeviceRepository,
 ) {
     get("/projects/{id}/history") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
@@ -100,13 +103,13 @@ fun Routing.historyRoutes(
     }
 
     // v0.61.0 — Phase 40 memo + star JSON endpoints.
-    // ?_csrf= 쿼리로 CSRF 검증 (fetch POST 가 form-encoded body 안 보냄).
+    // v0.64.0 — Phase 43 dual-auth. Bearer 토큰 (Authorization header) 이 있으면
+    //   token hash 로 device 검증 후 CSRF skip; cookie 세션만 있으면 기존 ?_csrf= 검증.
+    //   Bearer 토큰은 Android v0.7.x client 가 사용, cookie 는 SSR fetch (관리자 UI).
+    // Note: 라우터 등록은 hardcoded path template (Ktor 의 `{name}` placeholder).
+    // ApiPath.projectHistoryMemo(...) 는 client 호출용 — pathSeg 가 {} 까지 encode 함.
     post("/api/projects/{id}/history/{turnId}/memo") {
-        val sess = requireSessionOrRedirect(authDeps) ?: return@post
-        val csrfQuery = call.request.queryParameters["_csrf"] ?: ""
-        if (csrfQuery != sess.csrf) {
-            return@post call.respond(io.ktor.http.HttpStatusCode.Forbidden, "csrf")
-        }
+        if (!authorizeMemoStar(authDeps, tokens, deviceRepo)) return@post
         val turnId = call.parameters["turnId"]
             ?: return@post call.respond(io.ktor.http.HttpStatusCode.BadRequest, "missing turnId")
         val body = call.receiveText()
@@ -116,18 +119,14 @@ fun Routing.historyRoutes(
                 ?.get("memo")?.let { it as? kotlinx.serialization.json.JsonPrimitive }
                 ?.contentOrNull
         }.getOrNull()
-        // memo == null 이면 메모 제거.
+        // memo == null/blank 이면 메모 제거.
         val ok = repo.setMemo(turnId, memo)
         if (ok) call.respondText("""{"ok":true}""", ContentType.Application.Json)
         else call.respond(io.ktor.http.HttpStatusCode.NotFound, "not_found")
     }
 
     post("/api/projects/{id}/history/{turnId}/star") {
-        val sess = requireSessionOrRedirect(authDeps) ?: return@post
-        val csrfQuery = call.request.queryParameters["_csrf"] ?: ""
-        if (csrfQuery != sess.csrf) {
-            return@post call.respond(io.ktor.http.HttpStatusCode.Forbidden, "csrf")
-        }
+        if (!authorizeMemoStar(authDeps, tokens, deviceRepo)) return@post
         val turnId = call.parameters["turnId"]
             ?: return@post call.respond(io.ktor.http.HttpStatusCode.BadRequest, "missing turnId")
         val starred = call.request.queryParameters["starred"]?.toBooleanStrictOrNull()
@@ -136,6 +135,48 @@ fun Routing.historyRoutes(
         if (ok) call.respondText("""{"ok":true}""", ContentType.Application.Json)
         else call.respond(io.ktor.http.HttpStatusCode.NotFound, "not_found")
     }
+}
+
+/**
+ * v0.64.0 — memo/star dual-auth helper.
+ *
+ * 반환 true = 인증 통과 (호출자가 계속 진행). false = 응답 이미 보냄 (호출자는 return).
+ *
+ * 흐름:
+ *   1. `Authorization: Bearer <token>` 헤더가 있으면 → token hash 로 device 검증.
+ *      OK 면 CSRF 검증 skip 하고 통과. 토큰 invalid 면 401.
+ *   2. Bearer 헤더 없으면 → 기존 SSR cookie 세션 + `?_csrf=` 검증.
+ *
+ * Cookie token (`vibe_session`) 만 있는 경우는 SSR fetch 흐름으로 간주해서
+ * CSRF 필수. 같은 토큰이 두 운반 경로로 와도 의미 분리.
+ */
+private suspend fun io.ktor.server.routing.RoutingContext.authorizeMemoStar(
+    authDeps: AdminRoutesDeps,
+    tokens: com.siamakerlab.vibecoder.server.auth.TokenService,
+    deviceRepo: com.siamakerlab.vibecoder.server.repo.DeviceRepository,
+): Boolean {
+    val authHeader = call.request.headers["Authorization"]
+    val bearer = if (authHeader != null && authHeader.startsWith("Bearer ", ignoreCase = true))
+        authHeader.removePrefix("Bearer ").removePrefix("bearer ").trim().ifBlank { null }
+    else null
+    if (bearer != null) {
+        val hash = tokens.hashOf(bearer)
+        val device = deviceRepo.findByTokenHash(hash)
+        if (device == null) {
+            call.respond(io.ktor.http.HttpStatusCode.Unauthorized, "invalid token")
+            return false
+        }
+        // Bearer 통과 — CSRF skip.
+        return true
+    }
+    // 기존 SSR cookie 세션 흐름.
+    val sess = requireSessionOrRedirect(authDeps) ?: return false
+    val csrfQuery = call.request.queryParameters["_csrf"] ?: ""
+    if (csrfQuery != sess.csrf) {
+        call.respond(io.ktor.http.HttpStatusCode.Forbidden, "csrf")
+        return false
+    }
+    return true
 }
 
 private fun enc(s: String) = URLEncoder.encode(s, StandardCharsets.UTF_8)

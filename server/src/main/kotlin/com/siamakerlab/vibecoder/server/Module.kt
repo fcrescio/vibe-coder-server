@@ -47,6 +47,8 @@ import com.siamakerlab.vibecoder.server.claude.ClaudeStatusService
 import com.siamakerlab.vibecoder.server.claude.consoleRoutes
 import com.siamakerlab.vibecoder.server.claude.globalHistorySearchRoutes
 import com.siamakerlab.vibecoder.server.claude.historyRoutes
+import com.siamakerlab.vibecoder.server.claude.jsonHistoryRoutes
+import com.siamakerlab.vibecoder.server.claude.jsonUsageRoutes
 import com.siamakerlab.vibecoder.server.emulator.emulatorRoutes
 import com.siamakerlab.vibecoder.server.emulator.vncProxyRoutes
 import com.siamakerlab.vibecoder.server.notify.emailSettingsRoutes
@@ -346,9 +348,15 @@ fun Application.module(ctx: ServerContext) {
         fileRoutes(ctx.uploads, ctx.projects)
         promptRoutes(adminDeps, ctx.promptStore)
         auditRoutes(adminDeps, ctx.auditRepo)
-        historyRoutes(adminDeps, ctx.projects, ctx.conversationRepo, ctx.conversationExport)
-        // v0.30.0 — cross-project conversation search.
+        historyRoutes(adminDeps, ctx.projects, ctx.conversationRepo, ctx.conversationExport,
+            ctx.tokens, ctx.deviceRepo)
+        // v0.30.0 — cross-project conversation search (SSR HTML).
         globalHistorySearchRoutes(adminDeps)
+        // v0.64.0 — Phase 43. JSON variant of history / chat history / cross-search /
+        // export / import (Bearer 토큰 인증, vibe-coder-android v0.7.19+ wire).
+        jsonHistoryRoutes(ctx.projects, ctx.conversationRepo, ctx.conversationExport)
+        // v0.64.0 — Phase 43. /api/usage Anthropic 토큰/캐시 합산 JSON.
+        jsonUsageRoutes(ctx.projects, ctx.conversationRepo)
         // v0.31.0 — `.agents/` 디렉토리 UI.
         agentRoutes(adminDeps, ctx.agentRegistry)
         // v0.32.0 — Env files + 의존성 audit + 로그 검색.

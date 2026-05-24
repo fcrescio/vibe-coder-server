@@ -24,7 +24,7 @@ vibe-coder-server/
 └─ docker/              # Slim Docker image + compose + vibe-doctor
 ```
 
-## What's inside (v0.63.0)
+## What's inside (v0.64.0)
 
 ### Core orchestration
 - **Claude Code CLI orchestration** — one persistent child process per project,
@@ -730,7 +730,7 @@ ssh user@newhost 'cd ~/vibe-coder && tar xzf vibe-coder-data-*.tar.gz && docker 
 mounts only (no named volumes by default), but watch out if you mixed
 in legacy state. For regular upgrades, always `up -d --force-recreate`.
 
-## Web routes (v0.63.0)
+## Web routes (v0.64.0)
 
 All routes below sit at the root (no `/admin/*` prefix). Bearer auth or
 session cookie required except `/setup`, `/login`, `/health`. Every SSR POST
@@ -790,7 +790,7 @@ carries a CSRF `_csrf` token (v0.12.4+).
 | `/settings`, `/devices`, `/password` | Operations |
 | `/login`, `/setup`, `/logout` | Auth |
 
-## JSON API (v0.63.0 — for clients like the Android app)
+## JSON API (v0.64.0 — for clients like the Android app)
 
 Every UI feature has a matching `/api/*` endpoint with Bearer authentication.
 Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
@@ -805,7 +805,10 @@ Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
 - `GET  /api/projects/{id}/claude/status`
 - `GET  /api/prompt-templates` (v0.13.0+ — prompt library)
 - `GET  /api/projects/{id}/history`, `GET /api/chat/history`
-  (**v0.16.0+** — persisted conversation_turns; pagination via `before`)
+  (**v0.64.0+ JSON variant** — persisted conversation_turns; pagination via
+  `page` / `before` integer cursor; filters `sessionId` / `agent` / `starred`.
+  v0.16.0~v0.63.0 동안엔 SSR HTML `/projects/{id}/history` 만 노출됐고 JSON
+  API 표기는 잘못된 것이었음 — v0.64.0 에서 정식 분리)
 - `POST /api/projects/{id}/git/commit`
   (**v0.18.0+** — add → commit → optional push; non-interactive auth)
 - `GET  /api/prompt-templates` (**v0.13.0+** — server) / `PROMPT_TEMPLATES` wire
@@ -815,7 +818,14 @@ Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
 - `GET  /api/projects/{id}/claude/prompt-suggestions?prefix=...&limit=8`
   (**v0.31.0+** — LIKE prefix match against this project's user turns)
 - `GET  /projects/{id}/history/export` / `POST .../history/import`
-  (**v0.31.0+** — JSON envelope, sessionId-level idempotency)
+  (**v0.31.0+** SSR session, redirect 응답)
+- `GET  /api/projects/{id}/history/export` / `POST /api/.../history/import`
+  (**v0.64.0+** — JSON variant, Bearer 토큰 인증, `HistoryImportResponseDto` 응답)
+- `GET  /api/history/search?q=<query>&role=<filter>` (**v0.64.0+** — cross-project
+  JSON search; admin only; `HistorySearchResponseDto` 응답; 기존 SSR `/history`
+  HTML 도 그대로 유지)
+- `GET  /api/usage` (**v0.64.0+** — Anthropic token + prompt cache 누적
+  합산 `UsageSummaryDto`; 기존 SSR `/usage` HTML 도 그대로 유지)
 - `POST /api/webhooks/build/{projectId}` (**v0.33.0+** — admin-auth-free
   external trigger; `X-Vibe-Secret-Id` + `X-Vibe-Secret` + optional
   `X-Vibe-Signature`)
@@ -832,7 +842,8 @@ Wire definitions: `shared/.../ApiPath.kt` + `shared/.../Dtos.kt`. Highlights:
   best-effort Kotlin/Java definition lookup; returns `{hits:[...]}`)
 - `POST /api/projects/{id}/history/{turnId}/star?starred=true|false`,
   `POST /api/projects/{id}/history/{turnId}/memo` (**v0.61.0+** —
-  per-turn bookmark + memo)
+  per-turn bookmark + memo; **v0.64.0+** — Bearer 토큰 dual-auth, `Authorization`
+  헤더 있으면 CSRF skip)
 - `GET  /api/push/vapid-public-key`,
   `POST /api/push/subscribe`, `DELETE /api/push/subscriptions/{id}`
   (**v0.46.0+** — browser Web Push; **v0.50.0+** payload-encrypted per

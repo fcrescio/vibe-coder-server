@@ -104,10 +104,18 @@ fun Routing.envSetupApiRoutes(
             val data = bytes ?: throw ApiException(400, "empty",
                 "파일이 선택되지 않았습니다 (multipart field 무엇이든 허용).")
             val result = claudeAuth.uploadCredentials(data)
+            // v0.64.0 — Android v0.7.x 가 `path` / `expiresAtIso: String` 을 기대.
+            // 기존 SSR/외부 콜러가 사용하는 `targetPath` / `expiresAt:Long` 은 그대로 둔 채
+            // 추가 필드로 같은 값을 emit (dual emit).
+            val expiresAtIso = runCatching {
+                java.time.Instant.ofEpochSecond(result.expiresAt).toString()
+            }.getOrNull()
             call.respond(ClaudeCredentialsUploadResponseDto(
                 targetPath = result.targetPath,
                 backup = result.backup,
                 expiresAt = result.expiresAt,
+                path = result.targetPath,
+                expiresAtIso = expiresAtIso,
             ))
         }
 
@@ -175,7 +183,9 @@ fun Routing.envSetupApiRoutes(
                             isFile = f.isFile, acceptMime = f.acceptMime,
                         )
                     },
-                    status = st?.status?.name ?: "UNKNOWN",
+                    // v0.64.0 — Android v0.7.x 가 소문자 상수와 비교. SSR templates 는
+                    // McpService.Status enum 자체로 비교하므로 wire emit 만 lowercase.
+                    status = (st?.status?.name ?: "UNKNOWN").lowercase(),
                     configValues = st?.configValues.orEmpty(),
                     comingSoon = e.comingSoon,
                 )
@@ -267,7 +277,9 @@ private fun ComponentState.toDto() = ComponentStateDto(
     displayName = component.displayName,
     description = component.description,
     sizeHint = component.sizeHint,
-    status = status.name,
+    // v0.64.0 — Android shared/ 의 ComponentStatus 상수는 모두 소문자. SSR 측은
+    // ComponentStatus enum 자체로 비교하므로 wire emit 만 소문자.
+    status = status.name.lowercase(),
     message = message,
     installable = component.doctorCmd != null,
 )

@@ -119,6 +119,175 @@ object ApiPath {
     // v0.20.0 — Prompt template library (Android client / 외부 CRUD 클라이언트용).
     // 서버는 v0.13.0 부터 노출했지만 wire 모듈엔 v0.20.0 에 정식 등록.
     const val PROMPT_TEMPLATES = "/api/prompt-templates"
+
+    // ─────────────────────────────────────────────────────────────────────
+    // v0.64.0 — Phase 43. v0.16~v0.63 의 단독 등록 endpoint 들을 SSOT 로 회수.
+    //
+    // 정책 (CLAUDE.md §8.A): 신규 endpoint 는 반드시 ApiPath 에 먼저 등록되고,
+    // 라우터가 그 상수를 참조해야 한다 (hardcoded path 금지).
+    //
+    // **사용 구분**:
+    //   - 정적 path (`HISTORY_SEARCH_JSON` 등 `const val`) — 라우터 등록 + client
+    //     호출 모두 그대로 사용.
+    //   - 동적 path (`projectHistory(projectId)` 등 `fun`) — **client 호출 전용**.
+    //     pathSeg 가 `{}` 까지 URL encode 하므로 Ktor 라우터 path template
+    //     (`{name}` placeholder) 에 직접 못 들어감. 라우터에서는 같은 모양의
+    //     hardcoded path template 을 쓰되, 클라이언트 호출은 이 함수로 통일.
+    //     SSOT 효과: path 형식/placeholder 이름이 한 곳에 명세됨 + grep 매칭 가능.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * v0.16+ — 프로젝트별 Claude 대화 turn 히스토리 (JSON variant, v0.64.0 신규).
+     * 기존 SSR `/projects/{id}/history` (HTML) 는 그대로 유지.
+     * Query: `limit` (default 100, max 500), `sessionId`, `before` (cursor),
+     *        `agent` (HistoryAgentFilter — main/all/@name), `starred` (boolean).
+     * 응답: HistoryPageDto.
+     */
+    fun projectHistory(projectId: String) =
+        "/api/projects/${pathSeg(projectId)}/history"
+
+    /**
+     * v0.16+ — General Chat (scratch project) 의 동일 모양 history (JSON variant, v0.64.0 신규).
+     * 같은 query params + 같은 응답 schema.
+     */
+    const val CHAT_HISTORY = "/api/chat/history"
+
+    /**
+     * v0.13+ — General Chat 의 synthetic project id. 콘솔 WS / status / prompt
+     * endpoint 는 일반 projectId 처럼 받지만, conversation history 는 [CHAT_HISTORY] 사용.
+     */
+    const val SCRATCH_PROJECT_ID = "__scratch__"
+
+    /**
+     * v0.29+ — 프로젝트 소스 zip 스트림 다운로드.
+     * `.git`, `build`, `.gradle`, `node_modules` 제외.
+     * **주의: `/api/` prefix 없음** (SSR 라우터와 공유).
+     * Content-Disposition: attachment, filename=`<projectId>-source-<yyyyMMdd-HHmm>.zip`.
+     */
+    fun projectZip(projectId: String) =
+        "/projects/${pathSeg(projectId)}/zip"
+
+    /**
+     * v0.31+ — Claude 입력 자동완성.
+     * Query: `prefix`, `limit`. 응답: PromptSuggestionsResponseDto.
+     */
+    fun promptSuggestions(projectId: String) =
+        "/api/projects/${pathSeg(projectId)}/claude/prompt-suggestions"
+
+    /**
+     * v0.31+ — 프로젝트 history JSON export (SSR-shared, requires session cookie).
+     * **주의: `/api/` prefix 없음.** v0.64.0 의 JSON variant 는 [projectHistoryExportJson].
+     */
+    fun projectHistoryExport(projectId: String) =
+        "/projects/${pathSeg(projectId)}/history/export"
+
+    /**
+     * v0.31+ — 프로젝트 history multipart import (SSR-shared, redirect 응답).
+     * Query: `dryRun=true|false`. **주의: `/api/` prefix 없음.**
+     * v0.64.0 의 JSON variant (응답 JSON) 는 [projectHistoryImportJson].
+     */
+    fun projectHistoryImport(projectId: String) =
+        "/projects/${pathSeg(projectId)}/history/import"
+
+    /**
+     * v0.30+ — cross-project conversation 검색 (SSR HTML).
+     * Bearer 토큰 클라이언트는 [HISTORY_SEARCH_JSON] 을 사용할 것.
+     */
+    const val HISTORY_SEARCH = "/history"
+
+    /**
+     * v0.36+ — 설치된 custom agent 카탈로그. 응답: AgentsCatalogResponseDto.
+     */
+    const val AGENTS_CATALOG = "/api/agents"
+
+    /**
+     * v0.44+ — 프로젝트 단위로 현재 활성화된 sub-agent 이름 목록.
+     * 응답: ActiveAgentsResponseDto.
+     */
+    fun agentsActive(projectId: String) =
+        "/api/projects/${pathSeg(projectId)}/agents/active"
+
+    /**
+     * v0.44+ — 특정 sub-agent 에게 user prompt 전달.
+     * 응답: AgentPromptAcceptedDto. WebSocket [wsAgentConsoleLogs] 가 출력 스트리밍.
+     */
+    fun agentConsolePrompt(projectId: String, agent: String) =
+        "/api/projects/${pathSeg(projectId)}/agents/${pathSeg(agent)}/console/prompt"
+
+    /** v0.44+ — sub-agent turn 강제 중단 (SIGTERM). */
+    fun agentConsoleCancel(projectId: String, agent: String) =
+        "/api/projects/${pathSeg(projectId)}/agents/${pathSeg(agent)}/console/cancel"
+
+    /**
+     * v0.54+ — Kotlin/Java symbol definition lookup.
+     * Query: `name` (required, regex `[A-Za-z_][A-Za-z0-9_]{0,79}`).
+     * 응답: SymbolsResponseDto.
+     */
+    fun projectSymbols(projectId: String) =
+        "/api/projects/${pathSeg(projectId)}/symbols"
+
+    /**
+     * v0.44+ — sub-agent console log WebSocket.
+     * Read-only — UserPrompt/ActionInvoke 는 서버가 drain & ignore.
+     * 프롬프트 전달은 [agentConsolePrompt] REST 로.
+     */
+    fun wsAgentConsoleLogs(projectId: String, agent: String) =
+        "/ws/projects/${pathSeg(projectId)}/agents/${pathSeg(agent)}/console/logs"
+
+    /**
+     * v0.61+ — turn 메모 set/unset (v0.64.0 부터 Bearer 토큰 인증 호환).
+     * Body: HistoryMemoUpdateRequestDto (`{"memo": "..." | null}`).
+     * Cookie 세션 호출 시 `?_csrf=<token>` 필수, Bearer 토큰 호출 시 CSRF skip.
+     * 응답: HistoryMutationAckDto.
+     */
+    fun projectHistoryMemo(projectId: String, turnId: String) =
+        "/api/projects/${pathSeg(projectId)}/history/${pathSeg(turnId)}/memo"
+
+    /**
+     * v0.61+ — turn ★ 토글 (v0.64.0 부터 Bearer 토큰 인증 호환).
+     * Query: `?starred=true|false`. Body 없음.
+     * Cookie 세션 호출 시 `?_csrf=<token>` 필수, Bearer 토큰 호출 시 CSRF skip.
+     * 응답: HistoryMutationAckDto.
+     */
+    fun projectHistoryStar(projectId: String, turnId: String) =
+        "/api/projects/${pathSeg(projectId)}/history/${pathSeg(turnId)}/star"
+
+    /**
+     * v0.64.0 신규 — cross-project conversation 검색 (JSON variant).
+     * Query: `q` (required), `role?`. 응답: HistorySearchResponseDto.
+     * 기존 SSR `/history` ([HISTORY_SEARCH]) 는 그대로 유지.
+     */
+    const val HISTORY_SEARCH_JSON = "/api/history/search"
+
+    /**
+     * v0.64.0 신규 — Anthropic 토큰/캐시 집계 (JSON variant).
+     * 응답: UsageSummaryDto.
+     * 기존 SSR `/usage` 는 그대로 유지.
+     */
+    const val USAGE_JSON = "/api/usage"
+
+    /**
+     * v0.64.0 신규 — 프로젝트 history JSON export (Bearer 토큰 인증, JSON 응답).
+     * 기존 SSR `/projects/{id}/history/export` ([projectHistoryExport]) 는 그대로 유지.
+     */
+    fun projectHistoryExportJson(projectId: String) =
+        "/api/projects/${pathSeg(projectId)}/history/export"
+
+    /**
+     * v0.64.0 신규 — 프로젝트 history multipart import (Bearer 토큰 인증, JSON 응답).
+     * Query: `dryRun=true|false`. 응답: HistoryImportResponseDto.
+     */
+    fun projectHistoryImportJson(projectId: String) =
+        "/api/projects/${pathSeg(projectId)}/history/import"
+
+    /**
+     * v0.64.0 — path segment URL encoding helper.
+     * `agent` / `projectId` / `turnId` 등 사용자 정의 식별자가 path 에 들어갈 때 사용.
+     * form encoding (`+`) 이 아니라 path encoding (`%20`) 이라
+     * [java.net.URLEncoder] 결과를 추가 변환한다.
+     */
+    private fun pathSeg(s: String): String =
+        java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 }
 
 object ApiHeader {
