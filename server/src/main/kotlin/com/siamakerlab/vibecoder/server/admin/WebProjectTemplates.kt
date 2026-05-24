@@ -234,6 +234,69 @@ object WebProjectTemplates {
     /**
      * v0.28.0 — APK 서명 검사 결과 (apksigner verify).
      */
+    /**
+     * v0.58.0 — Phase 37 이전 성공 빌드와의 비교 카드. null = 비교 대상 없음 (첫 성공 빌드)
+     * 또는 현재 빌드가 SUCCESS 아님.
+     */
+    private fun renderBuildComparison(
+        cmp: com.siamakerlab.vibecoder.server.build.BuildService.BuildComparison?,
+    ): String {
+        if (cmp == null) return ""
+        fun fmtSize(b: Long?): String = when {
+            b == null -> "-"
+            b < 1024 -> "$b B"
+            b < 1024L * 1024 -> "%.1f KB".format(b / 1024.0)
+            b < 1024L * 1024 * 1024 -> "%.2f MB".format(b / (1024.0 * 1024))
+            else -> "%.2f GB".format(b / (1024.0 * 1024 * 1024))
+        }
+        fun fmtDuration(ms: Long?): String = when {
+            ms == null -> "-"
+            ms < 1000 -> "${ms}ms"
+            ms < 60_000 -> "%.1fs".format(ms / 1000.0)
+            else -> "%dm %ds".format(ms / 60_000, (ms / 1000) % 60)
+        }
+        fun deltaBadge(delta: Long?, formatter: (Long?) -> String, lowerIsBetter: Boolean = true): String {
+            if (delta == null) return ""
+            val sign = if (delta > 0) "+" else ""
+            val cls = when {
+                delta == 0L -> "dim"
+                (delta > 0) == lowerIsBetter -> "warn"  // worse
+                else -> "ok"                            // better
+            }
+            return """<span class="$cls" style="font-size:12px;margin-left:6px">($sign${formatter(delta)})</span>"""
+        }
+        return """
+<div class="card" style="margin-bottom:16px">
+  <h2>이전 성공 빌드와 비교 (v0.58.0+)</h2>
+  <p class="dim" style="margin:0 0 8px;font-size:12px">
+    이전 SUCCESS 빌드 <code>${esc(cmp.previous.id.take(12))}</code> (${esc(cmp.previous.createdAt)}) 와의 차이.
+    화살표는 lower-is-better 기준: 빨강 = 더 커짐 / 느려짐.
+  </p>
+  <table class="table" style="width:100%">
+    <thead>
+      <tr><th>지표</th><th>이전</th><th>현재</th><th>Δ</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>APK 사이즈</td>
+        <td class="dim">${fmtSize(cmp.previous.apkSizeBytes)}</td>
+        <td><strong>${fmtSize(cmp.current.apkSizeBytes)}</strong></td>
+        <td>${deltaBadge(cmp.apkSizeDeltaBytes, ::fmtSize, lowerIsBetter = true)}</td>
+      </tr>
+      <tr>
+        <td>빌드 시간</td>
+        <td class="dim">${fmtDuration(cmp.previous.durationMs)}</td>
+        <td><strong>${fmtDuration(cmp.current.durationMs)}</strong></td>
+        <td>${deltaBadge(cmp.durationDeltaMs, ::fmtDuration, lowerIsBetter = true)}</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="dim" style="margin:8px 0 0;font-size:11px">
+    메소드 수 / dex 분석은 추후 (<code>dexdump</code> 통합 필요).
+  </p>
+</div>"""
+    }
+
     private fun renderSignerInspection(insp: com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector.Inspection?): String {
         if (insp == null) return ""
         if (!insp.verified && insp.errorMessage != null && insp.schemes.isEmpty() && insp.signers.isEmpty()) {
@@ -1181,6 +1244,8 @@ ${renderBuildHistoryChart(builds, artifactsByBuild)}
         tfFlashOk: String? = null,
         tfFlashErr: String? = null,
         signerInspection: com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector.Inspection? = null,
+        /** v0.58.0 — Phase 37 이전 성공 빌드와의 비교 카드 (null = no prior success). */
+        comparison: com.siamakerlab.vibecoder.server.build.BuildService.BuildComparison? = null,
         csrf: String? = null,
     ): String {
         val statusCls = when (b.status.name) {
@@ -1255,6 +1320,8 @@ ${renderBuildHistoryChart(builds, artifactsByBuild)}
   $downloadHtml
   ${renderSignerInspection(signerInspection)}
 </div>
+
+${renderBuildComparison(comparison)}
 
 ${renderPlayUploadCard(p, b, playPrecheck, playFlashOk, playFlashErr, csrf)}
 ${renderTestFlightUploadCard(p, b, testFlightPrecheck, tfFlashOk, tfFlashErr, csrf)}

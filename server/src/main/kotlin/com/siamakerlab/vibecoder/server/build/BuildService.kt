@@ -137,6 +137,58 @@ class BuildService(
         return row.toDto()
     }
 
+    /**
+     * v0.58.0 — Phase 37 compare this build against the previous successful build of the
+     * same project. `null` = no prior successful build (this is the first one).
+     */
+    fun compareWithPrevious(
+        projectId: String,
+        buildId: String,
+        artifactRepo: com.siamakerlab.vibecoder.server.repo.ArtifactRepository,
+    ): BuildComparison? {
+        val current = buildRepo.get(buildId) ?: return null
+        if (current.projectId != projectId) return null
+        if (current.status != TaskStatus.SUCCESS) return null
+        val previous = buildRepo.previousSuccessfulBefore(projectId, current.createdAt) ?: return null
+
+        val curArt = current.artifactId?.let { artifactRepo.get(projectId, it) }
+        val prevArt = previous.artifactId?.let { artifactRepo.get(projectId, it) }
+        return BuildComparison(
+            current = BuildSnapshot.of(current, curArt?.sizeBytes),
+            previous = BuildSnapshot.of(previous, prevArt?.sizeBytes),
+        )
+    }
+
+    data class BuildSnapshot(
+        val id: String,
+        val createdAt: String,
+        val durationMs: Long?,
+        val apkSizeBytes: Long?,
+    ) {
+        companion object {
+            fun of(row: BuildRow, apkSizeBytes: Long?) = BuildSnapshot(
+                id = row.id,
+                createdAt = row.createdAt,
+                durationMs = if (row.startedAt != null && row.finishedAt != null) {
+                    runCatching {
+                        java.time.Duration.between(
+                            java.time.Instant.parse(row.startedAt),
+                            java.time.Instant.parse(row.finishedAt),
+                        ).toMillis()
+                    }.getOrNull()
+                } else null,
+                apkSizeBytes = apkSizeBytes,
+            )
+        }
+    }
+
+    data class BuildComparison(val current: BuildSnapshot, val previous: BuildSnapshot) {
+        val durationDeltaMs: Long? = if (current.durationMs != null && previous.durationMs != null)
+            current.durationMs - previous.durationMs else null
+        val apkSizeDeltaBytes: Long? = if (current.apkSizeBytes != null && previous.apkSizeBytes != null)
+            current.apkSizeBytes - previous.apkSizeBytes else null
+    }
+
     private fun BuildRow.toDto() = BuildDto(
         id = id, projectId = projectId, variant = variant, status = status,
         startedAt = startedAt ?: createdAt, finishedAt = finishedAt,

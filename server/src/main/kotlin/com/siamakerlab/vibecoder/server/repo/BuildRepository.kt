@@ -6,6 +6,8 @@ import com.siamakerlab.vibecoder.shared.dto.TaskStatus
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.or
@@ -77,6 +79,23 @@ class BuildRepository(private val clock: Clock) {
     }
 
     fun lastForProject(projectId: String): BuildRow? = listForProject(projectId, 1).firstOrNull()
+
+    /**
+     * v0.58.0 — Phase 37 빌드 결과 비교의 "이전" 후보.
+     * 같은 projectId 의 SUCCEEDED 빌드 중 [beforeCreatedAt] 보다 createdAt 가 strictly
+     * 이전인 가장 최근 row. null = 같은 프로젝트에 이전 성공 빌드 없음 (첫 성공 빌드).
+     */
+    fun previousSuccessfulBefore(projectId: String, beforeCreatedAt: String): BuildRow? = transaction {
+        Builds.selectAll().where {
+            (Builds.projectId eq projectId) and
+                (Builds.status eq TaskStatus.SUCCESS.name) and
+                (Builds.createdAt less beforeCreatedAt)
+        }
+            .orderBy(Builds.createdAt to SortOrder.DESC)
+            .limit(1)
+            .map { it.toRow() }
+            .singleOrNull()
+    }
 
     /** ProjectService.delete cascade — 모든 build row 일괄 제거. */
     fun deleteForProject(projectId: String): Int = transaction {

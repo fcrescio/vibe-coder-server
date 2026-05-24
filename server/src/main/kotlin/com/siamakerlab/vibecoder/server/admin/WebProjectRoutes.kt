@@ -307,6 +307,11 @@ fun Routing.webProjectRoutes(
             runCatching { apkSignerInspector.inspect(java.nio.file.Path.of(artifact.filePath)) }.getOrNull()
         } else null
 
+        // v0.58.0 — Phase 37 이전 성공 빌드와의 비교 (size / duration delta).
+        val comparison = if (row.status.name == "SUCCESS") {
+            runCatching { builds.compareWithPrevious(id, buildId, artifactRepo) }.getOrNull()
+        } else null
+
         call.respondText(
             WebProjectTemplates.buildDetailPage(
                 sess.username, p, dto, artifact, replay,
@@ -317,6 +322,7 @@ fun Routing.webProjectRoutes(
                 tfFlashOk = call.request.queryParameters["tf_ok"],
                 tfFlashErr = call.request.queryParameters["tf_err"],
                 signerInspection = signerInspection,
+                comparison = comparison,
                 csrf = sess.csrf,
             ),
             ContentType.Text.Html,
