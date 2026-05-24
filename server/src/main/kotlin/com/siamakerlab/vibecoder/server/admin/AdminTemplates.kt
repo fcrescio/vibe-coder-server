@@ -93,6 +93,7 @@ object AdminTemplates {
     ${link("/devices", "디바이스", "devices")}
     ${link("/audit", "감사 로그", "audit")}
     ${link("/settings/email", "이메일 알림", "email")}
+    ${link("/settings/webhook", "Webhook 알림", "webhook")}
     ${link("/password", "비밀번호", "password")}
     ${link("/2fa", "2단계 인증", "2fa")}
   </div>

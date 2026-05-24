@@ -30,6 +30,7 @@ import com.siamakerlab.vibecoder.server.claude.consoleRoutes
 import com.siamakerlab.vibecoder.server.claude.historyRoutes
 import com.siamakerlab.vibecoder.server.emulator.emulatorRoutes
 import com.siamakerlab.vibecoder.server.notify.emailSettingsRoutes
+import com.siamakerlab.vibecoder.server.notify.webhookSettingsRoutes
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.Clock
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
@@ -110,6 +111,8 @@ data class ServerContext(
     val auditLogger: AuditLogger,
     val conversationRepo: com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository,
     val emailNotifier: com.siamakerlab.vibecoder.server.notify.EmailNotifier,
+    /** v0.27.0 — Slack / Discord / Telegram webhook notifier. */
+    val webhookNotifier: com.siamakerlab.vibecoder.server.notify.WebhookNotifier,
     val status: StatusService,
     val env: EnvDiagnostics,
     val envSetup: EnvSetupService,
@@ -256,6 +259,7 @@ fun Application.module(ctx: ServerContext) {
         auditRoutes(adminDeps, ctx.auditRepo)
         historyRoutes(adminDeps, ctx.projects, ctx.conversationRepo)
         emailSettingsRoutes(adminDeps, ctx.emailNotifier)
+        webhookSettingsRoutes(adminDeps, ctx.webhookNotifier)
         emulatorRoutes(adminDeps, ctx.emulator)
         wsRoutes(ctx.hub, ctx.deviceRepo, ctx.tokens, ctx.sessionManager,
             ctx.actionRegistry, ctx.actionHandler)

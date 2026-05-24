@@ -13,6 +13,7 @@ data class ServerConfig(
     val cors: CorsSection = CorsSection(),
     val database: DatabaseSection = DatabaseSection(),
     val email: EmailSection = EmailSection(),
+    val webhook: WebhookSection = WebhookSection(),
 )
 
 @Serializable
@@ -153,6 +154,30 @@ data class EmailSection(
     val claudeUsageWarnPercent: Int = 20,
     /** 디스크 사용량 임계치 — 사용 % 가 이 값 이상이면 알림. */
     val diskUsageWarnPercent: Int = 85,
+)
+
+/**
+ * v0.27.0 — Slack / Discord / Telegram webhook 알림.
+ *
+ * 같은 트리거 (빌드 성공/실패, Claude 사용량 임계치, 디스크 임계치) 가 SMTP
+ * 이메일과 동시에 발송될 수 있음 (`enabled=true` + provider 마다 endpoint 채워짐).
+ *
+ * 각 provider 는 비어 있으면 (`webhookUrl`/`botToken` 등) skip — 부분 활성 가능.
+ *   - Slack: incoming webhook URL 1개. https://hooks.slack.com/services/T../B../...
+ *   - Discord: webhook URL 1개. https://discord.com/api/webhooks/<id>/<token>
+ *   - Telegram: bot token + chat id. https://api.telegram.org/bot<token>/sendMessage
+ *
+ * env override (모두 nullable 텍스트, 빈 문자열 = 비활성):
+ *   VIBECODER_WEBHOOK_ENABLED, _SLACK_URL, _DISCORD_URL,
+ *   VIBECODER_WEBHOOK_TELEGRAM_BOT_TOKEN, _TELEGRAM_CHAT_ID
+ */
+@Serializable
+data class WebhookSection(
+    val enabled: Boolean = false,
+    val slackUrl: String = "",
+    val discordUrl: String = "",
+    val telegramBotToken: String = "",
+    val telegramChatId: String = "",
 )
 
 @Serializable

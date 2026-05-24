@@ -26,8 +26,8 @@ class BuildService(
     private val builder: GradleBuilder,
     private val artifactService: ArtifactService,
     private val clock: Clock,
-    /** v0.17.0 — 빌드 결과 이메일 알림. null 이면 알림 skip (테스트). */
-    private val notifier: com.siamakerlab.vibecoder.server.notify.EmailNotifier? = null,
+    /** v0.17.0 — 빌드 결과 이메일 알림. null 이면 알림 skip (테스트). v0.27.0+ Notifiers facade (email + webhook). */
+    private val notifier: com.siamakerlab.vibecoder.server.notify.Notifiers? = null,
 ) {
 
     /**

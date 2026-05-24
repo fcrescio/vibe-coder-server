@@ -1,7 +1,7 @@
 package com.siamakerlab.vibecoder.server.claude
 
 import com.siamakerlab.vibecoder.server.config.ClaudeUsageSection
-import com.siamakerlab.vibecoder.server.notify.EmailNotifier
+import com.siamakerlab.vibecoder.server.notify.Notifiers
 import com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineScope
@@ -34,7 +34,7 @@ private val log = KotlinLogging.logger {}
  */
 class ClaudeUsageMonitor(
     private val statusService: ClaudeStatusService,
-    private val emailNotifier: EmailNotifier,
+    private val notifiers: Notifiers,
     private val configProvider: () -> ClaudeUsageSection,
     private val scratchProjectId: String = "__scratch__",
     /**
@@ -142,7 +142,7 @@ class ClaudeUsageMonitor(
         log.info { "Claude usage threshold transition → $current (usage=$pct%). Firing email." }
         // remainingPercent 시그니처에 맞춰 변환 (helper 가 받는 값).
         val remaining = (100 - pct).coerceAtLeast(0)
-        emailNotifier.claudeUsageWarn(remaining, representative?.resetAt)
+        notifiers.claudeUsageWarn(remaining, representative?.resetAt)
         lastAlertLevel.set(current)
         lastAlertAt.set(now)
     }

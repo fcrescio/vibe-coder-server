@@ -2,7 +2,7 @@ server:
   name: Vibe Coder Server
   host: 0.0.0.0
   port: 17880
-  version: 0.26.0
+  version: 0.27.0
 
 workspace:
   # Each project lives at <root>/<projectId>/.
@@ -81,3 +81,14 @@ database:
   passwordFile: ""
   maxPoolSize: 10
   sslMode: disable
+
+# v0.27.0 — Slack / Discord / Telegram webhook 알림.
+# 비활성 (enabled=false) 또는 모든 provider URL 비면 silent skip. 활성 provider 만 발송.
+# SSRF 방어: Slack 은 hooks.slack.com, Discord 는 discord.com / discordapp.com 만 허용.
+# Telegram bot token 은 정규식 (^\d+:[A-Za-z0-9_-]+$) 검증.
+webhook:
+  enabled: false
+  slackUrl: ""
+  discordUrl: ""
+  telegramBotToken: ""
+  telegramChatId: ""

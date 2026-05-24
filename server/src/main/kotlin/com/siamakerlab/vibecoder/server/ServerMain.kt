@@ -145,6 +145,9 @@ fun main(args: Array<String>) {
     val conversationRepo = com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository(clock)
     val conversationHistory = com.siamakerlab.vibecoder.server.claude.ConversationHistoryService(conversationRepo)
     val emailNotifier = com.siamakerlab.vibecoder.server.notify.EmailNotifier { config.email }
+    // v0.27.0 — webhook (Slack / Discord / Telegram) provider. enabled=false 시 silent.
+    val webhookNotifier = com.siamakerlab.vibecoder.server.notify.WebhookNotifier({ config.webhook })
+    val notifiers = com.siamakerlab.vibecoder.server.notify.Notifiers(email = emailNotifier, webhook = webhookNotifier)
     val projects = ProjectService(
         workspace, projectRepo, buildRepo, keystoreGen, gitClone,
         artifactRepo = artifactRepo, uploadedFileRepo = uploadedRepo,
@@ -153,7 +156,7 @@ fun main(args: Array<String>) {
     val sessionManager = ClaudeSessionManager(config, workspace, hub, history = conversationHistory)
     val gradle = GradleBuilder(config)
     val artifacts = ArtifactService(config, workspace, artifactRepo, buildRepo, clock)
-    val build = BuildService(config, workspace, projects, buildRepo, queue, gradle, artifacts, clock, notifier = emailNotifier)
+    val build = BuildService(config, workspace, projects, buildRepo, queue, gradle, artifacts, clock, notifier = notifiers)
     val git = GitReader()
     val gitWriter = com.siamakerlab.vibecoder.server.git.GitWriter()
     val emulator = com.siamakerlab.vibecoder.server.emulator.EmulatorService()
@@ -173,7 +176,7 @@ fun main(args: Array<String>) {
     // v0.21.0 — usage 백그라운드 폴링 + 임계치 알림.
     val claudeUsageMonitor = com.siamakerlab.vibecoder.server.claude.ClaudeUsageMonitor(
         statusService = claudeStatusService,
-        emailNotifier = emailNotifier,
+        notifiers = notifiers,
         configProvider = { config.claude.usage },
         activeProjectsProvider = { projectRepo.list().map { it.id } },
     )
@@ -219,6 +222,7 @@ fun main(args: Array<String>) {
         auditLogger = auditLogger,
         conversationRepo = conversationRepo,
         emailNotifier = emailNotifier,
+        webhookNotifier = webhookNotifier,
         status = status,
         env = env,
         envSetup = envSetup,
