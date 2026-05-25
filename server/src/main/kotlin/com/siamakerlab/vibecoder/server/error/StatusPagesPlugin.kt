@@ -14,12 +14,27 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 
 private val log = KotlinLogging.logger {}
 
-fun Application.installStatusPages() {
+fun Application.installStatusPages(
+    /** v0.92.0 — server default language for ApiException localization fallback. */
+    serverDefaultLanguage: String = "en",
+) {
     install(StatusPages) {
         exception<ApiException> { call, cause ->
+            // v0.92.0 — Phase 67 i18n. messageKey 가 있으면 Accept-Language 기반 localize.
+            // 없으면 cause.message (legacy English) 그대로. backward compatible.
+            val msg = if (cause.messageKey != null) {
+                val lang = com.siamakerlab.vibecoder.server.i18n.Messages.resolveFromRequest(
+                    acceptLanguage = call.request.headers["Accept-Language"],
+                    userLang = null,
+                    serverDefault = serverDefaultLanguage,
+                )
+                com.siamakerlab.vibecoder.server.i18n.Messages.t(
+                    lang, cause.messageKey, *cause.messageArgs.toTypedArray(),
+                )
+            } else cause.message ?: cause.code
             call.respond(
                 HttpStatusCode.fromValue(cause.statusCode),
-                ApiErrorDto(code = cause.code, message = cause.message ?: cause.code, detail = cause.detail),
+                ApiErrorDto(code = cause.code, message = msg, detail = cause.detail),
             )
         }
         // kotlinx-serialization wraps MissingFieldException etc. into JsonConvertException.

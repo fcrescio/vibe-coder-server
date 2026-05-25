@@ -112,8 +112,8 @@ fun ApplicationCall.bearerTokenOrNull(): String? {
 }
 
 fun ApplicationCall.requireDevice(): DevicePrincipal =
-    principal<DevicePrincipal>() ?: throw com.siamakerlab.vibecoder.server.error.ApiException(
-        statusCode = 401, code = "unauthorized", message = "missing or invalid Bearer token"
+    principal<DevicePrincipal>() ?: throw com.siamakerlab.vibecoder.server.error.ApiException.localized(
+        statusCode = 401, code = "unauthorized", messageKey = "api.auth.missingBearer",
     )
 
 /**
@@ -124,9 +124,9 @@ fun ApplicationCall.requireDevice(): DevicePrincipal =
 fun ApplicationCall.requireApiWrite(): DevicePrincipal {
     val p = requireDevice()
     if (!p.canWrite) {
-        throw com.siamakerlab.vibecoder.server.error.ApiException(
+        throw com.siamakerlab.vibecoder.server.error.ApiException.localized(
             statusCode = 403, code = "viewer_readonly",
-            message = "viewer role cannot mutate resources",
+            messageKey = "api.auth.viewerReadonly",
         )
     }
     return p
@@ -139,9 +139,9 @@ fun ApplicationCall.requireApiWrite(): DevicePrincipal {
 fun ApplicationCall.requireApiAdmin(): DevicePrincipal {
     val p = requireDevice()
     if (!p.isAdmin) {
-        throw com.siamakerlab.vibecoder.server.error.ApiException(
+        throw com.siamakerlab.vibecoder.server.error.ApiException.localized(
             statusCode = 403, code = "admin_only",
-            message = "this endpoint requires admin role",
+            messageKey = "api.auth.adminOnly",
         )
     }
     return p
@@ -165,9 +165,9 @@ fun ApplicationCall.requireProjectAcl(
     val p = requireDevice()
     val uid = p.device.userId
     if (uid != null && !projects.canUserAccess(uid, p.isAdmin, projectId)) {
-        throw com.siamakerlab.vibecoder.server.error.ApiException(
+        throw com.siamakerlab.vibecoder.server.error.ApiException.localized(
             statusCode = 403, code = "project_forbidden",
-            message = "project not in your ACL",
+            messageKey = "api.auth.projectForbidden",
         )
     }
     return p

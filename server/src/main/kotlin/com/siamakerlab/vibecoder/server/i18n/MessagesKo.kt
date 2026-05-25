@@ -811,6 +811,18 @@ internal object MessagesKo {
         "build.compare.sameBranchLink" to "← 같은 branch 비교로 돌아가기",
         "build.compare.branchInfo" to "%s (%s) → %s (%s)",
 
+        // ─────────────────────────────────────────────── api errors (JSON API i18n via ApiException.localized)
+        "api.auth.missingBearer" to "Bearer 토큰이 없거나 잘못됐습니다",
+        "api.auth.viewerReadonly" to "viewer 권한으로는 리소스를 변경할 수 없습니다",
+        "api.auth.adminOnly" to "이 endpoint 는 admin 권한이 필요합니다",
+        "api.auth.projectForbidden" to "본 프로젝트가 ACL 에 없습니다",
+        "api.auth.csrfMissing" to "CSRF 토큰 없음",
+        "api.auth.csrfInvalid" to "CSRF 토큰 무효",
+        "api.upload.extBlocked" to ".%s 확장자는 허용되지 않습니다",
+        "api.upload.tooLarge" to "파일이 최대 업로드 크기 (%d MB) 를 초과했습니다",
+        "api.upload.noFilePart" to "multipart body 에 FileItem 이 없습니다",
+        "api.file.notFound" to "파일 '%s' 를 찾을 수 없습니다",
+
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude 인증",
         "claude.option.oauth" to "OAuth (권장)",

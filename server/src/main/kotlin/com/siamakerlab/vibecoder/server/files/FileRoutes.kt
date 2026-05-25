@@ -54,7 +54,8 @@ fun Routing.fileRoutes(service: UploadService, projects: ProjectService) {
                     part.dispose()
                 }
             }
-            val result = saved ?: throw ApiException(400, "no_file_part", "no FileItem in multipart")
+            val result = saved ?: throw ApiException.localized(
+                400, "no_file_part", messageKey = "api.upload.noFilePart")
             call.respond(HttpStatusCode.Created, result)
         }
         get("/api/projects/{projectId}/files") {

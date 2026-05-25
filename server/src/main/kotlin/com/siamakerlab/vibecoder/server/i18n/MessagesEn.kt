@@ -833,6 +833,19 @@ internal object MessagesEn {
         "build.compare.sameBranchLink" to "← Back to same-branch comparison",
         "build.compare.branchInfo" to "%s (%s) → %s (%s)",
 
+        // ─────────────────────────────────────────────── api errors (JSON API i18n via ApiException.localized)
+        // v0.92.0 — Phase 67. messageKey 로 사용. android client 가 Accept-Language 헤더로 자기 device locale 송신 시 응답 메시지가 사용자 언어로 옴.
+        "api.auth.missingBearer" to "Missing or invalid Bearer token",
+        "api.auth.viewerReadonly" to "Viewer role cannot mutate resources",
+        "api.auth.adminOnly" to "This endpoint requires admin role",
+        "api.auth.projectForbidden" to "Project not in your ACL",
+        "api.auth.csrfMissing" to "CSRF token missing",
+        "api.auth.csrfInvalid" to "CSRF token invalid",
+        "api.upload.extBlocked" to "File extension .%s is not allowed",
+        "api.upload.tooLarge" to "File exceeds max upload size (%d MB)",
+        "api.upload.noFilePart" to "No FileItem in multipart body",
+        "api.file.notFound" to "File '%s' not found",
+
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude authentication",
         "claude.option.oauth" to "OAuth (recommended)",

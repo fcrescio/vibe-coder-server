@@ -29,10 +29,12 @@ class UploadService(
         val safeName = sanitizeFileName(originalName)
         val ext = safeName.substringAfterLast('.', "").lowercase()
         if (ext.isNotBlank() && ext in config.workspace.uploadDeniedExtensions) {
-            throw ApiException(400, "extension_blocked", ".$ext is not allowed")
+            throw ApiException.localized(400, "extension_blocked",
+                messageKey = "api.upload.extBlocked", args = listOf(ext))
         }
         if (sizeHint != null && sizeHint > config.workspace.maxUploadSizeMb * 1024L * 1024L) {
-            throw ApiException(413, "file_too_large", "max ${config.workspace.maxUploadSizeMb} MB")
+            throw ApiException.localized(413, "file_too_large",
+                messageKey = "api.upload.tooLarge", args = listOf(config.workspace.maxUploadSizeMb))
         }
         // v0.12.4 — clock 의존성 사용 (이전엔 LocalDate.now() 직접 호출, 테스트 어려움).
         // clock.nowIso() 는 "2026-05-23T14:30:00Z" 형태 → 앞 10 자에서 날짜 추출.
@@ -53,7 +55,8 @@ class UploadService(
                 copied += n
                 if (copied > cap) {
                     Files.deleteIfExists(target)
-                    throw ApiException(413, "file_too_large", "max ${config.workspace.maxUploadSizeMb} MB")
+                    throw ApiException.localized(413, "file_too_large",
+                        messageKey = "api.upload.tooLarge", args = listOf(config.workspace.maxUploadSizeMb))
                 }
                 out.write(buf, 0, n)
             }
@@ -72,13 +75,15 @@ class UploadService(
         repo.listForProject(projectId).map { it.toDto() }
 
     fun resolveForDownload(projectId: String, id: String): UploadedFileRow {
-        val row = repo.get(projectId, id) ?: throw ApiException(404, "file_not_found", id)
+        val row = repo.get(projectId, id) ?: throw ApiException.localized(
+            404, "file_not_found", messageKey = "api.file.notFound", args = listOf(id))
         workspace.ensureUnderWorkspace(Path.of(row.filePath))
         return row
     }
 
     fun delete(projectId: String, id: String) {
-        val row = repo.get(projectId, id) ?: throw ApiException(404, "file_not_found", id)
+        val row = repo.get(projectId, id) ?: throw ApiException.localized(
+            404, "file_not_found", messageKey = "api.file.notFound", args = listOf(id))
         runCatching { Files.deleteIfExists(Path.of(row.filePath)) }
         repo.delete(projectId, id)
     }

@@ -53,15 +53,14 @@ object CsrfTokens {
      * 불일치 / 누락 시 403 ApiException → StatusPages 가 사용자 친화 응답으로 변환.
      */
     suspend fun RoutingContext.requireCsrf(): io.ktor.http.Parameters {
-        val expected = tokenFromCall(call) ?: throw ApiException(
-            403, "csrf_no_session", "세션 쿠키가 없어 CSRF 토큰을 검증할 수 없습니다.",
+        val expected = tokenFromCall(call) ?: throw ApiException.localized(
+            403, "csrf_no_session", messageKey = "api.auth.csrfMissing",
         )
         val params = call.receiveParameters()
         val provided = params["_csrf"].orEmpty()
         if (!constantTimeEquals(expected, provided)) {
-            throw ApiException(
-                403, "csrf_token_mismatch",
-                "CSRF 토큰이 일치하지 않습니다. 페이지를 새로고침한 뒤 다시 시도하세요.",
+            throw ApiException.localized(
+                403, "csrf_token_mismatch", messageKey = "api.auth.csrfInvalid",
             )
         }
         return params
@@ -72,16 +71,15 @@ object CsrfTokens {
      * 클라이언트는 query string `?_csrf=...` 또는 헤더 `X-CSRF-Token` 으로 전달.
      */
     fun verifyCsrfFromQueryOrHeader(call: ApplicationCall) {
-        val expected = tokenFromCall(call) ?: throw ApiException(
-            403, "csrf_no_session", "세션 쿠키가 없어 CSRF 토큰을 검증할 수 없습니다.",
+        val expected = tokenFromCall(call) ?: throw ApiException.localized(
+            403, "csrf_no_session", messageKey = "api.auth.csrfMissing",
         )
         val provided = call.request.queryParameters["_csrf"]
             ?: call.request.headers["X-CSRF-Token"]
             ?: ""
         if (!constantTimeEquals(expected, provided)) {
-            throw ApiException(
-                403, "csrf_token_mismatch",
-                "CSRF 토큰이 일치하지 않습니다. 페이지를 새로고침한 뒤 다시 시도하세요.",
+            throw ApiException.localized(
+                403, "csrf_token_mismatch", messageKey = "api.auth.csrfInvalid",
             )
         }
     }
