@@ -51,6 +51,7 @@ import com.siamakerlab.vibecoder.server.claude.jsonHistoryRoutes
 import com.siamakerlab.vibecoder.server.claude.jsonUsageRoutes
 import com.siamakerlab.vibecoder.server.projects.jsonProjectZipRoutes
 import com.siamakerlab.vibecoder.server.projects.projectTemplateRoutes
+import com.siamakerlab.vibecoder.server.admin.jsonAdminRoutes
 import com.siamakerlab.vibecoder.server.emulator.emulatorRoutes
 import com.siamakerlab.vibecoder.server.emulator.vncProxyRoutes
 import com.siamakerlab.vibecoder.server.notify.emailSettingsRoutes
@@ -392,6 +393,21 @@ fun Application.module(ctx: ServerContext) {
         jsonProjectZipRoutes(ctx.projects, ctx.projectArchiver)
         // v0.66.0 — Phase 45 신규 프로젝트 starter 템플릿 카탈로그 (Bearer).
         projectTemplateRoutes()
+        // v0.67.0 — Phase 46 Group B: admin / 운영 JSON API (Bearer, admin only).
+        jsonAdminRoutes(
+            users = ctx.adminUserRepo,
+            deviceRepo = ctx.deviceRepo,
+            hasher = ctx.hasher,
+            schedules = ctx.buildScheduleRepo,
+            projects = ctx.projects,
+            backup = ctx.backupService,
+            workspace = ctx.workspace,
+            audit = ctx.auditRepo,
+            codeSearch = ctx.codeSearchService,
+            codeStats = ctx.codeStatsService,
+            deps = ctx.dependencyAudit,
+            wrapper = ctx.gradleWrapperService,
+        )
         // v0.46.0 — Phase 25 Web Push (VAPID, payload-less).
         pushRoutes(adminDeps, ctx.webPushNotifier, ctx.pushSubscriptionRepo)
         // v0.47.0 — Phase 26 Claude /status raw 노출 (cache 통계 등 미래 정보 자동 가시화).

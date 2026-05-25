@@ -196,6 +196,42 @@ object ApiPath {
     fun agentConsoleNew(projectId: String, agent: String) =
         "/api/projects/${pathSeg(projectId)}/agents/${pathSeg(agent)}/console/new"
 
+    // ─────────────────────────────────────────────────────────────────────
+    // v0.67.0 — Phase 46. Group B: admin / 운영 JSON API.
+    // 기존 SSR (cookie 세션) 만 있던 admin 기능들을 Bearer JSON 으로도 노출.
+    // 모두 admin role 권한 (`requireApiAdmin`) — viewer/member 거부.
+    // ─────────────────────────────────────────────────────────────────────
+
+    // B1. Multi-user
+    const val USERS = "/api/users"
+    fun userRole(userId: String) = "/api/users/${pathSeg(userId)}/role"
+    fun user(userId: String) = "/api/users/${pathSeg(userId)}"
+
+    // B2. Build automation (project-scoped)
+    fun automationSchedules(projectId: String) =
+        "/api/projects/${pathSeg(projectId)}/automation/schedules"
+    fun automationSchedule(projectId: String, scheduleId: String) =
+        "/api/projects/${pathSeg(projectId)}/automation/schedules/${pathSeg(scheduleId)}"
+    fun automationScheduleToggle(projectId: String, scheduleId: String) =
+        "/api/projects/${pathSeg(projectId)}/automation/schedules/${pathSeg(scheduleId)}/toggle"
+
+    // B3. Backup
+    const val BACKUP_LIST = "/api/backup"
+    const val BACKUP_DOWNLOAD = "/api/backup/download"
+    const val BACKUP_RUN_NOW = "/api/backup/run-now"
+    fun backupAutoFile(fileName: String) = "/api/backup/auto/${pathSeg(fileName)}"
+
+    // B4. Audit log
+    const val AUDIT_LIST = "/api/audit"
+
+    // B5. Admin info (read-only + 일부 mutation)
+    const val LOG_SEARCH = "/api/logs"
+    const val CODE_SEARCH = "/api/code-search"
+    fun projectDeps(projectId: String) = "/api/projects/${pathSeg(projectId)}/deps"
+    fun projectStats(projectId: String) = "/api/projects/${pathSeg(projectId)}/stats"
+    fun projectEnvFiles(projectId: String) = "/api/projects/${pathSeg(projectId)}/env-files"
+    fun projectWrapper(projectId: String) = "/api/projects/${pathSeg(projectId)}/wrapper"
+
     /**
      * v0.31+ — Claude 입력 자동완성.
      * Query: `prefix`, `limit`. 응답: PromptSuggestionsResponseDto.
