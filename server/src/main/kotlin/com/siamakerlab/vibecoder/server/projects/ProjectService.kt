@@ -75,7 +75,8 @@ class ProjectService(
         require(body.packageName.isNotBlank()) { "packageName required" }
 
         if (repo.findById(body.projectId) != null) {
-            throw ApiException(409, "project_already_registered", "${body.projectId} already exists")
+            throw ApiException.localized(409, "project_already_registered",
+                messageKey = "api.project.alreadyRegistered", args = listOf(body.projectId))
         }
 
         // Keystore generation runs FIRST so a validation failure (weak password etc.)
@@ -92,15 +93,15 @@ class ProjectService(
         if (isClone) {
             val url = body.cloneUrl?.trim().orEmpty()
             if (url.isEmpty()) {
-                throw ApiException(400, "missing_clone_url",
-                    "sourceType=clone 일 때 cloneUrl 이 필수입니다.")
+                throw ApiException.localized(400, "missing_clone_url",
+                    messageKey = "api.project.missingCloneUrl")
             }
-            val svc = gitClone ?: throw ApiException(500, "clone_unavailable",
-                "GitCloneService 가 주입되지 않았습니다.")
+            val svc = gitClone ?: throw ApiException.localized(500, "clone_unavailable",
+                messageKey = "api.project.cloneUnavailable")
             // clone 은 빈 디렉토리에만 — 이미 존재하면 거부.
             if (srcRoot.exists() && Files.list(srcRoot).use { it.findFirst().isPresent }) {
-                throw ApiException(409, "target_not_empty",
-                    "$srcRoot 가 이미 비어 있지 않습니다.")
+                throw ApiException.localized(409, "target_not_empty",
+                    messageKey = "api.project.targetNotEmpty")
             }
             log.info { "cloning $url → $srcRoot (branch=${body.cloneBranch ?: "(default)"})" }
             svc.clone(url, srcRoot, body.cloneBranch) { line ->
@@ -229,18 +230,19 @@ class ProjectService(
 
     fun get(id: String): ProjectDto {
         val row = repo.findById(id)
-            ?: throw ApiException(404, "project_not_found", "$id not registered")
+            ?: throw ApiException.localized(404, "project_not_found",
+                messageKey = "api.project.notFound", args = listOf(id))
         val last = buildRepo.lastForProject(id)
         return row.toDto(false, last?.status?.name)
     }
 
     fun sourcePathOrThrow(id: String): Path {
-        val row = repo.findById(id) ?: throw ApiException(404, "project_not_found", id)
+        val row = repo.findById(id) ?: throw ApiException.localized(404, "project_not_found", messageKey = "api.project.notFound", args = listOf(id))
         return Path.of(row.sourcePath)
     }
 
     fun rowOrThrow(id: String): ProjectRow =
-        repo.findById(id) ?: throw ApiException(404, "project_not_found", id)
+        repo.findById(id) ?: throw ApiException.localized(404, "project_not_found", messageKey = "api.project.notFound", args = listOf(id))
 
     /**
      * 프로젝트 + 의존 row 모두 삭제. 디스크 파일은 보존 (UI 약속).
@@ -251,7 +253,7 @@ class ProjectService(
     fun delete(id: String): Boolean {
         // v0.13.0 — scratch ghost 프로젝트는 삭제 거부.
         if (id == SCRATCH_ID) {
-            throw ApiException(403, "scratch_protected", "General Chat 워크스페이스는 삭제할 수 없습니다.")
+            throw ApiException.localized(403, "scratch_protected", messageKey = "api.project.scratchProtected")
         }
         conversationRepo?.deleteForProject(id)
         uploadedFileRepo?.deleteForProject(id)

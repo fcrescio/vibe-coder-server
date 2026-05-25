@@ -55,9 +55,10 @@ class BuildService(
                         logger = logger,
                         cancellation = cancel,
                     )
-                    if (exit != 0) throw ApiException(500, "build_failed", "gradle exit $exit")
+                    if (exit != 0) throw ApiException.localized(500, "build_failed",
+                        messageKey = "api.build.gradleExit", args = listOf(exit))
                     val apk = ApkFinder.findLatestDebug(java.nio.file.Path.of(row.sourcePath), row.moduleName)
-                        ?: throw ApiException(500, "apk_not_found", "no apk under build/outputs/apk/debug")
+                        ?: throw ApiException.localized(500, "apk_not_found", messageKey = "api.build.apkNotFound")
                     logger.info("Found APK: $apk")
                     val artifact = artifactService.storeDebugApk(projectId, buildId, apk)
                     buildRepo.attachArtifact(buildId, artifact.id)
@@ -137,8 +138,8 @@ class BuildService(
         buildRepo.listForProject(projectId).map { it.toDto() }
 
     fun get(projectId: String, buildId: String): BuildDto {
-        val row = buildRepo.get(buildId) ?: throw ApiException(404, "build_not_found", buildId)
-        if (row.projectId != projectId) throw ApiException(404, "build_not_found", buildId)
+        val row = buildRepo.get(buildId) ?: throw ApiException.localized(404, "build_not_found", messageKey = "api.build.notFound", args = listOf(buildId))
+        if (row.projectId != projectId) throw ApiException.localized(404, "build_not_found", messageKey = "api.build.notFound", args = listOf(buildId))
         return row.toDto()
     }
 

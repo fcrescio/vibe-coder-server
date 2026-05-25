@@ -105,9 +105,9 @@ fun Routing.jsonAdminRoutes(
             call.requireApiAdmin()
             val req = call.receive<UserCreateRequestDto>()
             if (req.username.isBlank() || req.password.length < 6)
-                throw ApiException(400, "bad_request", "username required, password must be at least 6 chars.")
+                throw ApiException.localized(400, "bad_request", messageKey = "api.admin.usernameRequired")
             if (users.findByUsername(req.username) != null)
-                throw ApiException(409, "duplicate_username", "username already exists.")
+                throw ApiException.localized(409, "duplicate_username", messageKey = "api.admin.duplicateUsername")
             val role = if (req.role in setOf("admin", "member", "viewer")) req.role else "member"
             val u = users.insert(Ids.deviceId(), req.username, hasher.hash(req.password), role)
             call.respond(HttpStatusCode.Created, u.toDto())
@@ -117,20 +117,20 @@ fun Routing.jsonAdminRoutes(
             val id = call.parameters["userId"]!!
             val req = call.receive<UserRoleUpdateRequestDto>()
             if (req.role !in setOf("admin", "member", "viewer"))
-                throw ApiException(400, "bad_request", "role must be one of admin/member/viewer.")
+                throw ApiException.localized(400, "bad_request", messageKey = "api.admin.roleInvalid")
             // 마지막 admin 의 강등 금지.
-            val target = users.findById(id) ?: throw ApiException(404, "not_found", "user not found")
+            val target = users.findById(id) ?: throw ApiException.localized(404, "not_found", messageKey = "api.admin.userNotFound")
             if (target.role == "admin" && req.role != "admin" && users.adminCount() <= 1L)
-                throw ApiException(409, "last_admin", "cannot change the role of the last admin.")
+                throw ApiException.localized(409, "last_admin", messageKey = "api.admin.lastAdminRole")
             users.setRole(id, req.role)
             call.respond(HttpStatusCode.NoContent)
         }
         delete(ApiPath.user("{userId}")) {
             call.requireApiAdmin()
             val id = call.parameters["userId"]!!
-            val target = users.findById(id) ?: throw ApiException(404, "not_found", "user not found")
+            val target = users.findById(id) ?: throw ApiException.localized(404, "not_found", messageKey = "api.admin.userNotFound")
             if (target.role == "admin" && users.adminCount() <= 1L)
-                throw ApiException(409, "last_admin", "cannot delete the last admin.")
+                throw ApiException.localized(409, "last_admin", messageKey = "api.admin.lastAdminDelete")
             // device 세션도 모두 invalidate.
             runCatching {
                 @Suppress("UNUSED_VARIABLE")
@@ -157,7 +157,7 @@ fun Routing.jsonAdminRoutes(
             call.requireProjectAcl(projects, pid)
             val req = call.receive<BuildScheduleCreateRequestDto>()
             if (req.cronExpr.isBlank())
-                throw ApiException(400, "bad_request", "cronExpr required")
+                throw ApiException.localized(400, "bad_request", messageKey = "api.admin.cronRequired")
             val row = schedules.create(pid, req.cronExpr.trim(), req.variant.ifBlank { "debug" }, req.description)
             call.respond(HttpStatusCode.Created, row.toDto())
         }
@@ -168,7 +168,7 @@ fun Routing.jsonAdminRoutes(
             val sid = call.parameters["scheduleId"]!!
             val req = call.receive<BuildScheduleToggleRequestDto>()
             val n = schedules.toggleEnabled(sid, req.enabled)
-            if (n == 0) throw ApiException(404, "not_found", "schedule not found")
+            if (n == 0) throw ApiException.localized(404, "not_found", messageKey = "api.admin.scheduleNotFound")
             call.respond(HttpStatusCode.NoContent)
         }
         delete(ApiPath.automationSchedule("{projectId}", "{scheduleId}")) {
@@ -177,7 +177,7 @@ fun Routing.jsonAdminRoutes(
             call.requireProjectAcl(projects, pid)
             val sid = call.parameters["scheduleId"]!!
             val n = schedules.delete(sid)
-            if (n == 0) throw ApiException(404, "not_found", "schedule not found")
+            if (n == 0) throw ApiException.localized(404, "not_found", messageKey = "api.admin.scheduleNotFound")
             call.respond(HttpStatusCode.NoContent)
         }
 
@@ -205,7 +205,7 @@ fun Routing.jsonAdminRoutes(
             call.requireApiAdmin()
             val name = call.parameters["fileName"]!!
             val p = backup.resolveAutoBackupForDownload(name)
-                ?: throw ApiException(404, "not_found", "auto backup not found")
+                ?: throw ApiException.localized(404, "not_found", messageKey = "api.admin.autoBackupNotFound")
             call.response.header(HttpHeaders.ContentDisposition, "attachment; filename=\"${p.fileName}\"")
             call.respondOutputStream(ContentType.parse("application/gzip")) {
                 Files.copy(p, this)
@@ -215,7 +215,7 @@ fun Routing.jsonAdminRoutes(
             call.requireApiAdmin()
             val name = call.parameters["fileName"]!!
             val ok = backup.deleteAutoBackup(name)
-            if (!ok) throw ApiException(404, "not_found", "auto backup not found")
+            if (!ok) throw ApiException.localized(404, "not_found", messageKey = "api.admin.autoBackupNotFound")
             call.respond(HttpStatusCode.NoContent)
         }
         post(ApiPath.BACKUP_RUN_NOW) {
@@ -338,7 +338,8 @@ fun Routing.jsonAdminRoutes(
             call.requireProjectAcl(projects, pid)
             val req = call.receive<EnvFileSaveRequestDto>()
             if (req.rel !in WHITELISTED_ENV_FILES)
-                throw ApiException(400, "bad_request", "env file path not allowed: ${req.rel}")
+                throw ApiException.localized(400, "bad_request",
+                    messageKey = "api.admin.envFileNotAllowed", args = listOf(req.rel))
             val abs = workspace.projectRoot(pid).resolve(req.rel)
             Files.createDirectories(abs.parent)
             Files.writeString(abs, req.body)
@@ -363,7 +364,7 @@ fun Routing.jsonAdminRoutes(
             call.requireProjectAcl(projects, pid)
             val req = call.receive<GradleWrapperUpdateRequestDto>()
             if (req.newVersion.isBlank())
-                throw ApiException(400, "bad_request", "newVersion required")
+                throw ApiException.localized(400, "bad_request", messageKey = "api.admin.newVersionRequired")
             val dist = if (req.distributionType in setOf("bin", "all")) req.distributionType else "bin"
             wrapper.setVersion(pid, req.newVersion.trim(), dist)
             call.respond(HttpStatusCode.NoContent)

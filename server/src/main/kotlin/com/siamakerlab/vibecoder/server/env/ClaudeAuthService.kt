@@ -60,18 +60,17 @@ class ClaudeAuthService(
      */
     fun uploadCredentials(bytes: ByteArray): UploadResult {
         if (bytes.isEmpty()) {
-            throw ApiException(400, "empty", "빈 파일입니다.")
+            throw ApiException.localized(400, "empty", messageKey = "api.claudeAuth.empty")
         }
         if (bytes.size > 64 * 1024) {
-            throw ApiException(
-                413, "too_large",
-                ".credentials.json 이 비정상적으로 큽니다 (${bytes.size} bytes). 올바른 파일인지 확인하세요.",
-            )
+            throw ApiException.localized(413, "too_large",
+                messageKey = "api.claudeAuth.tooLarge", args = listOf(bytes.size))
         }
         val text = try {
             bytes.toString(Charsets.UTF_8)
         } catch (e: Throwable) {
-            throw ApiException(400, "encoding", "UTF-8 디코딩 실패: ${e.message}")
+            throw ApiException.localized(400, "encoding",
+                messageKey = "api.claudeAuth.encoding", args = listOf(e.message ?: ""))
         }
         // v0.12.4 — credential bytes 는 디코딩 후엔 더 이상 필요 없으므로 즉시 zero out.
         // text 는 String 이라 JVM 이 GC 할 때까지 잔존하지만, 적어도 직접 받은 byte 표면은 축소.
@@ -79,37 +78,27 @@ class ClaudeAuthService(
 
         val root: JsonObject = try {
             Json.parseToJsonElement(text) as? JsonObject
-                ?: throw ApiException(400, "json_shape", "최상위가 JSON object 가 아닙니다.")
+                ?: throw ApiException.localized(400, "json_shape", messageKey = "api.claudeAuth.jsonShape")
         } catch (e: kotlinx.serialization.SerializationException) {
-            throw ApiException(400, "json_parse", "JSON 파싱 실패: ${e.message}")
+            throw ApiException.localized(400, "json_parse",
+                messageKey = "api.claudeAuth.jsonParse", args = listOf(e.message ?: ""))
         }
         val oauth = root["claudeAiOauth"] as? JsonObject
-            ?: throw ApiException(
-                400, "shape",
-                "claudeAiOauth 필드가 없습니다 — 올바른 .credentials.json 인지 확인하세요.",
-            )
+            ?: throw ApiException.localized(400, "shape", messageKey = "api.claudeAuth.missingOauth")
         val expiresAt = (oauth["expiresAt"] as? JsonPrimitive)?.longOrNull
-            ?: throw ApiException(
-                400, "shape",
-                "claudeAiOauth.expiresAt 가 없거나 정수가 아닙니다.",
-            )
+            ?: throw ApiException.localized(400, "shape", messageKey = "api.claudeAuth.missingExpires")
         val nowMs = System.currentTimeMillis()
         if (expiresAt <= nowMs) {
-            throw ApiException(
-                400, "expired",
-                "토큰이 이미 만료되어 있습니다 (expiresAt=$expiresAt). 발급 머신에서 " +
-                    "`claude login` 을 다시 실행한 뒤 새 .credentials.json 을 업로드하세요.",
-            )
+            throw ApiException.localized(400, "expired",
+                messageKey = "api.claudeAuth.expired", args = listOf(expiresAt))
         }
 
         val cfg = configDir()
         try {
             Files.createDirectories(cfg)
         } catch (e: Throwable) {
-            throw ApiException(
-                500, "io",
-                "Claude 설정 디렉토리 생성 실패: $cfg — ${e.message}",
-            )
+            throw ApiException.localized(500, "io",
+                messageKey = "api.claudeAuth.dirIo", args = listOf(cfg.toString(), e.message ?: ""))
         }
 
         val target = credentialsPath()
@@ -140,7 +129,8 @@ class ClaudeAuthService(
             }
         } catch (e: Throwable) {
             runCatching { Files.deleteIfExists(tmp) }
-            throw ApiException(500, "io", "자격증명 파일 쓰기 실패: ${e.message}")
+            throw ApiException.localized(500, "io",
+                messageKey = "api.claudeAuth.io", args = listOf(e.message ?: ""))
         }
         tightenPermissions(target)
 
@@ -159,23 +149,22 @@ class ClaudeAuthService(
     fun registerApiKey(rawKey: String) {
         val k = rawKey.trim()
         if (k.isEmpty()) {
-            throw ApiException(400, "empty", "API 키가 비어 있습니다.")
+            throw ApiException.localized(400, "empty", messageKey = "api.claudeAuth.apiKeyEmpty")
         }
         if (!k.startsWith("sk-")) {
-            throw ApiException(
-                400, "shape",
-                "Anthropic API 키는 일반적으로 'sk-ant-...' 형식입니다. 다시 확인하세요.",
-            )
+            throw ApiException.localized(400, "shape", messageKey = "api.claudeAuth.apiKeyPrefix")
         }
         if (k.length < 20 || k.length > 256) {
-            throw ApiException(400, "shape", "API 키 길이가 비정상적입니다 (${k.length} 문자).")
+            throw ApiException.localized(400, "shape",
+                messageKey = "api.claudeAuth.apiKeyLength", args = listOf(k.length))
         }
 
         val cfg = configDir()
         try {
             Files.createDirectories(cfg)
         } catch (e: Throwable) {
-            throw ApiException(500, "io", "Claude 설정 디렉토리 생성 실패: $cfg — ${e.message}")
+            throw ApiException.localized(500, "io",
+                messageKey = "api.claudeAuth.dirIo", args = listOf(cfg.toString(), e.message ?: ""))
         }
         val path = apiKeyPath()
         Files.writeString(

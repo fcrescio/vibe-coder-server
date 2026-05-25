@@ -68,8 +68,8 @@ class ClaudeLoginService(
     suspend fun start(): SessionDto = mutex.withLock {
         session?.let { existing ->
             if (existing.state in ACTIVE_STATES) {
-                throw ApiException(409, "in_progress",
-                    "이미 진행 중인 로그인 세션이 있습니다 (id=${existing.id}). 먼저 cancel 하세요.")
+                throw ApiException.localized(409, "in_progress",
+                    messageKey = "api.claudeLogin.inProgress", args = listOf(existing.id))
             }
         }
         val cmd = listOf("script", "-q", "-c", "claude auth login", "/dev/null")
@@ -81,8 +81,8 @@ class ClaudeLoginService(
         val proc = try {
             pb.start()
         } catch (e: IOException) {
-            throw ApiException(500, "spawn_failed",
-                "프로세스 시작 실패 (script 또는 claude 미설치?): ${e.message}")
+            throw ApiException.localized(500, "spawn_failed",
+                messageKey = "api.claudeLogin.spawnFailed", args = listOf(e.message ?: ""))
         }
         val stdin = BufferedWriter(OutputStreamWriter(proc.outputStream, StandardCharsets.UTF_8))
         val s = Session(
@@ -102,14 +102,14 @@ class ClaudeLoginService(
 
     suspend fun submitCode(code: String): SessionDto = mutex.withLock {
         val s = session
-            ?: throw ApiException(404, "no_session", "진행 중인 로그인 세션이 없습니다.")
+            ?: throw ApiException.localized(404, "no_session", messageKey = "api.claudeLogin.noSession")
         if (s.state != State.AWAITING_CODE) {
-            throw ApiException(409, "wrong_state",
-                "코드 입력 단계가 아닙니다 (현재 상태: ${s.state}).")
+            throw ApiException.localized(409, "wrong_state",
+                messageKey = "api.claudeLogin.wrongState", args = listOf(s.state.name))
         }
         val trimmed = code.trim()
         if (trimmed.isEmpty()) {
-            throw ApiException(400, "empty", "코드가 비어 있습니다.")
+            throw ApiException.localized(400, "empty", messageKey = "api.claudeLogin.codeEmpty")
         }
         try {
             s.stdin.write(trimmed)
@@ -119,7 +119,8 @@ class ClaudeLoginService(
             s.state = State.FAILED
             s.errorMessage = "코드 전송 실패: ${e.message}"
             s.updatedAt = clock.nowIso()
-            throw ApiException(500, "io", "코드 전송 실패: ${e.message}")
+            throw ApiException.localized(500, "io",
+                messageKey = "api.claudeLogin.codeIo", args = listOf(e.message ?: ""))
         }
         s.state = State.VERIFYING
         s.updatedAt = clock.nowIso()

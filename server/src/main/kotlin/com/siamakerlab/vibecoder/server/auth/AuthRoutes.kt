@@ -101,7 +101,7 @@ fun Routing.authRoutes(
         post(ApiPath.AUTH_PASSWORD) {
             val p = call.requireDevice()
             val userId = p.device.userId
-                ?: throw ApiException(403, "no_user_link", "이 토큰은 admin 계정과 연결되어 있지 않습니다.")
+                ?: throw ApiException.localized(403, "no_user_link", messageKey = "api.auth.noUserLink")
             val body = call.receive<ChangePasswordRequestDto>()
             authService.changePassword(userId, body.currentPassword, body.newPassword)
             call.respond(HttpStatusCode.NoContent)
@@ -113,17 +113,14 @@ fun Routing.authRoutes(
 
     post(ApiPath.AUTH_PAIR) {
         if (authService.adminExists()) {
-            throw ApiException(
-                410, "pairing_deprecated",
-                "페어링 방식은 deprecated되었습니다. /api/auth/login 을 사용하세요."
-            )
+            throw ApiException.localized(410, "pairing_deprecated", messageKey = "api.auth.pairingDeprecated")
         }
         val body = call.receive<PairRequestDto>()
         if (body.pairingCode.isBlank() || body.deviceName.isBlank()) {
-            throw ApiException(400, "bad_request", "deviceName and pairingCode are required")
+            throw ApiException.localized(400, "bad_request", messageKey = "api.auth.pairBadRequest")
         }
         if (!pairing.tryConsume(body.pairingCode)) {
-            throw ApiException(401, "invalid_pairing_code", "pairing code invalid or expired")
+            throw ApiException.localized(401, "invalid_pairing_code", messageKey = "api.auth.invalidPairing")
         }
         val issued = tokens.issue()
         val device = deviceRepo.insert(
