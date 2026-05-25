@@ -26,6 +26,7 @@ fun Routing.buildRoutes(service: BuildService, hub: LogHub, projects: ProjectSer
                 id = row.id, projectId = row.projectId, variant = row.variant,
                 status = row.status, startedAt = row.startedAt ?: row.createdAt,
                 finishedAt = row.finishedAt, artifactId = row.artifactId, errorMessage = row.errorMessage,
+                gitBranch = row.gitBranch, gitSha = row.gitSha,
             ))
         }
         get("/api/projects/{projectId}/builds") {

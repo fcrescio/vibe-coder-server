@@ -75,7 +75,34 @@ object Builds : Table("builds") {
     val startedAt = varchar("started_at", 64).nullable()
     val finishedAt = varchar("finished_at", 64).nullable()
     val createdAt = varchar("created_at", 64)
+    /** v0.71.0 — Phase 51 #9 PR 별 빌드 비교용 git 메타데이터.
+        BuildService 가 enqueue 시 `git rev-parse HEAD` + `git symbolic-ref --short HEAD`
+        호출 결과 저장. nullable — git 미초기화 프로젝트 호환. */
+    val gitBranch = varchar("git_branch", 128).nullable()
+    val gitSha = varchar("git_sha", 64).nullable()
     override val primaryKey = PrimaryKey(id)
+}
+
+/** v0.71.0 — Phase 51 #3 Notification DB 영속화 (v0.68.0 in-memory queue 의 영구화). */
+object NotificationEvents : Table("notification_events") {
+    val id = varchar("id", 64)
+    /** null = legacy single-user bucket (`__legacy__`). */
+    val userId = varchar("user_id", 64)
+    val ts = varchar("ts", 64)
+    val kind = varchar("kind", 64)
+    val title = text("title")
+    val body = text("body").default("")
+    val deepLink = text("deep_link").nullable()
+    val projectId = varchar("project_id", 64).nullable()
+    /** Ack 시점 (null = unread). */
+    val ackedAt = varchar("acked_at", 64).nullable()
+    val createdAt = varchar("created_at", 64)
+    override val primaryKey = PrimaryKey(id)
+
+    init {
+        index(false, userId, ackedAt)   // unread list 빠른 조회
+        index(false, createdAt)         // retention prune (오래된 것 부터)
+    }
 }
 
 object Artifacts : Table("artifacts") {
@@ -318,4 +345,5 @@ object ProjectAcls : Table("project_acls") {
 val AllTables = arrayOf(
     AdminUsers, Devices, Projects, Builds, Artifacts, UploadedFiles, AuditLog, ConversationTurns,
     BuildSchedules, BuildWebhookSecrets, PushSubscriptions, WebauthnCredentials, ProjectAcls,
+    NotificationEvents,
 )

@@ -2,29 +2,35 @@ package com.siamakerlab.vibecoder.server.notify
 
 import com.siamakerlab.vibecoder.server.core.Clock
 import com.siamakerlab.vibecoder.server.core.Ids
+import com.siamakerlab.vibecoder.server.db.NotificationEvents
 import com.siamakerlab.vibecoder.shared.dto.NotificationEventDto
 import com.siamakerlab.vibecoder.shared.dto.NotificationKind
-import java.util.concurrent.ConcurrentHashMap
+import org.jetbrains.exposed.sql.SortOrder
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.deleteWhere
+import org.jetbrains.exposed.sql.insert
+import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.update
 
 /**
- * v0.68.0 — Phase 47. Polling-based notification system.
+ * v0.68.0 → v0.71.0 — Phase 47 + Phase 51 #3.
  *
- * In-memory event queue per user (process restart 시 잃음 — DB persistence 는 다음 cycle).
+ * Polling-based notification system. v0.71.0 부터 in-memory queue 에서 PG 영속화로 전환.
  * BuildService / ClaudeSessionManager 등이 [emit] 호출 → fan-out to all users.
  *
- * Why in-memory only (v0.68.0):
- *  - 알림은 본질적으로 ephemeral (몇 분 ~ 몇 시간 후 가치 없음).
- *  - 사용자가 process 재시작 후 못 본 알림은 next build/turn 시 다시 emit.
- *  - DB persistence 는 retention + indexing 비용 — 후속 cycle (v0.69.0+) 에서 PG 영속화.
+ * Persistence: `notification_events` 테이블 (Schemas.kt).
+ *  - 사용자별 max 500 (over-limit 시 가장 오래된 것 부터 ack 처리해서 list 에서 빠짐).
+ *  - 일정 주기 cron job 으로 30일 이상 ack 된 항목 hard delete (별도 cycle).
  *
- * Retention: per-user max [USER_MAX] = 500. 오래된 것 부터 자동 prune (FIFO).
- * Read tracking: ack 된 id 는 list 에서 제외 (delete from queue).
+ * 호환성: list/count/ack API 는 in-memory 와 동일 — 호출처 (NotificationRoutes) 변경 X.
  */
 class NotificationService(
     private val clock: Clock,
 ) {
-    /** userId → events. userId 가 null 인 경우 (legacy single-user) 는 BUCKET_LEGACY 키 사용. */
-    private val queues = ConcurrentHashMap<String, ArrayDeque<NotificationEventDto>>()
 
     companion object {
         const val USER_MAX = 500
@@ -32,15 +38,6 @@ class NotificationService(
         const val BUCKET_LEGACY = "__legacy__"
     }
 
-    /**
-     * 모든 사용자에게 fan-out. emitter 는 어떤 user 에게 보내야 하는지 알 필요 없음 —
-     * 본 함수가 admin/member/viewer 모두에게 broadcast.
-     *
-     * 호출자: BuildService (빌드 완료/실패), ClaudeSessionManager (turn 완료), ...
-     *
-     * Fan-out 대상 결정: NotificationService 는 user 리스트를 직접 모름 → 호출자가
-     * [userIds] 로 명시. 빈 list 면 `BUCKET_LEGACY` bucket 하나에만 push (single-user 호환).
-     */
     fun emit(
         kind: String,
         title: String,
@@ -49,49 +46,89 @@ class NotificationService(
         projectId: String? = null,
         userIds: List<String?> = emptyList(),
     ) {
-        val ev = NotificationEventDto(
-            id = Ids.taskId(),
-            ts = clock.nowIso(),
-            kind = kind,
-            title = title,
-            body = body,
-            deepLink = deepLink,
-            projectId = projectId,
-        )
+        val now = clock.nowIso()
         val targets = if (userIds.isEmpty()) listOf(BUCKET_LEGACY)
-        else userIds.map { it ?: BUCKET_LEGACY }
-        for (uid in targets.distinct()) {
-            val q = queues.getOrPut(uid) { ArrayDeque(64) }
-            synchronized(q) {
-                q.addLast(ev)
-                while (q.size > USER_MAX) q.removeFirst()
+        else userIds.map { it ?: BUCKET_LEGACY }.distinct()
+        transaction {
+            for (uid in targets) {
+                NotificationEvents.insert {
+                    it[id] = Ids.taskId()
+                    it[userId] = uid
+                    it[ts] = now
+                    it[NotificationEvents.kind] = kind
+                    it[NotificationEvents.title] = title
+                    it[NotificationEvents.body] = body
+                    it[NotificationEvents.deepLink] = deepLink
+                    it[NotificationEvents.projectId] = projectId
+                    it[createdAt] = now
+                }
+                // Retention: USER_MAX 초과 시 오래된 것 부터 ack 처리 (delete 는 별도 cron).
+                pruneOverCap(uid)
             }
         }
     }
 
-    /** 호출자가 자기 user 의 unread 만 조회. userId null 이면 [BUCKET_LEGACY]. */
-    fun list(userId: String?, limit: Int = 100): List<NotificationEventDto> {
+    /** unread 조회 (ack_at IS NULL). userId null = BUCKET_LEGACY. */
+    fun list(userId: String?, limit: Int = 100): List<NotificationEventDto> = transaction {
         val key = userId ?: BUCKET_LEGACY
-        val q = queues[key] ?: return emptyList()
-        return synchronized(q) { q.toList() }.takeLast(limit.coerceIn(1, USER_MAX))
+        NotificationEvents.selectAll().where {
+            (NotificationEvents.userId eq key) and NotificationEvents.ackedAt.isNull()
+        }
+            .orderBy(NotificationEvents.createdAt to SortOrder.ASC)
+            .limit(limit.coerceIn(1, USER_MAX))
+            .map { row ->
+                NotificationEventDto(
+                    id = row[NotificationEvents.id],
+                    ts = row[NotificationEvents.ts],
+                    kind = row[NotificationEvents.kind],
+                    title = row[NotificationEvents.title],
+                    body = row[NotificationEvents.body],
+                    deepLink = row[NotificationEvents.deepLink],
+                    projectId = row[NotificationEvents.projectId],
+                    read = false,
+                )
+            }
     }
 
-    fun count(userId: String?): Int {
+    fun count(userId: String?): Int = transaction {
         val key = userId ?: BUCKET_LEGACY
-        val q = queues[key] ?: return 0
-        return synchronized(q) { q.size }
+        NotificationEvents.selectAll().where {
+            (NotificationEvents.userId eq key) and NotificationEvents.ackedAt.isNull()
+        }.count().toInt()
     }
 
-    /** 사용자가 본 id 들 제거. 없는 id 는 무음 skip. */
+    /** 사용자가 본 id 들 ack 처리 (delete 가 아닌 ackedAt set — audit 보존). */
     fun ack(userId: String?, ids: Collection<String>) {
         if (ids.isEmpty()) return
         val key = userId ?: BUCKET_LEGACY
-        val q = queues[key] ?: return
-        val toRemove = ids.toHashSet()
-        synchronized(q) {
-            val keeper = q.filterNot { it.id in toRemove }
-            q.clear()
-            q.addAll(keeper)
+        val now = clock.nowIso()
+        transaction {
+            ids.forEach { eid ->
+                NotificationEvents.update({
+                    (NotificationEvents.id eq eid) and (NotificationEvents.userId eq key)
+                }) {
+                    it[ackedAt] = now
+                }
+            }
+        }
+    }
+
+    /** USER_MAX 초과 시 가장 오래된 unread 를 ack 처리 (다음 list 에서 제외). */
+    private fun pruneOverCap(uid: String) {
+        val unread = NotificationEvents.selectAll().where {
+            (NotificationEvents.userId eq uid) and NotificationEvents.ackedAt.isNull()
+        }.count().toInt()
+        if (unread <= USER_MAX) return
+        val excess = unread - USER_MAX
+        val oldest = NotificationEvents.selectAll().where {
+            (NotificationEvents.userId eq uid) and NotificationEvents.ackedAt.isNull()
+        }
+            .orderBy(NotificationEvents.createdAt to SortOrder.ASC)
+            .limit(excess)
+            .map { it[NotificationEvents.id] }
+        val ackTs = clock.nowIso()
+        oldest.forEach { eid ->
+            NotificationEvents.update({ NotificationEvents.id eq eid }) { it[ackedAt] = ackTs }
         }
     }
 

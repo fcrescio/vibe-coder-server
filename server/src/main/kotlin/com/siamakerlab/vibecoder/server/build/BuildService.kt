@@ -37,7 +37,10 @@ class BuildService(
         val row = projects.rowOrThrow(projectId)
         val buildId = Ids.buildId()
         val logFile = workspace.buildLogFile(projectId, buildId)
-        val build = buildRepo.create(buildId, projectId, "debug", logFile.toString())
+        // v0.71.0 — Phase 51 #9: git 메타데이터 수집 (실패 시 graceful — null).
+        val (branch, sha) = collectGitMetadata(java.nio.file.Path.of(row.sourcePath))
+        val build = buildRepo.create(buildId, projectId, "debug", logFile.toString(),
+            gitBranch = branch, gitSha = sha)
 
         queue.submit(
             projectId = projectId, taskId = buildId,
@@ -89,7 +92,9 @@ class BuildService(
         val row = projects.rowOrThrow(projectId)
         val buildId = Ids.buildId()
         val logFile = workspace.buildLogFile(projectId, buildId)
-        val build = buildRepo.create(buildId, projectId, "debug", logFile.toString())
+        val (branch, sha) = collectGitMetadata(java.nio.file.Path.of(row.sourcePath))
+        val build = buildRepo.create(buildId, projectId, "debug", logFile.toString(),
+            gitBranch = branch, gitSha = sha)
         buildRepo.setStatus(buildId, TaskStatus.RUNNING)
         val logger = TaskLogger(buildId, logFile, hub, clock)
         try {
@@ -258,5 +263,28 @@ class BuildService(
         id = id, projectId = projectId, variant = variant, status = status,
         startedAt = startedAt ?: createdAt, finishedAt = finishedAt,
         artifactId = artifactId, errorMessage = errorMessage,
+        gitBranch = gitBranch, gitSha = gitSha,
     )
+
+    /**
+     * v0.71.0 — Phase 51 #9: 빌드 시작 시점의 git branch/sha 수집. 실패 graceful.
+     * `.git` 없는 프로젝트 / Git CLI 미설치 / detached HEAD 모두 null fallback.
+     * Timeout 3s — 빌드 enqueue 가 git hung 으로 막히지 않게.
+     */
+    private fun collectGitMetadata(sourcePath: java.nio.file.Path): Pair<String?, String?> {
+        if (!java.nio.file.Files.isDirectory(sourcePath.resolve(".git"))) return null to null
+        val branch = runGitCmd(sourcePath, listOf("git", "symbolic-ref", "--short", "HEAD"))
+            ?: runGitCmd(sourcePath, listOf("git", "rev-parse", "--abbrev-ref", "HEAD"))
+        val sha = runGitCmd(sourcePath, listOf("git", "rev-parse", "HEAD"))
+        return branch?.takeIf { it.isNotBlank() && it != "HEAD" } to sha?.takeIf { it.isNotBlank() }
+    }
+
+    private fun runGitCmd(dir: java.nio.file.Path, cmd: List<String>): String? = try {
+        val pb = ProcessBuilder(cmd).directory(dir.toFile()).redirectErrorStream(true)
+        val proc = pb.start()
+        if (!proc.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) {
+            proc.destroyForcibly(); null
+        } else if (proc.exitValue() != 0) null
+        else proc.inputStream.bufferedReader().readText().trim().lines().firstOrNull()
+    } catch (e: Throwable) { null }
 }

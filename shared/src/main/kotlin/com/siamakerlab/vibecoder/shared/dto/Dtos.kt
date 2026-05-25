@@ -193,6 +193,9 @@ data class BuildDto(
     val finishedAt: String? = null,
     val artifactId: String? = null,
     val errorMessage: String? = null,
+    /** v0.71.0 — Phase 51 #9: git branch / sha (PR 단위 비교용). null = 미수집. */
+    val gitBranch: String? = null,
+    val gitSha: String? = null,
 )
 
 @Serializable

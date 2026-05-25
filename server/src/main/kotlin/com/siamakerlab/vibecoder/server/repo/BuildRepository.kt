@@ -26,11 +26,17 @@ data class BuildRow(
     val startedAt: String?,
     val finishedAt: String?,
     val createdAt: String,
+    /** v0.71.0 — Phase 51 #9 PR 별 빌드 비교용 git 메타데이터. null = git 정보 미수집. */
+    val gitBranch: String? = null,
+    val gitSha: String? = null,
 )
 
 class BuildRepository(private val clock: Clock) {
 
-    fun create(id: String, projectId: String, variant: String, logPath: String): BuildRow = transaction {
+    fun create(
+        id: String, projectId: String, variant: String, logPath: String,
+        gitBranch: String? = null, gitSha: String? = null,
+    ): BuildRow = transaction {
         val now = clock.nowIso()
         Builds.insert {
             it[Builds.id] = id
@@ -39,8 +45,31 @@ class BuildRepository(private val clock: Clock) {
             it[status] = TaskStatus.PENDING.name
             it[Builds.logPath] = logPath
             it[createdAt] = now
+            it[Builds.gitBranch] = gitBranch
+            it[Builds.gitSha] = gitSha
         }
-        BuildRow(id, projectId, variant, TaskStatus.PENDING, logPath, null, null, null, null, now)
+        BuildRow(id, projectId, variant, TaskStatus.PENDING, logPath, null, null, null, null, now,
+            gitBranch = gitBranch, gitSha = gitSha)
+    }
+
+    /**
+     * v0.71.0 — Phase 51 #9: 같은 branch 의 직전 SUCCESS 빌드 (PR-level 비교용).
+     * branch null/blank 이면 [previousSuccessfulBefore] 와 동일 (전체 history).
+     */
+    fun previousSuccessfulInBranch(projectId: String, branch: String?, beforeCreatedAt: String): BuildRow? {
+        if (branch.isNullOrBlank()) return previousSuccessfulBefore(projectId, beforeCreatedAt)
+        return transaction {
+            Builds.selectAll().where {
+                (Builds.projectId eq projectId) and
+                    (Builds.status eq TaskStatus.SUCCESS.name) and
+                    (Builds.createdAt less beforeCreatedAt) and
+                    (Builds.gitBranch eq branch)
+            }
+                .orderBy(Builds.createdAt to SortOrder.DESC)
+                .limit(1)
+                .map { it.toRow() }
+                .singleOrNull()
+        }
     }
 
     fun setStatus(id: String, status: TaskStatus, errorMessage: String? = null) = transaction {
@@ -121,5 +150,7 @@ class BuildRepository(private val clock: Clock) {
         startedAt = this[Builds.startedAt],
         finishedAt = this[Builds.finishedAt],
         createdAt = this[Builds.createdAt],
+        gitBranch = this[Builds.gitBranch],
+        gitSha = this[Builds.gitSha],
     )
 }
