@@ -52,6 +52,7 @@ import com.siamakerlab.vibecoder.server.claude.jsonUsageRoutes
 import com.siamakerlab.vibecoder.server.projects.jsonProjectZipRoutes
 import com.siamakerlab.vibecoder.server.projects.projectTemplateRoutes
 import com.siamakerlab.vibecoder.server.admin.jsonAdminRoutes
+import com.siamakerlab.vibecoder.server.admin.toolsRoutes
 import com.siamakerlab.vibecoder.server.notify.notificationRoutes
 import com.siamakerlab.vibecoder.server.emulator.emulatorRoutes
 import com.siamakerlab.vibecoder.server.emulator.vncProxyRoutes
@@ -398,6 +399,8 @@ fun Application.module(ctx: ServerContext) {
         projectTemplateRoutes()
         // v0.68.0 — Phase 47 polling-based notification (Android Group C).
         notificationRoutes(ctx.notificationService)
+        // v0.69.0 — Phase 48 UI 리뉴얼: /tools hub.
+        toolsRoutes(adminDeps)
         // v0.67.0 — Phase 46 Group B: admin / 운영 JSON API (Bearer, admin only).
         jsonAdminRoutes(
             users = ctx.adminUserRepo,

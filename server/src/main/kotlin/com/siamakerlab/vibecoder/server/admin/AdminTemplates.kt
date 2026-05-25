@@ -37,6 +37,10 @@ object AdminTemplates {
     ): String {
         val nav = if (showNav) navHtml(currentPath, username, csrf) else ""
         val layoutCls = if (showNav) "layout" else "layout no-nav"
+        val maybeTabs =
+            if (showNav && SettingsNav.topLevelOf(currentPath) == "settings")
+                SettingsNav.tabBar(currentPath)
+            else ""
         // v0.12.4 — JS 가 ajax POST 시 CSRF 토큰을 첨부할 수 있도록 meta + global.
         // body 가 아닌 head 에 있어야 inline script 보다 먼저 실행됨.
         val csrfMeta = if (csrf != null)
@@ -68,6 +72,7 @@ object AdminTemplates {
   <div class="$layoutCls">
     $nav
     <main class="content">
+      $maybeTabs
       $body
     </main>
   </div>
@@ -77,15 +82,16 @@ object AdminTemplates {
     }
 
     private fun navHtml(currentPath: String, username: String?, csrf: String?): String {
+        val activeTop = SettingsNav.topLevelOf(currentPath)
         fun link(href: String, label: String, key: String): String {
-            // 루트("/") 는 정확히 일치할 때만 active. 그 외는 prefix 매칭.
-            val cls = when {
-                href == "/" && (currentPath == "/" || currentPath.isBlank()) -> "active"
-                href != "/" && currentPath.startsWith(href) -> "active"
-                else -> ""
-            }
+            val cls = if (activeTop == key) "active" else ""
             return """<a href="${esc(href)}" class="${esc(cls)}" data-key="${esc(key)}">${esc(label)}</a>"""
         }
+        val userBoxHtml: String = if (username != null) {
+            val u = esc(username)
+            "<div class=\"user\">$u</div>"
+        } else ""
+        val csrfInput = CsrfTokens.hiddenInput(csrf)
         return """
 <nav class="sidebar">
   <div class="brand" style="display:flex;align-items:center;gap:10px">
@@ -96,33 +102,14 @@ object AdminTemplates {
   <div class="nav-links">
     ${link("/", "대시보드", "dashboard")}
     ${link("/projects", "프로젝트", "projects")}
-    ${link("/multi-console", "Multi-console", "multi-console")}
     ${link("/chat", "Chat", "chat")}
-    ${link("/prompts", "프롬프트", "prompts")}
-    ${link("/env-setup", "빌드환경", "env-setup")}
-    ${link("/agents", "Agents", "agents")}
-    ${link("/emulator", "Emulator", "emulator")}
+    ${link("/tools", "도구", "tools")}
     ${link("/settings", "설정", "settings")}
-    ${link("/settings/cache", "빌드 캐시", "cache")}
-    ${link("/backup", "백업", "backup")}
-    ${link("/devices", "디바이스", "devices")}
-    ${link("/users", "사용자", "users")}
-    ${link("/audit", "감사 로그", "audit")}
-    ${link("/usage", "Claude 사용량", "usage")}
-    ${link("/logs", "빌드 로그 검색", "logs")}
-    ${link("/code-search", "코드 검색", "code-search")}
-    ${link("/history", "대화 검색", "history")}
-    ${link("/settings/email", "이메일 알림", "email")}
-    ${link("/settings/webhook", "Webhook 알림", "webhook")}
-    ${link("/settings/push", "Web Push", "push")}
-    ${link("/password", "비밀번호", "password")}
-    ${link("/2fa", "2단계 인증", "2fa")}
-    ${link("/webauthn", "Passkey (WebAuthn)", "webauthn")}
   </div>
   <div class="user-box">
-    ${if (username != null) "<div class=\"user\">${esc(username)}</div>" else ""}
+    $userBoxHtml
     <form method="post" action="/logout">
-      ${CsrfTokens.hiddenInput(csrf)}
+      $csrfInput
       <button type="submit" class="logout">로그아웃</button>
     </form>
   </div>
