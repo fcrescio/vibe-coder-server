@@ -43,9 +43,16 @@ RUN --mount=type=cache,target=/root/.gradle \
     ./gradlew -PskipAndroidModule=true :server:installDist --no-daemon -x test
 
 # ------------------------------------------------------------------------------
-# Stage 2: 런타임 (슬림) — v0.38.0 Ubuntu 26.04 LTS rebase
+# Stage 2: 런타임 — v0.38.0 Ubuntu 26.04 LTS rebase, v0.68.1 JDK 로 변경.
+#
+# v0.68.1 hotfix: Android 디버그 빌드 시 Gradle Java toolchain 이
+# `/opt/java/openjdk` 를 잡으면서 JRE-only 라 javac 가 없어 컴파일 실패
+# (`Toolchain installation '/opt/java/openjdk' does not provide the required
+# capabilities: [JAVA_COMPILER]`). runtime 도 JDK 로 통일 (~130MB 증가) —
+# 단일 사용자 LAN 도구라 이미지 크기보다 빌드 안정성 우선.
+# 빌더 stage 는 이미 jdk-resolute 라 추가 다운로드 없음.
 # ------------------------------------------------------------------------------
-FROM eclipse-temurin:17-jre-resolute AS runtime
+FROM eclipse-temurin:17-jdk-resolute AS runtime
 
 LABEL org.opencontainers.image.title="Vibe Coder Server"
 LABEL org.opencontainers.image.description="Ktor 기반 vibe-coder 서버 (LAN 1인 개발 도구) · Ubuntu 26.04 LTS"
