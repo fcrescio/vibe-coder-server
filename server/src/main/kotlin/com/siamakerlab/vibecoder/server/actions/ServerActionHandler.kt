@@ -47,7 +47,8 @@ class ServerActionHandler(
 
     private suspend fun runServer(projectId: String, key: String) {
         if (key !in WHITELIST) {
-            throw ApiException(403, "action_not_allowed", "serverAction '$key' is not whitelisted")
+            throw ApiException.localized(403, "action_not_allowed",
+                messageKey = "api.serverAction.notAllowed", args = listOf(key))
         }
         val row = projects.rowOrThrow(projectId)
         when (key) {
@@ -70,7 +71,8 @@ class ServerActionHandler(
                 emitSystem(projectId, "git_log",
                     gitLog.entries.take(5).joinToString("\n") { "${it.sha.take(7)} ${it.message}" }.ifBlank { "no log" })
             }
-            else -> throw ApiException(500, "action_not_implemented", key)
+            else -> throw ApiException.localized(500, "action_not_implemented",
+                messageKey = "api.serverAction.notImplemented", args = listOf(key))
         }
     }
 
@@ -84,9 +86,7 @@ class ServerActionHandler(
         //   - 세션 reset: `/api/projects/{id}/claude/console/new` (서버 측 process 재시작).
         //
         // 사용자 정의 prompt-기반 actions (`actions.yml` 의 kind=prompt) 는 영향 없음 — 본 핸들러는 kind=slash 만.
-        throw ApiException(410, "slash_not_supported",
-            "Slash command '/$command' is not supported in non-interactive streaming mode. " +
-                "Use the status panel or 'New session' button instead.")
+        throw ApiException.localized(410, "slash_not_supported", messageKey = "api.serverAction.slashNotSupported")
     }
 
     private suspend fun sendPrompt(projectId: String, prompt: String) {

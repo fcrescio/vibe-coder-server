@@ -32,7 +32,7 @@ fun Routing.artifactRoutes(
             val projectId = call.parameters["projectId"]!!
             val artifactId = call.parameters["artifactId"]!!
             val row = repo.get(projectId, artifactId)
-                ?: throw ApiException(404, "artifact_not_found", artifactId)
+                ?: throw ApiException.localized(404, "artifact_not_found", messageKey = "api.common.artifactNotFound", args = listOf(artifactId))
             call.respond(service.toDto(row))
         }
         // v0.70.0 — Phase 49 #14: APK 시그너처 on-demand verify.
@@ -46,7 +46,7 @@ fun Routing.artifactRoutes(
             val projectId = call.parameters["projectId"]!!
             val artifactId = call.parameters["artifactId"]!!
             val row = repo.get(projectId, artifactId)
-                ?: throw ApiException(404, "artifact_not_found", artifactId)
+                ?: throw ApiException.localized(404, "artifact_not_found", messageKey = "api.common.artifactNotFound", args = listOf(artifactId))
             val file = Path.of(row.filePath)
             workspace.ensureUnderWorkspace(file)
             call.response.header(

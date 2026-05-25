@@ -38,11 +38,11 @@ fun Routing.projectRoutes(service: ProjectService) {
         get("/api/projects/{projectId}") {
             val p = call.requireDevice()
             val id = call.parameters["projectId"]
-                ?: throw com.siamakerlab.vibecoder.server.error.ApiException(400, "bad_request", "projectId")
+                ?: throw com.siamakerlab.vibecoder.server.error.ApiException.localized(400, "bad_request", messageKey = "api.common.projectIdRequired")
             val uid = p.device.userId
             if (uid != null && !service.canUserAccess(uid, p.isAdmin, id)) {
-                throw com.siamakerlab.vibecoder.server.error.ApiException(
-                    403, "project_forbidden", "project not in your ACL",
+                throw com.siamakerlab.vibecoder.server.error.ApiException.localized(
+                    403, "project_forbidden", messageKey = "api.auth.projectForbidden",
                 )
             }
             call.respond(service.get(id))
@@ -51,7 +51,7 @@ fun Routing.projectRoutes(service: ProjectService) {
         delete("/api/projects/{projectId}") {
             call.requireApiWrite()
             val id = call.parameters["projectId"]
-                ?: throw com.siamakerlab.vibecoder.server.error.ApiException(400, "bad_request", "projectId")
+                ?: throw com.siamakerlab.vibecoder.server.error.ApiException.localized(400, "bad_request", messageKey = "api.common.projectIdRequired")
             val removed = service.delete(id)
             call.respond(if (removed) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
         }

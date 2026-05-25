@@ -118,10 +118,9 @@ fun Routing.mcpRoutes(
                 }
             }
         } catch (e: Throwable) {
-            throw ApiException(400, "multipart", "multipart parse failed: ${e.message}")
+            throw ApiException.localized(400, "multipart", messageKey = "api.envSetup.multipartParse", args = listOf(e.message ?: ""))
         }
-        val data = bytes ?: throw ApiException(400, "empty",
-            "file part is empty (any input name allowed).")
+        val data = bytes ?: throw ApiException.localized(400, "empty", messageKey = "api.envSetup.emptyFile")
         val path = mcp.uploadConfigFile(mcpId, fieldKey, data, fileName)
         log.info { "MCP secret file by ${sess.username}: $mcpId/$fieldKey → $path" }
         // ajax 호출이므로 JSON 응답.

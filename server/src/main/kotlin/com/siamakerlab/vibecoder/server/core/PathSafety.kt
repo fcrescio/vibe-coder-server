@@ -25,16 +25,16 @@ object PathSafety {
         //   - Smuggle past validators that only look at printable parts
         //   - Break native path APIs on some platforms (e.g., NUL terminator)
         if (raw.any { it.code < 0x20 || it.code == 0x7F }) {
-            throw ApiException(400, "invalid_path", "path contains control byte")
+            throw ApiException.localized(400, "invalid_path", messageKey = "api.pathSafety.controlByte")
         }
         // Reject absolute-looking strings to avoid `Path.resolve` swallowing them.
         if (raw.startsWith('/') || raw.startsWith('\\') || hasWindowsDriveLetter(raw)) {
-            throw ApiException(403, "path_traversal", "absolute paths are not allowed")
+            throw ApiException.localized(403, "path_traversal", messageKey = "api.pathSafety.absoluteNotAllowed")
         }
         val absRoot = root.toAbsolutePath().normalize()
         val candidate = absRoot.resolve(raw).normalize().absolute()
         if (!candidate.startsWith(absRoot)) {
-            throw ApiException(403, "path_traversal", "$raw escapes workspace")
+            throw ApiException.localized(403, "path_traversal", messageKey = "api.pathSafety.escapeWorkspace", args = listOf(raw))
         }
         return candidate
     }
@@ -56,14 +56,11 @@ object PathSafety {
         val r = workspaceRoot.toAbsolutePath().normalize()
         val c = absolute.toAbsolutePath().normalize()
         if (!c.startsWith(r)) {
-            throw ApiException(
-                403,
-                "path_outside_workspace",
-                "$c is not inside workspaceRoot=$r"
-            )
+            throw ApiException.localized(403, "path_outside_workspace",
+                messageKey = "api.pathSafety.notUnderWorkspace", args = listOf(c.toString()))
         }
         if (c.notExists()) {
-            throw ApiException(404, "path_not_found", "$c does not exist")
+            throw ApiException.localized(404, "path_not_found", messageKey = "api.pathSafety.notExist", args = listOf(c.toString()))
         }
         return c
     }

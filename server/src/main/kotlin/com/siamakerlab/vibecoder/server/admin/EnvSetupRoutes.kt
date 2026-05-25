@@ -66,7 +66,7 @@ fun Routing.envSetupRoutes(
         requireCsrf()
         val id = call.parameters["componentId"]!!
         val comp = SetupComponent.byId(id)
-            ?: throw ApiException(404, "unknown_component", "Unknown component: $id")
+            ?: throw ApiException.localized(404, "unknown_component", messageKey = "api.envSetup.unknownComponent", args = listOf(id))
         val taskId = runCatching { setupService.spawnInstall(comp) }.getOrElse { e ->
             val msg = (e as? ApiException)?.message ?: e.message ?: Messages.t(sess.language, "env.error.installStartFailed")
             call.respondText(

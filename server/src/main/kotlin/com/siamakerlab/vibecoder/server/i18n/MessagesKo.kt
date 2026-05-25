@@ -921,6 +921,42 @@ internal object MessagesKo {
         // PathSafety + others
         "api.pathSafety.escapeAttempt" to "경로가 워크스페이스를 벗어납니다: %s",
         "api.pathSafety.outsideWorkspace" to "경로가 워크스페이스 밖입니다: %s",
+        // ── v0.95.0 — Phase 67 Wave 4 (final cleanup) ───────────────────
+        // PathSafety
+        "api.pathSafety.controlByte" to "경로에 제어 바이트가 포함되어 있습니다",
+        "api.pathSafety.absoluteNotAllowed" to "절대 경로는 허용되지 않습니다",
+        "api.pathSafety.escapeWorkspace" to "%s 가 워크스페이스를 벗어납니다",
+        "api.pathSafety.notUnderWorkspace" to "%s 는 워크스페이스 안에 있지 않습니다",
+        "api.pathSafety.notExist" to "%s 가 존재하지 않습니다",
+        // EnvSetupApiRoutes + EnvSetupRoutes + EnvSetupService
+        "api.envSetup.unknownComponent" to "알 수 없는 컴포넌트: %s",
+        "api.envSetup.multipartParse" to "multipart 파싱 실패: %s",
+        "api.envSetup.emptyFile" to "업로드된 파일이 비어 있습니다",
+        "api.envSetup.manualInstallOnly" to "%s 는 자동 설치가 불가능합니다 (수동 셋업 필요)",
+        // ProjectActionRoutes
+        "api.projectAction.bodyRequired" to "요청 본문이 필요합니다",
+        "api.projectAction.notFound" to "액션 '%s' 를 찾을 수 없습니다",
+        "api.projectAction.dispatchFailed" to "액션 dispatch 실패: %s",
+        // GitWriter
+        "api.gitWriter.notARepo" to "%s 는 git repo 가 아닙니다.",
+        "api.gitWriter.commitFailed" to "git commit 실패: %s",
+        "api.gitWriter.spawnFail" to "프로세스 시작 실패: %s",
+        "api.gitWriter.timeout" to "git %s 30초 초과",
+        // GitCredentialStore
+        "api.gitCredential.emptyHost" to "host 가 비어 있습니다 (예: github.com)",
+        "api.gitCredential.shortToken" to "token 은 최소 %d자 이상이어야 합니다",
+        // KeystoreGenerator
+        "api.keystore.bodyRequired" to "키스토어 정보가 필요합니다",
+        "api.keystore.timeout" to "keytool 이 60초 이내 완료되지 않았습니다",
+        "api.keystore.failed" to "keytool 실패 (exit %d): %s",
+        // ServerActionHandler
+        "api.serverAction.notAllowed" to "serverAction '%s' 는 허용되지 않습니다",
+        "api.serverAction.notImplemented" to "%s 는 구현되지 않았습니다",
+        "api.serverAction.slashNotSupported" to "non-interactive 콘솔 모드에서는 slash command 가 지원되지 않습니다",
+        // Common simple cases shared across small routes
+        "api.common.projectIdRequired" to "projectId 가 필요합니다",
+        "api.common.projectNotFound" to "프로젝트 '%s' 를 찾을 수 없습니다",
+        "api.common.artifactNotFound" to "아티팩트 '%s' 를 찾을 수 없습니다",
 
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude 인증",

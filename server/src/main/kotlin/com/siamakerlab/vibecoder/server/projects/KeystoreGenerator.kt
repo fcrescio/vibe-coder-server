@@ -41,11 +41,9 @@ class KeystoreGenerator(private val workspace: WorkspacePath) {
 
         if (keystoreFile.exists()) {
             // Don't silently overwrite — caller can decide policy via a future flag.
-            throw ApiException(
-                409,
-                "keystore_already_exists",
-                "$keystoreFile already exists. Delete it before generating a new one.",
-            )
+            throw ApiException.localized(409, "keystore_already_exists",
+                messageKey = "api.keystore.bodyRequired",
+                args = listOf(keystoreFile.toString()))
         }
 
         val dname = req.dname ?: DEFAULT_DNAME
@@ -69,15 +67,13 @@ class KeystoreGenerator(private val workspace: WorkspacePath) {
         val finished = process.waitFor(60, TimeUnit.SECONDS)
         if (!finished) {
             process.destroyForcibly()
-            throw ApiException(500, "keystore_timeout", "keytool did not finish within 60s")
+            throw ApiException.localized(500, "keystore_timeout", messageKey = "api.keystore.timeout")
         }
         if (process.exitValue() != 0) {
             log.warn { "keytool failed (exit=${process.exitValue()}): $output" }
-            throw ApiException(
-                500,
-                "keystore_generation_failed",
-                "keytool exited ${process.exitValue()}: ${output.lines().take(3).joinToString(" | ")}",
-            )
+            throw ApiException.localized(500, "keystore_generation_failed",
+                messageKey = "api.keystore.failed",
+                args = listOf(process.exitValue(), output.lines().take(3).joinToString(" | ")))
         }
 
         // Properties file mirrors what an Android Gradle script would read.

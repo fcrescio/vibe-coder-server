@@ -66,7 +66,7 @@ fun Routing.jsonHistoryRoutes(
             call.requireProjectAcl(projects, pid)
             // 존재 검사 — 모르는 projectId 면 404.
             runCatching { projects.get(pid) }.getOrElse {
-                throw ApiException(404, "project_not_found", "project '$pid' not found")
+                throw ApiException.localized(404, "project_not_found", messageKey = "api.common.projectNotFound", args = listOf(pid))
             }
             call.respond(call.loadHistoryPage(repo,pid))
         }
@@ -126,7 +126,7 @@ fun Routing.jsonHistoryRoutes(
                 part.dispose()
             }
             val body = jsonText
-                ?: throw ApiException(400, "empty", "multipart 파일 part 가 비어 있습니다.")
+                ?: throw ApiException.localized(400, "empty", messageKey = "api.envSetup.emptyFile")
             val result = exportService.importToProject(pid, body, dryRun = dryRun)
             call.respond(HistoryImportResponseDto(
                 accepted = result.accepted,

@@ -37,11 +37,11 @@ fun Routing.jsonProjectZipRoutes(
         // ApiPath.projectZipJson(...) 는 client 호출용 (pathSeg encoding).
         get("/api/projects/{projectId}/zip") {
             val pid = call.parameters["projectId"]
-                ?: throw ApiException(400, "bad_request", "projectId is required")
+                ?: throw ApiException.localized(400, "bad_request", messageKey = "api.common.projectIdRequired")
             call.requireProjectAcl(projects, pid)
             // 존재 검사 — 모르는 projectId 면 404.
             runCatching { projects.get(pid) }.getOrElse {
-                throw ApiException(404, "project_not_found", "project '$pid' not found")
+                throw ApiException.localized(404, "project_not_found", messageKey = "api.common.projectNotFound", args = listOf(pid))
             }
             val safeName = pid.replace(Regex("[^A-Za-z0-9._-]"), "_")
             val ts = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")

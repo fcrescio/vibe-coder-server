@@ -385,8 +385,8 @@ class EnvSetupService(
      */
     fun spawnInstall(c: SetupComponent): String {
         val subcmd = c.doctorCmd
-            ?: throw ApiException(400, "manual_install_only",
-                "${c.displayName} 는 자동 설치를 지원하지 않습니다 (OAuth 인터랙티브 등).")
+            ?: throw ApiException.localized(400, "manual_install_only",
+                messageKey = "api.envSetup.manualInstallOnly", args = listOf(c.displayName))
         val taskId = Ids.taskId()
         lastTask[c] = taskId
         submitDoctor(taskId, label = c.displayName, steps = listOf(subcmd))

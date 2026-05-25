@@ -19,7 +19,7 @@ fun Routing.buildRoutes(service: BuildService, hub: LogHub, projects: ProjectSer
     authenticate(AUTH_BEARER) {
         post("/api/projects/{projectId}/build/debug") {
             call.requireApiWrite()
-            val projectId = call.parameters["projectId"] ?: throw ApiException(400, "bad_request", "projectId")
+            val projectId = call.parameters["projectId"] ?: throw ApiException.localized(400, "bad_request", messageKey = "api.common.projectIdRequired")
             call.requireProjectAcl(projects, projectId)
             val row = service.enqueueDebug(projectId, hub)
             call.respond(HttpStatusCode.Accepted, BuildDto(
@@ -30,7 +30,7 @@ fun Routing.buildRoutes(service: BuildService, hub: LogHub, projects: ProjectSer
             ))
         }
         get("/api/projects/{projectId}/builds") {
-            val projectId = call.parameters["projectId"] ?: throw ApiException(400, "bad_request", "projectId")
+            val projectId = call.parameters["projectId"] ?: throw ApiException.localized(400, "bad_request", messageKey = "api.common.projectIdRequired")
             call.requireProjectAcl(projects, projectId)
             call.respond(service.list(projectId))
         }

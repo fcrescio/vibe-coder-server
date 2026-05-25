@@ -944,6 +944,42 @@ internal object MessagesEn {
         // PathSafety + others (will reuse api.console.projectIdRequired)
         "api.pathSafety.escapeAttempt" to "Path escapes workspace: %s",
         "api.pathSafety.outsideWorkspace" to "Path is outside workspace: %s",
+        // ── v0.95.0 — Phase 67 Wave 4 (final cleanup) ───────────────────
+        // PathSafety
+        "api.pathSafety.controlByte" to "path contains control byte",
+        "api.pathSafety.absoluteNotAllowed" to "absolute paths are not allowed",
+        "api.pathSafety.escapeWorkspace" to "%s escapes workspace",
+        "api.pathSafety.notUnderWorkspace" to "%s is not under the workspace",
+        "api.pathSafety.notExist" to "%s does not exist",
+        // EnvSetupApiRoutes + EnvSetupRoutes + EnvSetupService
+        "api.envSetup.unknownComponent" to "Unknown component: %s",
+        "api.envSetup.multipartParse" to "multipart parse failed: %s",
+        "api.envSetup.emptyFile" to "uploaded file is empty",
+        "api.envSetup.manualInstallOnly" to "%s cannot be auto-installed (manual setup required)",
+        // ProjectActionRoutes
+        "api.projectAction.bodyRequired" to "request body is required",
+        "api.projectAction.notFound" to "Action '%s' not found",
+        "api.projectAction.dispatchFailed" to "Action dispatch failed: %s",
+        // GitWriter
+        "api.gitWriter.notARepo" to "%s is not a git repository.",
+        "api.gitWriter.commitFailed" to "git commit failed: %s",
+        "api.gitWriter.spawnFail" to "Failed to spawn process: %s",
+        "api.gitWriter.timeout" to "git %s exceeded 30s",
+        // GitCredentialStore
+        "api.gitCredential.emptyHost" to "host is empty (e.g. github.com)",
+        "api.gitCredential.shortToken" to "token must be at least %d characters",
+        // KeystoreGenerator
+        "api.keystore.bodyRequired" to "keystore body is required",
+        "api.keystore.timeout" to "keytool did not finish within 60s",
+        "api.keystore.failed" to "keytool failed (exit %d): %s",
+        // ServerActionHandler
+        "api.serverAction.notAllowed" to "serverAction '%s' is not whitelisted",
+        "api.serverAction.notImplemented" to "%s is not implemented",
+        "api.serverAction.slashNotSupported" to "slash commands are not supported in non-interactive console mode",
+        // Common simple cases shared across small routes
+        "api.common.projectIdRequired" to "projectId is required",
+        "api.common.projectNotFound" to "project '%s' not found",
+        "api.common.artifactNotFound" to "Artifact '%s' not found",
 
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude authentication",

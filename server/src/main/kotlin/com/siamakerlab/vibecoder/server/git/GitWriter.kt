@@ -50,7 +50,7 @@ class GitWriter {
         // 0) 현재 branch 확인
         val branch = run(source, listOf("git", "rev-parse", "--abbrev-ref", "HEAD"), sb)
             .trim().ifBlank {
-                throw ApiException(500, "git_not_a_repo", "$source 는 git repo 가 아닙니다.")
+                throw ApiException.localized(500, "git_not_a_repo", messageKey = "api.gitWriter.notARepo", args = listOf(source.toString()))
             }
 
         // 1) git add
@@ -102,11 +102,9 @@ class GitWriter {
         val out = StringBuilder()
         val exit = runWithExit(source, cmd, log, env, out)
         if (exit != 0 && !allowFail) {
-            throw ApiException(
-                500, "git_failed",
-                "git ${cmd.drop(1).joinToString(" ")} exit $exit (cwd=$source). " +
-                    "Output:\n${out.toString().take(2000)}",
-            )
+            throw ApiException.localized(500, "git_failed",
+                messageKey = "api.gitWriter.commitFailed",
+                args = listOf("git ${cmd.drop(1).joinToString(" ")} exit $exit (cwd=$source)\n${out.toString().take(2000)}"))
         }
         return out.toString()
     }
@@ -124,12 +122,13 @@ class GitWriter {
         val proc = try {
             pb.start()
         } catch (e: Throwable) {
-            throw ApiException(500, "spawn_fail", "프로세스 시작 실패: ${e.message}")
+            throw ApiException.localized(500, "spawn_fail", messageKey = "api.gitWriter.spawnFail", args = listOf(e.message ?: ""))
         }
         val output = proc.inputStream.bufferedReader(Charsets.UTF_8).readText()
         if (!proc.waitFor(30, TimeUnit.SECONDS)) {
             proc.destroyForcibly()
-            throw ApiException(504, "git_timeout", "git ${cmd.drop(1).joinToString(" ")} 30초 초과")
+            throw ApiException.localized(504, "git_timeout",
+                messageKey = "api.gitWriter.timeout", args = listOf(cmd.drop(1).joinToString(" ")))
         }
         if (output.isNotEmpty()) log.append(output)
         capture?.append(output)

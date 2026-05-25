@@ -77,7 +77,7 @@ fun Routing.envSetupApiRoutes(
             call.requireApiAdmin()
             val id = call.parameters["componentId"]!!
             val comp = SetupComponent.byId(id)
-                ?: throw ApiException(404, "unknown_component", "Unknown component: $id")
+                ?: throw ApiException.localized(404, "unknown_component", messageKey = "api.envSetup.unknownComponent", args = listOf(id))
             val taskId = envSetup.spawnInstall(comp)
             call.respond(EnvSetupTaskDto(taskId))
         }
@@ -99,10 +99,9 @@ fun Routing.envSetupApiRoutes(
                     }
                 }
             } catch (e: Throwable) {
-                throw ApiException(400, "multipart", "multipart 파싱 실패: ${e.message}")
+                throw ApiException.localized(400, "multipart", messageKey = "api.envSetup.multipartParse", args = listOf(e.message ?: ""))
             }
-            val data = bytes ?: throw ApiException(400, "empty",
-                "파일이 선택되지 않았습니다 (multipart field 무엇이든 허용).")
+            val data = bytes ?: throw ApiException.localized(400, "empty", messageKey = "api.envSetup.emptyFile")
             val result = claudeAuth.uploadCredentials(data)
             // v0.64.0 — Android v0.7.x 가 `path` / `expiresAtIso: String` 을 기대.
             // 기존 SSR/외부 콜러가 사용하는 `targetPath` / `expiresAt:Long` 은 그대로 둔 채
@@ -226,10 +225,9 @@ fun Routing.envSetupApiRoutes(
                     }
                 }
             } catch (e: Throwable) {
-                throw ApiException(400, "multipart", "multipart 파싱 실패: ${e.message}")
+                throw ApiException.localized(400, "multipart", messageKey = "api.envSetup.multipartParse", args = listOf(e.message ?: ""))
             }
-            val data = bytes ?: throw ApiException(400, "empty",
-                "파일 part 가 비어 있습니다.")
+            val data = bytes ?: throw ApiException.localized(400, "empty", messageKey = "api.envSetup.emptyFile")
             val path = mcp.uploadConfigFile(mcpId, fieldKey, data, fileName)
             call.respond(McpFileUploadResponseDto(path))
         }

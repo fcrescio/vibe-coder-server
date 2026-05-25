@@ -78,16 +78,15 @@ class GitCredentialStore {
         val cleanProvider = provider.trim().lowercase().ifBlank { "generic" }
         val cleanHost = host.trim().lowercase().removePrefix("https://").removePrefix("http://")
             .substringBefore('/').ifBlank {
-                throw ApiException(400, "empty_host", "host 가 비어 있습니다 (예: github.com)")
+                throw ApiException.localized(400, "empty_host", messageKey = "api.gitCredential.emptyHost")
             }
         val cleanToken = token.trim()
         // v0.12.4 — 실제 PAT 는 보통 30+ 자 (GitHub classic 40, fine-grained 80+,
         // GitLab 26, Gitea 40). 20 자 미만이면 거의 확실히 잘못된 입력 → 사용자가
         // 무효한 토큰 등록 후 clone 실패로 디버깅하는 비용을 줄임.
         if (cleanToken.length < 20) {
-            throw ApiException(400, "short_token",
-                "토큰이 너무 짧습니다 (${cleanToken.length}자, 20자 이상 필요). " +
-                    "올바른 Personal Access Token 인지 확인하세요.")
+            throw ApiException.localized(400, "short_token",
+                messageKey = "api.gitCredential.shortToken", args = listOf(20))
         }
         val cleanUsername = (username?.trim()?.ifBlank { null }) ?: defaultUsernameFor(cleanProvider)
 
