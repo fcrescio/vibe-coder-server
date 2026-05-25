@@ -254,6 +254,7 @@ fun Routing.webProjectRoutes(
                 sess.username, p, buildDtos, artifacts,
                 stats = stats,
                 flashErr = err, flashOk = ok, csrf = sess.csrf,
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )
@@ -329,6 +330,7 @@ fun Routing.webProjectRoutes(
                 signerInspection = signerInspection,
                 comparison = comparison,
                 csrf = sess.csrf,
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )
@@ -444,6 +446,7 @@ fun Routing.webProjectRoutes(
         call.respondText(
             WebProjectTemplates.filesPage(
                 sess.username, p, files, flashErr = err, flashOk = ok, csrf = sess.csrf,
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )
@@ -544,13 +547,17 @@ fun Routing.webProjectRoutes(
                 WebProjectTemplates.fileTreePage(
                     sess.username, p, subPath, emptyList(),
                     flashErr = msg, csrf = sess.csrf,
+                    lang = sess.language,
                 ),
                 ContentType.Text.Html, HttpStatusCode.BadRequest,
             )
             return@get
         }
         call.respondText(
-            WebProjectTemplates.fileTreePage(sess.username, p, subPath, entries, csrf = sess.csrf),
+            WebProjectTemplates.fileTreePage(
+                sess.username, p, subPath, entries, csrf = sess.csrf,
+                lang = sess.language,
+            ),
             ContentType.Text.Html,
         )
     }
@@ -569,13 +576,17 @@ fun Routing.webProjectRoutes(
                 WebProjectTemplates.fileViewPage(
                     sess.username, p, relPath, null,
                     flashErr = msg, csrf = sess.csrf,
+                    lang = sess.language,
                 ),
                 ContentType.Text.Html, HttpStatusCode.BadRequest,
             )
             return@get
         }
         call.respondText(
-            WebProjectTemplates.fileViewPage(sess.username, p, relPath, view, csrf = sess.csrf),
+            WebProjectTemplates.fileViewPage(
+                sess.username, p, relPath, view, csrf = sess.csrf,
+                lang = sess.language,
+            ),
             ContentType.Text.Html,
         )
     }
@@ -621,6 +632,7 @@ fun Routing.webProjectRoutes(
                 unavailable = unavailable,
                 csrf = sess.csrf,
                 commitFlash = flash,
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )

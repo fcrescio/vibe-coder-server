@@ -115,12 +115,14 @@ object WebProjectTemplates {
         flashOk: String?,
         flashErr: String?,
         csrf: String?,
+        lang: String = "en",
     ): String {
         if (b.status.name != "SUCCESS") return ""
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val readyBadge = when {
-            precheck == null -> """<span class="dim">precheck 미실행</span>"""
-            precheck.ready -> """<span class="ok">✓ 준비됨</span>"""
-            else -> """<span class="warn">⚠ 사전조건 부족</span>"""
+            precheck == null -> """<span class="dim">${esc(t("publish.precheckNotRun"))}</span>"""
+            precheck.ready -> """<span class="ok">${esc(t("publish.ready"))}</span>"""
+            else -> """<span class="warn">${esc(t("publish.notReady"))}</span>"""
         }
         val mcpStatusLine = precheck?.let { """<dt>MCP</dt><dd>${esc(it.mcpStatus)}</dd>""" } ?: ""
         val pkgLine = precheck?.configuredPackageName?.let {
@@ -136,38 +138,38 @@ object WebProjectTemplates {
         val defaultAab = "app/build/outputs/bundle/release/app-release.aab"
         return """
 <div class="card" style="margin-bottom:16px">
-  <h2>Play Console 업로드 (v0.22.0)</h2>
-  <p>$readyBadge — google-play-publisher MCP 를 통해 Claude 가 Internal Track 으로 AAB 를 업로드합니다.</p>
+  <h2>${esc(t("play.title"))}</h2>
+  <p>${com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "play.desc", readyBadge)}</p>
   $okBanner
   $errBanner
   <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;margin-top:8px">
-    <dt>프로젝트 패키지</dt><dd><code>${esc(p.packageName)}</code></dd>
+    <dt>${esc(t("play.col.projectPackage"))}</dt><dd><code>${esc(p.packageName)}</code></dd>
     $pkgLine
     $mcpStatusLine
   </dl>
   $warnHtml
   <form method="post" action="/projects/${esc(p.id)}/builds/${esc(b.id)}/play-upload" style="margin-top:12px;display:grid;gap:8px">
     ${CsrfTokens.hiddenInput(csrf)}
-    <label>AAB 경로 (project root 기준)
+    <label>${esc(t("play.aabPath"))}
       <input name="aabPath" value="${esc(defaultAab)}" required>
     </label>
-    <label>Track
+    <label>${esc(t("play.track"))}
       <select name="track">
-        <option value="internal" selected>internal (테스터만, 즉시 반영)</option>
+        <option value="internal" selected>${esc(t("play.track.internal"))}</option>
         <option value="alpha">alpha</option>
         <option value="beta">beta</option>
         <option value="production">production</option>
       </select>
     </label>
-    <label>Release notes (선택)
-      <textarea name="releaseNotes" rows="3" placeholder="비우면 Claude 가 git log 등으로 추론"></textarea>
+    <label>${esc(t("play.releaseNotes"))}
+      <textarea name="releaseNotes" rows="3" placeholder="${esc(t("releaseNotes.placeholder.git"))}"></textarea>
     </label>
     <div>
-      <button type="submit" class="primary">Claude 에게 업로드 위임</button>
-      <a href="/env-setup/mcp" class="chip chip-link">MCP 설정으로</a>
+      <button type="submit" class="primary">${esc(t("publish.delegateBtn"))}</button>
+      <a href="/env-setup/mcp" class="chip chip-link">${esc(t("publish.mcpLink"))}</a>
     </div>
   </form>
-  <p class="hint" style="margin-top:8px">업로드 진행 / 결과는 콘솔 페이지에서 실시간으로 확인합니다. publish 단계는 Claude 가 자동 commit 하지 않고 review 상태로 남깁니다.</p>
+  <p class="hint" style="margin-top:8px">${esc(t("play.hint"))}</p>
 </div>"""
     }
 
@@ -185,11 +187,13 @@ object WebProjectTemplates {
         flashOk: String?,
         flashErr: String?,
         csrf: String?,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val readyBadge = when {
-            precheck == null -> """<span class="dim">precheck 미실행</span>"""
-            precheck.ready -> """<span class="ok">✓ 준비됨</span>"""
-            else -> """<span class="warn">⚠ 사전조건 부족</span>"""
+            precheck == null -> """<span class="dim">${esc(t("publish.precheckNotRun"))}</span>"""
+            precheck.ready -> """<span class="ok">${esc(t("publish.ready"))}</span>"""
+            else -> """<span class="warn">${esc(t("publish.notReady"))}</span>"""
         }
         val mcpStatusLine = precheck?.let { """<dt>MCP</dt><dd>${esc(it.mcpStatus)}</dd>""" } ?: ""
         val warnHtml = if (precheck != null && precheck.warnings.isNotEmpty()) {
@@ -202,9 +206,9 @@ object WebProjectTemplates {
         val defaultIpa = "out/app-release.ipa"
         return """
 <div class="card" style="margin-bottom:16px">
-  <h2>TestFlight 업로드 (v0.23.0)</h2>
-  <p>$readyBadge — app-store-connect MCP 를 통해 Claude 가 TestFlight 로 .ipa 를 업로드합니다.</p>
-  <p class="hint">vibe-coder 는 iOS 빌드를 직접 수행하지 않습니다. macOS+Xcode 빌드 농장에서 산출된 .ipa 를 워크스페이스에 미리 올려 두세요 (scp / git lfs / shared mount).</p>
+  <h2>${esc(t("tf.title"))}</h2>
+  <p>${com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "tf.desc", readyBadge)}</p>
+  <p class="hint">${esc(t("tf.iosHint"))}</p>
   $okBanner
   $errBanner
   <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;margin-top:8px">
@@ -213,21 +217,21 @@ object WebProjectTemplates {
   $warnHtml
   <form method="post" action="/projects/${esc(p.id)}/builds/${esc(b.id)}/testflight-upload" style="margin-top:12px;display:grid;gap:8px">
     ${CsrfTokens.hiddenInput(csrf)}
-    <label>.ipa 경로 (project root 기준)
+    <label>${esc(t("tf.ipaPath"))}
       <input name="ipaPath" value="${esc(defaultIpa)}" required>
     </label>
-    <label>외부 테스터 그룹 (선택, 콤마 구분)
+    <label>${esc(t("tf.distributionGroups"))}
       <input name="distributionGroups" placeholder="QA, Beta-Insiders">
     </label>
-    <label>Release notes (선택)
-      <textarea name="releaseNotes" rows="3" placeholder="비우면 Claude 가 최근 커밋 / CHANGELOG 로 추론"></textarea>
+    <label>${esc(t("tf.releaseNotes"))}
+      <textarea name="releaseNotes" rows="3" placeholder="${esc(t("releaseNotes.placeholder.changelog"))}"></textarea>
     </label>
     <div>
-      <button type="submit" class="primary">Claude 에게 업로드 위임</button>
-      <a href="/env-setup/mcp" class="chip chip-link">MCP 설정으로</a>
+      <button type="submit" class="primary">${esc(t("publish.delegateBtn"))}</button>
+      <a href="/env-setup/mcp" class="chip chip-link">${esc(t("publish.mcpLink"))}</a>
     </div>
   </form>
-  <p class="hint" style="margin-top:8px">processing 시간이 길 수 있으므로 진행은 콘솔에서 monitor. compliance / export-compliance 같은 사용자 결정이 필요한 단계는 자동 진행 안 함.</p>
+  <p class="hint" style="margin-top:8px">${esc(t("tf.hint"))}</p>
 </div>"""
     }
 
@@ -240,7 +244,9 @@ object WebProjectTemplates {
      */
     private fun renderBuildStatistics(
         stats: com.siamakerlab.vibecoder.server.build.BuildService.BuildStatistics?,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         if (stats == null || stats.total == 0) return ""
         fun fmtMs(ms: Long?): String = when {
             ms == null -> "-"
@@ -265,7 +271,7 @@ object WebProjectTemplates {
                     }
                     """<rect x="${i * w}" y="0" width="${w - 1}" height="20" fill="$color"><title>${esc(s)}</title></rect>"""
                 }.joinToString("")
-                """<svg width="$totalW" height="20" style="vertical-align:middle" aria-label="최근 ${seq.size} 빌드 status">$bars</svg>"""
+                """<svg width="$totalW" height="20" style="vertical-align:middle" aria-label="${esc(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "bar.aria", seq.size))}">$bars</svg>"""
             }
         }
         // APK size trend: recentSuccessSizes most-recent-first → reverse 후 SVG line.
@@ -290,7 +296,7 @@ object WebProjectTemplates {
                   <svg width="$w" height="$h" style="background:rgba(255,255,255,0.03);border-radius:4px">
                     <polyline points="$pts" fill="none" stroke="#5eb1ef" stroke-width="2"/>
                   </svg>
-                  <div class="dim" style="font-size:12px">최근 ${sizes.size} 성공 빌드<br>
+                  <div class="dim" style="font-size:12px">${esc(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "builds.stats.recentSuccess", sizes.size))}<br>
                     Δ <span class="$deltaCls">$deltaSign${deltaKb} KB</span></div>
                 </div>"""
             }
@@ -301,27 +307,32 @@ object WebProjectTemplates {
             stats.successRatePercent >= 70 -> "warn"
             else -> "warn"
         }
+        val statsSummary = com.siamakerlab.vibecoder.server.i18n.Messages.t(
+            lang, "builds.stats.summary", stats.successCount, stats.failedCount, stats.cancelledCount,
+        )
+        val statsRunning = if (stats.runningCount > 0)
+            com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "builds.stats.running", stats.runningCount) else ""
         return """
 <div class="card" style="margin-bottom:16px">
-  <h2 style="margin-top:0">빌드 통계 (v0.59.0+)</h2>
+  <h2 style="margin-top:0">${esc(t("builds.stats.title"))}</h2>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:12px">
     <div>
-      <div class="dim" style="font-size:11px">전체 빌드</div>
+      <div class="dim" style="font-size:11px">${esc(t("builds.stats.total"))}</div>
       <div style="font-size:20px;font-weight:600">${stats.total}</div>
     </div>
     <div>
-      <div class="dim" style="font-size:11px">성공률</div>
+      <div class="dim" style="font-size:11px">${esc(t("builds.stats.successRate"))}</div>
       <div style="font-size:20px;font-weight:600"><span class="$rateCls">${stats.successRatePercent ?: "-"}%</span></div>
-      <div class="dim" style="font-size:11px">✓ ${stats.successCount} · ✗ ${stats.failedCount} · cancel ${stats.cancelledCount}${if (stats.runningCount > 0) " · 진행 ${stats.runningCount}" else ""}</div>
+      <div class="dim" style="font-size:11px">${esc(statsSummary)}${esc(statsRunning)}</div>
     </div>
     <div>
-      <div class="dim" style="font-size:11px">평균 빌드 시간 (성공만)</div>
+      <div class="dim" style="font-size:11px">${esc(t("builds.stats.avgDuration"))}</div>
       <div style="font-size:20px;font-weight:600">${fmtMs(stats.avgSuccessDurationMs)}</div>
     </div>
   </div>
   ${if (sparkline.isNotEmpty()) """
   <div style="margin-bottom:10px">
-    <div class="dim" style="font-size:11px;margin-bottom:4px">최근 ${stats.recentStatuses.size} 빌드 status (오래된 → 최근)</div>
+    <div class="dim" style="font-size:11px;margin-bottom:4px">${esc(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "builds.stats.recentLabel", stats.recentStatuses.size))}</div>
     $sparkline
   </div>""" else ""}
   $sizeTrend
@@ -334,7 +345,9 @@ object WebProjectTemplates {
      */
     private fun renderBuildComparison(
         cmp: com.siamakerlab.vibecoder.server.build.BuildService.BuildComparison?,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         if (cmp == null) return ""
         fun fmtSize(b: Long?): String = when {
             b == null -> "-"
@@ -361,24 +374,23 @@ object WebProjectTemplates {
         }
         return """
 <div class="card" style="margin-bottom:16px">
-  <h2>이전 성공 빌드와 비교 (v0.58.0+)</h2>
+  <h2>${esc(t("build.compare.title"))}</h2>
   <p class="dim" style="margin:0 0 8px;font-size:12px">
-    이전 SUCCESS 빌드 <code>${esc(cmp.previous.id.take(12))}</code> (${esc(cmp.previous.createdAt)}) 와의 차이.
-    화살표는 lower-is-better 기준: 빨강 = 더 커짐 / 느려짐.
+    ${com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "build.compare.desc", esc(cmp.previous.id.take(12)), esc(cmp.previous.createdAt))}
   </p>
   <table class="table" style="width:100%">
     <thead>
-      <tr><th>지표</th><th>이전</th><th>현재</th><th>Δ</th></tr>
+      <tr><th>${esc(t("build.compare.col.metric"))}</th><th>${esc(t("build.compare.col.previous"))}</th><th>${esc(t("build.compare.col.current"))}</th><th>${esc(t("build.compare.col.delta"))}</th></tr>
     </thead>
     <tbody>
       <tr>
-        <td>APK 사이즈</td>
+        <td>${esc(t("build.compare.apkSize"))}</td>
         <td class="dim">${fmtSize(cmp.previous.apkSizeBytes)}</td>
         <td><strong>${fmtSize(cmp.current.apkSizeBytes)}</strong></td>
         <td>${deltaBadge(cmp.apkSizeDeltaBytes, ::fmtSize, lowerIsBetter = true)}</td>
       </tr>
       <tr>
-        <td>빌드 시간</td>
+        <td>${esc(t("build.compare.duration"))}</td>
         <td class="dim">${fmtDuration(cmp.previous.durationMs)}</td>
         <td><strong>${fmtDuration(cmp.current.durationMs)}</strong></td>
         <td>${deltaBadge(cmp.durationDeltaMs, ::fmtDuration, lowerIsBetter = true)}</td>
@@ -386,28 +398,32 @@ object WebProjectTemplates {
     </tbody>
   </table>
   <p class="dim" style="margin:8px 0 0;font-size:11px">
-    메소드 수 / dex 분석은 추후 (<code>dexdump</code> 통합 필요).
+    ${t("build.compare.dexHint")}
   </p>
 </div>"""
     }
 
-    private fun renderSignerInspection(insp: com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector.Inspection?): String {
+    private fun renderSignerInspection(
+        insp: com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector.Inspection?,
+        lang: String = "en",
+    ): String {
         if (insp == null) return ""
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         if (!insp.verified && insp.errorMessage != null && insp.schemes.isEmpty() && insp.signers.isEmpty()) {
             return """
 <div style="margin-top:14px;padding:10px;border-radius:6px;background:rgba(255,150,80,0.08)">
-  <strong>⚠ 서명 검사 실패</strong>
+  <strong>${esc(t("signer.failed"))}</strong>
   <div class="dim" style="font-size:13px;margin-top:4px">${esc(insp.errorMessage)}</div>
 </div>"""
         }
         val verifiedBadge = if (insp.verified)
-            """<span class="ok">✓ verified</span>"""
+            """<span class="ok">${esc(t("signer.verified"))}</span>"""
         else
-            """<span class="warn">✗ not verified</span>"""
+            """<span class="warn">${esc(t("signer.notVerified"))}</span>"""
         val schemes = if (insp.schemes.isNotEmpty()) insp.schemes.joinToString(", ")
-        else "(없음)"
+        else t("build.detail.signersNone")
         val signersHtml = if (insp.signers.isEmpty()) {
-            """<p class="dim" style="font-size:13px">서명자 정보를 추출하지 못했습니다.</p>"""
+            """<p class="dim" style="font-size:13px">${esc(t("build.detail.signersUnknown"))}</p>"""
         } else {
             insp.signers.joinToString("") { s ->
                 val fp = s.sha256?.let { it.chunked(4).joinToString(" ").take(80) } ?: "-"
@@ -421,8 +437,8 @@ object WebProjectTemplates {
         }
         return """
 <div style="margin-top:14px">
-  <h3 style="margin:0 0 8px 0;font-size:14px">서명 검사 (v0.28.0)</h3>
-  <p style="margin:0">$verifiedBadge — 활성 schemes: <code>$schemes</code></p>
+  <h3 style="margin:0 0 8px 0;font-size:14px">${esc(t("signer.title"))}</h3>
+  <p style="margin:0">$verifiedBadge — ${esc(t("signer.activeSchemes"))}: <code>$schemes</code></p>
   $signersHtml
 </div>"""
     }
@@ -437,18 +453,20 @@ object WebProjectTemplates {
     }
 
     /** 로그 카드 하단 caption — replay 출처/잘림 안내 또는 라이브 안내. */
-    private fun replayCaption(replay: BuildLogReplay?, attachWs: Boolean): String {
+    private fun replayCaption(replay: BuildLogReplay?, attachWs: Boolean, lang: String = "en"): String {
         if (attachWs) return ""
         if (replay == null) {
-            return """<p class="hint">로그 파일을 찾을 수 없습니다. 워크스페이스의
-                <code>.vibecoder/&lt;projectId&gt;/logs/&lt;buildId&gt;.log</code> 위치를 확인하세요.</p>"""
+            return """<p class="hint">${com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "build.detail.replayNotFound")}</p>"""
         }
         val kb = (replay.sizeBytes + 512L) / 1024L
         val trunc = if (replay.truncated) {
-            """, 화면에 마지막 ${replay.lines.size} / ${replay.totalLines} 줄만 표시 (앞부분 잘림)"""
+            com.siamakerlab.vibecoder.server.i18n.Messages.t(
+                lang, "build.detail.logsTruncated", replay.lines.size, replay.totalLines,
+            )
         } else ""
-        return """<p class="hint">파일 로그 replay — <code>${esc(replay.sourcePath)}</code>
-            (${kb}KB, ${replay.totalLines}줄$trunc).</p>"""
+        return """<p class="hint">${com.siamakerlab.vibecoder.server.i18n.Messages.t(
+            lang, "build.detail.replayFileLog", replay.sourcePath, kb, replay.totalLines, trunc,
+        )}</p>"""
     }
 
     /**
@@ -1146,12 +1164,14 @@ $authBannerHtml
         flashErr: String? = null,
         flashOk: String? = null,
         csrf: String? = null,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
 
         val rowsHtml = if (builds.isEmpty()) {
-            """<tr><td colspan="5" class="dim">아직 빌드가 없습니다. 위 버튼으로 첫 빌드를 시작하세요.</td></tr>"""
+            """<tr><td colspan="5" class="dim">${esc(t("builds.empty"))}</td></tr>"""
         } else {
             builds.joinToString("\n") { b ->
                 val art = artifactsByBuild[b.id]
@@ -1178,13 +1198,14 @@ $authBannerHtml
         }
 
         return AdminTemplates.shell(
-            title = "${esc(p.name)} · 빌드",
+            title = "${esc(p.name)} · ${esc(t("builds.title"))}",
             username = username,
             currentPath = "/projects",
             csrf = csrf,
+            lang = lang,
             body = """
 <header>
-  <h1>빌드
+  <h1>${esc(t("builds.title"))}
     <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
   </h1>
 </header>
@@ -1194,26 +1215,26 @@ $errHtml
 <div class="card" style="margin-bottom:16px">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
     <div>
-      <strong>모듈:</strong> ${esc(p.moduleName)} · <strong>Task:</strong> <code>${esc(p.debugTask)}</code>
+      <strong>${esc(t("builds.module"))}:</strong> ${esc(p.moduleName)} · <strong>${esc(t("builds.task"))}:</strong> <code>${esc(p.debugTask)}</code>
     </div>
     <div style="display:flex;gap:8px">
-      <a href="/projects/${esc(p.id)}" class="primary-link" style="width:auto;display:inline-block;padding:6px 12px;background:transparent;border:1px solid var(--border);color:var(--text-dim)">← 프로젝트로</a>
+      <a href="/projects/${esc(p.id)}" class="primary-link" style="width:auto;display:inline-block;padding:6px 12px;background:transparent;border:1px solid var(--border);color:var(--text-dim)">${esc(t("builds.back"))}</a>
       <form method="post" action="/projects/${esc(p.id)}/builds" style="display:inline">
         ${CsrfTokens.hiddenInput(csrf)}
-        <button type="submit" class="primary" style="width:auto;padding:8px 16px">Debug 빌드 큐 등록</button>
+        <button type="submit" class="primary" style="width:auto;padding:8px 16px">${esc(t("builds.queue"))}</button>
       </form>
     </div>
   </div>
-  <p class="hint">큐 등록 후엔 콘솔에서 실시간 로그를 볼 수 있으며, 완료되면 APK 다운로드 링크가 이 표에 나타납니다.</p>
+  <p class="hint">${esc(t("builds.queueHint"))}</p>
 </div>
 
-${renderBuildStatistics(stats)}
+${renderBuildStatistics(stats, lang)}
 
-${renderBuildHistoryChart(builds, artifactsByBuild)}
+${renderBuildHistoryChart(builds, artifactsByBuild, lang)}
 
 <table class="devices">
   <thead>
-    <tr><th>빌드 ID</th><th>상태</th><th>시작</th><th>종료</th><th>APK</th></tr>
+    <tr><th>${esc(t("builds.col.id"))}</th><th>${esc(t("builds.col.status"))}</th><th>${esc(t("builds.col.started"))}</th><th>${esc(t("builds.col.finished"))}</th><th>${esc(t("builds.col.apk"))}</th></tr>
   </thead>
   <tbody>$rowsHtml</tbody>
 </table>
@@ -1235,7 +1256,9 @@ ${renderBuildHistoryChart(builds, artifactsByBuild)}
     private fun renderBuildHistoryChart(
         builds: List<BuildDto>,
         artifacts: Map<String, ArtifactRow>,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         if (builds.size < 2) return ""
         // builds 는 보통 최신 → 오래된 순. 차트는 시간 순.
         val ordered = builds.reversed().takeLast(30)
@@ -1301,7 +1324,7 @@ ${renderBuildHistoryChart(builds, artifactsByBuild)}
 
         return """
 <div class="card" style="margin-bottom:16px">
-  <h2 style="margin-top:0">빌드 history <small class="dim" style="font-size:11px;font-weight:400">최근 ${n}개 · 초록=SUCCESS line, 빨강=실패, 노랑 사각=APK 크기 · v0.30.0</small></h2>
+  <h2 style="margin-top:0">${esc(t("builds.summary.title"))} <small class="dim" style="font-size:11px;font-weight:400">${esc(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "builds.summary.note", n))}</small></h2>
   <svg viewBox="0 0 $w $h" width="100%" height="$h" style="font-family:system-ui,sans-serif">
     $axes
     <text x="${pad - 6}" y="${pad + 4}" text-anchor="end" font-size="10" fill="rgba(255,255,255,0.5)">$maxLabel</text>
@@ -1309,7 +1332,7 @@ ${renderBuildHistoryChart(builds, artifactsByBuild)}
     <path d="$successPath" stroke="#059669" stroke-width="1.5" fill="none" stroke-linejoin="round" />
     $pointsSb
   </svg>
-  <p class="hint" style="margin:4px 0 0">점에 마우스 오버하면 빌드 id + 상태 + duration. 라인은 SUCCESS 만 연결 (실패가 평균을 왜곡하지 않도록). 노란 점은 APK 크기 추세 (오른쪽 축, 자동 스케일).</p>
+  <p class="hint" style="margin:4px 0 0">${esc(t("builds.summary.hint"))}</p>
 </div>"""
     }
 
@@ -1343,7 +1366,9 @@ ${renderBuildHistoryChart(builds, artifactsByBuild)}
         /** v0.58.0 — Phase 37 이전 성공 빌드와의 비교 카드 (null = no prior success). */
         comparison: com.siamakerlab.vibecoder.server.build.BuildService.BuildComparison? = null,
         csrf: String? = null,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val statusCls = when (b.status.name) {
             "SUCCESS" -> "ok"
             "FAILED", "TIMEOUT" -> "warn"
@@ -1353,12 +1378,12 @@ ${renderBuildHistoryChart(builds, artifactsByBuild)}
         val downloadHtml = if (artifact != null) {
             val sizeKb = (artifact.sizeBytes + 512L) / 1024L
             """<a href="/api/projects/${esc(p.id)}/artifacts/${esc(artifact.id)}/download" class="primary-link"
-                  style="width:auto;display:inline-block;padding:8px 16px">APK 다운로드 (${sizeKb}KB)</a>
+                  style="width:auto;display:inline-block;padding:8px 16px">${esc(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "build.detail.apkDownload", sizeKb))}</a>
                <p class="hint">sha256: <code>${esc(artifact.sha256.take(16))}…</code> · ${esc(artifact.fileName)}</p>"""
         } else if (b.status.name == "SUCCESS") {
-            """<p class="dim">APK 가 attach 되어 있지 않습니다. ArtifactService 로그를 확인하세요.</p>"""
+            """<p class="dim">${esc(t("build.detail.apkMissing"))}</p>"""
         } else {
-            """<p class="dim">빌드 완료 후 APK 다운로드 링크가 여기에 나타납니다.</p>"""
+            """<p class="dim">${esc(t("build.detail.apkPending"))}</p>"""
         }
         val errorHtml = if (b.errorMessage != null) {
             """<div class="error">${esc(b.errorMessage)}</div>"""
@@ -1367,9 +1392,9 @@ ${renderBuildHistoryChart(builds, artifactsByBuild)}
         val isTerminal = b.status.name in setOf("SUCCESS", "FAILED", "CANCELED", "TIMEOUT")
         val cancelHtml = if (!isTerminal) {
             """<form method="post" action="/projects/${esc(p.id)}/builds/${esc(b.id)}/cancel" style="display:inline"
-                    onsubmit="return confirm('이 빌드를 취소할까요? 진행 중인 Gradle 작업이 즉시 종료됩니다.')">
+                    onsubmit="return confirm(${jsLit(t("build.detail.cancelConfirm"))})">
                ${CsrfTokens.hiddenInput(csrf)}
-               <button type="submit" class="chip chip-danger">빌드 취소</button>
+               <button type="submit" class="chip chip-danger">${esc(t("build.detail.cancel"))}</button>
                </form>"""
         } else ""
 
@@ -1381,13 +1406,14 @@ ${renderBuildHistoryChart(builds, artifactsByBuild)}
         val attachWs = !isTerminal
 
         return AdminTemplates.shell(
-            title = "${esc(p.name)} · 빌드 ${esc(b.id.take(8))}",
+            title = "${esc(p.name)} · ${esc(t("build.detail.heading"))} ${esc(b.id.take(8))}",
             username = username,
             currentPath = "/projects",
             csrf = csrf,
+            lang = lang,
             body = """
 <header>
-  <h1>빌드 <code style="font-size:0.7em">${esc(b.id.take(12))}</code>
+  <h1>${esc(t("build.detail.heading"))} <code style="font-size:0.7em">${esc(b.id.take(12))}</code>
     <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
   </h1>
 </header>
@@ -1395,37 +1421,37 @@ ${renderBuildHistoryChart(builds, artifactsByBuild)}
 <div class="card" style="margin-bottom:16px">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
     <div>
-      <strong>상태:</strong> <span class="$statusCls">${esc(b.status.name)}</span>
+      <strong>${esc(t("build.detail.statusLabel"))}:</strong> <span class="$statusCls">${esc(b.status.name)}</span>
       · <span class="dim">${esc(b.variant)}</span>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <a href="/projects/${esc(p.id)}/builds" class="chip chip-link">← 빌드 목록</a>
-      <a href="/projects/${esc(p.id)}/console" class="chip chip-link">콘솔로</a>
+      <a href="/projects/${esc(p.id)}/builds" class="chip chip-link">${esc(t("build.detail.backToBuilds"))}</a>
+      <a href="/projects/${esc(p.id)}/console" class="chip chip-link">${esc(t("build.detail.toConsole"))}</a>
       $cancelHtml
     </div>
   </div>
   <dl style="margin-top:12px;display:grid;grid-template-columns:max-content 1fr;gap:6px 12px">
-    <dt class="dim">시작</dt><dd>${esc(b.startedAt)}</dd>
-    <dt class="dim">종료</dt><dd>${esc(b.finishedAt ?: "-")}</dd>
+    <dt class="dim">${esc(t("build.detail.startedAt"))}</dt><dd>${esc(b.startedAt)}</dd>
+    <dt class="dim">${esc(t("build.detail.finishedAt"))}</dt><dd>${esc(b.finishedAt ?: "-")}</dd>
   </dl>
   $errorHtml
 </div>
 
 <div class="card" style="margin-bottom:16px">
-  <h2>APK</h2>
+  <h2>${esc(t("build.detail.apkSection"))}</h2>
   $downloadHtml
-  ${renderSignerInspection(signerInspection)}
+  ${renderSignerInspection(signerInspection, lang)}
 </div>
 
-${renderBuildComparison(comparison)}
+${renderBuildComparison(comparison, lang)}
 
-${renderPlayUploadCard(p, b, playPrecheck, playFlashOk, playFlashErr, csrf)}
-${renderTestFlightUploadCard(p, b, testFlightPrecheck, tfFlashOk, tfFlashErr, csrf)}
+${renderPlayUploadCard(p, b, playPrecheck, playFlashOk, playFlashErr, csrf, lang)}
+${renderTestFlightUploadCard(p, b, testFlightPrecheck, tfFlashOk, tfFlashErr, csrf, lang)}
 
 <div class="card">
-  <h2>로그 ${if (attachWs) """<small class="dim" style="font-size:11px;text-transform:none;letter-spacing:0">실시간</small>""" else """<small class="dim" style="font-size:11px;text-transform:none;letter-spacing:0">파일 replay</small>"""}</h2>
+  <h2>${esc(t("build.detail.logs"))} ${if (attachWs) """<small class="dim" style="font-size:11px;text-transform:none;letter-spacing:0">${esc(t("build.detail.logs.live"))}</small>""" else """<small class="dim" style="font-size:11px;text-transform:none;letter-spacing:0">${esc(t("build.detail.logs.replay"))}</small>"""}</h2>
   <div id="build-log" class="console-log" aria-live="polite">${renderReplay(replay)}</div>
-  ${replayCaption(replay, attachWs)}
+  ${replayCaption(replay, attachWs, lang)}
 </div>
 
 ${if (attachWs) """
@@ -1505,12 +1531,14 @@ ${if (attachWs) """
         flashErr: String? = null,
         flashOk: String? = null,
         csrf: String? = null,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
 
         val rowsHtml = if (files.isEmpty()) {
-            """<tr><td colspan="5" class="dim">업로드된 파일이 없습니다.</td></tr>"""
+            """<tr><td colspan="5" class="dim">${esc(t("files.empty"))}</td></tr>"""
         } else {
             files.joinToString("\n") { f ->
                 val sizeKb = (f.sizeBytes + 512L) / 1024L
@@ -1520,11 +1548,11 @@ ${if (attachWs) """
                     <td>${sizeKb}KB</td>
                     <td>${esc(f.createdAt)}</td>
                     <td style="display:flex;gap:6px">
-                      <a href="/projects/${esc(p.id)}/files/${esc(f.id)}/download" class="chip chip-link">다운로드</a>
+                      <a href="/projects/${esc(p.id)}/files/${esc(f.id)}/download" class="chip chip-link">${esc(t("files.action.download"))}</a>
                       <form method="post" action="/projects/${esc(p.id)}/files/${esc(f.id)}/delete" style="display:inline"
-                            onsubmit="return confirm('정말 삭제하시겠습니까?')">
+                            onsubmit="return confirm(${jsLit(t("files.deleteConfirm"))})">
                         ${CsrfTokens.hiddenInput(csrf)}
-                        <button type="submit" class="chip chip-danger">삭제</button>
+                        <button type="submit" class="chip chip-danger">${esc(t("files.action.delete"))}</button>
                       </form>
                     </td>
                   </tr>"""
@@ -1532,13 +1560,14 @@ ${if (attachWs) """
         }
 
         return AdminTemplates.shell(
-            title = "${esc(p.name)} · 파일",
+            title = "${esc(p.name)} · ${esc(t("files.title"))}",
             username = username,
             currentPath = "/projects",
             csrf = csrf,
+            lang = lang,
             body = """
 <header>
-  <h1>파일
+  <h1>${esc(t("files.title"))}
     <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
   </h1>
 </header>
@@ -1546,26 +1575,25 @@ $okHtml
 $errHtml
 
 <div class="card" style="margin-bottom:16px">
-  <h2>파일 업로드</h2>
+  <h2>${esc(t("files.upload.title"))}</h2>
   <!-- multipart 업로드는 receiveParameters 가 불가능하므로 _csrf 를 query string 으로 -->
   <form method="post" action="/projects/${esc(p.id)}/files/upload?_csrf=${esc(csrf)}" enctype="multipart/form-data">
     <input type="file" name="file" required>
-    <button type="submit" class="primary" style="width:auto;padding:8px 16px;margin-left:8px">업로드</button>
+    <button type="submit" class="primary" style="width:auto;padding:8px 16px;margin-left:8px">${esc(t("files.upload.submit"))}</button>
   </form>
-  <p class="hint">업로드된 파일은 <code>&lt;workspace&gt;/.vibecoder/&lt;projectId&gt;/uploads/YYYYMMDD/</code> 에 저장됩니다.
-  확장자 블랙리스트 (<code>exe/bat/cmd/ps1/sh</code>) 와 최대 크기는 <code>server.yml</code> 에서 관리.</p>
+  <p class="hint">${t("files.upload.hint")}</p>
 </div>
 
 <table class="devices">
   <thead>
-    <tr><th>이름</th><th>MIME</th><th>크기</th><th>업로드</th><th></th></tr>
+    <tr><th>${esc(t("files.col.name"))}</th><th>${esc(t("files.col.mime"))}</th><th>${esc(t("files.col.size"))}</th><th>${esc(t("files.col.uploaded"))}</th><th></th></tr>
   </thead>
   <tbody>$rowsHtml</tbody>
 </table>
 
 <p class="hint" style="margin-top:16px">
-  <a href="/projects/${esc(p.id)}" class="chip chip-link">← 프로젝트로</a>
-  <a href="/projects/${esc(p.id)}/console" class="chip chip-link">콘솔로</a>
+  <a href="/projects/${esc(p.id)}" class="chip chip-link">${esc(t("files.back"))}</a>
+  <a href="/projects/${esc(p.id)}/console" class="chip chip-link">${esc(t("files.toConsole"))}</a>
 </p>
 """
         )
@@ -1584,65 +1612,67 @@ $errHtml
         unavailable: Boolean,
         csrf: String? = null,
         commitFlash: String? = null,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val unavailableHtml = if (unavailable) {
-            """<div class="error">이 프로젝트 폴더는 git repository 가 아니거나 git CLI 실행이 실패했습니다.
-            Claude 에게 "git 초기화해줘" 같은 프롬프트를 보내거나, 컨테이너 안에서 직접 <code>git init</code> 하세요.</div>"""
+            """<div class="error">${t("git.notInit")}</div>"""
         } else ""
 
         val statusHtml = if (status == null) "" else {
             val entries = if (status.entries.isEmpty()) {
-                """<p class="dim">clean — 변경 사항 없음.</p>"""
+                """<p class="dim">${esc(t("git.clean"))}</p>"""
             } else {
                 val rows = status.entries.joinToString("\n") { e ->
                     """<tr><td><code>${esc(e.status)}</code></td><td>${esc(e.path)}</td></tr>"""
                 }
-                """<table class="devices"><thead><tr><th>상태</th><th>경로</th></tr></thead><tbody>$rows</tbody></table>"""
+                """<table class="devices"><thead><tr><th>${esc(t("git.col.status"))}</th><th>${esc(t("git.col.path"))}</th></tr></thead><tbody>$rows</tbody></table>"""
             }
             """<div class="card">
               <h2>status</h2>
-              <p><strong>branch:</strong> <code>${esc(status.branch)}</code>
-                · <span class="dim">ahead</span> ${status.ahead}
-                · <span class="dim">behind</span> ${status.behind}</p>
+              <p><strong>${esc(t("git.status.branch"))}:</strong> <code>${esc(status.branch)}</code>
+                · <span class="dim">${esc(t("git.status.ahead"))}</span> ${status.ahead}
+                · <span class="dim">${esc(t("git.status.behind"))}</span> ${status.behind}</p>
               $entries
             </div>"""
         }
 
         val diffHtml = if (diff == null) "" else {
             val body = if (diff.diff.isBlank()) {
-                """<p class="dim">no diff</p>"""
+                """<p class="dim">${esc(t("git.diff.empty"))}</p>"""
             } else {
                 """<pre class="diff-block">${esc(diff.diff.take(20_000))}</pre>"""
             }
             """<div class="card">
-              <h2>diff</h2>
+              <h2>${esc(t("git.diff.title"))}</h2>
               $body
-              ${if (diff.diff.length > 20_000) """<p class="hint">${diff.diff.length - 20_000} 바이트 더 있음 (UI에서 잘림)</p>""" else ""}
+              ${if (diff.diff.length > 20_000) """<p class="hint">${esc(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "git.diff.truncated", diff.diff.length - 20_000))}</p>""" else ""}
             </div>"""
         }
 
         val logHtml = if (log == null) "" else {
             val rows = if (log.entries.isEmpty()) {
-                """<tr><td colspan="2" class="dim">no commits yet</td></tr>"""
+                """<tr><td colspan="2" class="dim">${esc(t("git.log.empty"))}</td></tr>"""
             } else {
                 log.entries.joinToString("\n") { e ->
                     """<tr><td><code>${esc(e.sha.take(8))}</code></td><td>${esc(e.message)}</td></tr>"""
                 }
             }
             """<div class="card">
-              <h2>log (recent 10)</h2>
-              <table class="devices"><thead><tr><th>sha</th><th>message</th></tr></thead><tbody>$rows</tbody></table>
+              <h2>${esc(t("git.log.recent10"))}</h2>
+              <table class="devices"><thead><tr><th>${esc(t("git.log.colSha"))}</th><th>${esc(t("git.log.colMessage"))}</th></tr></thead><tbody>$rows</tbody></table>
             </div>"""
         }
 
         return AdminTemplates.shell(
-            title = "${esc(p.name)} · git",
+            title = "${esc(p.name)} · ${esc(t("git.heading"))}",
             username = username,
             currentPath = "/projects",
             csrf = csrf,
+            lang = lang,
             body = """
 <header>
-  <h1>git
+  <h1>${esc(t("git.heading"))}
     <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
   </h1>
 </header>
@@ -1658,36 +1688,33 @@ ${if (commitFlash != null) """<div class="ok-banner" style="white-space:pre-wrap
 
 ${if (status != null && !unavailable) """
 <div class="card" style="margin-top:16px">
-  <h2>커밋 / 푸시 (v0.18.0+)</h2>
-  <p class="dim" style="font-size:12px">변경된 파일을 한 번에 stage → commit → (옵션) push.
-  Push 는 git CLI 의 ~/.git-credentials (HTTPS PAT) 또는 ~/.ssh/id_ed25519 (SSH) 자동 사용.
-  push 실패해도 로컬 commit 은 유지됩니다.</p>
+  <h2>${esc(t("git.commit.title"))}</h2>
+  <p class="dim" style="font-size:12px">${esc(t("git.commit.desc"))}</p>
   <form method="post" action="/projects/${esc(p.id)}/git/commit" style="display:grid;gap:8px">
     ${CsrfTokens.hiddenInput(csrf)}
-    <label>Commit message
+    <label>${esc(t("git.commit.messageLabel"))}
       <textarea name="message" required minlength="3" maxlength="4000" rows="3"
                 placeholder="feat: ..."></textarea>
     </label>
     <label style="font-size:12px">
       <input type="checkbox" name="onlyTracked" value="1">
-      Only tracked files (`git add -u`) — 새 파일은 stage 안 함
+      ${esc(t("git.commit.onlyTracked"))}
     </label>
     <label style="font-size:12px">
       <input type="checkbox" name="push" value="1" checked>
-      Commit 후 `git push origin &lt;branch&gt;` 실행
+      ${t("git.commit.push")}
     </label>
     <div>
-      <button type="submit" class="primary" style="padding:8px 18px">커밋 & 푸시</button>
+      <button type="submit" class="primary" style="padding:8px 18px">${esc(t("git.commit.submit"))}</button>
     </div>
   </form>
 </div>""" else ""}
 
 <p class="hint" style="margin-top:16px">
-  <a href="/projects/${esc(p.id)}" class="chip chip-link">← 프로젝트로</a>
-  <a href="/projects/${esc(p.id)}/console" class="chip chip-link">콘솔로</a>
+  <a href="/projects/${esc(p.id)}" class="chip chip-link">${esc(t("git.back"))}</a>
+  <a href="/projects/${esc(p.id)}/console" class="chip chip-link">${esc(t("git.toConsole"))}</a>
 </p>
-<p class="hint">v0.18.0 부터 단순한 commit & push 가 본 페이지에서 가능. <code>git reset --hard</code>
-같은 destructive 작업은 여전히 콘솔에서 Claude 에게 부탁 (위험 명령 노출 안 함).</p>
+<p class="hint">${t("git.bottomHint")}</p>
 """
         )
     }
@@ -1703,11 +1730,13 @@ ${if (status != null && !unavailable) """
         entries: List<ProjectFileBrowser.Entry>,
         flashErr: String? = null,
         csrf: String? = null,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         val crumbs = renderBreadcrumbs(p.id, subPath)
         val rowsHtml = if (entries.isEmpty()) {
-            """<tr><td colspan="3" class="dim">비어 있습니다.</td></tr>"""
+            """<tr><td colspan="3" class="dim">${esc(t("fileTree.empty"))}</td></tr>"""
         } else {
             entries.joinToString("\n") { e ->
                 val sizeKb = if (e.isDirectory) "-" else "${(e.sizeBytes + 512L) / 1024L}KB"
@@ -1724,13 +1753,14 @@ ${if (status != null && !unavailable) """
             }
         }
         return AdminTemplates.shell(
-            title = "${esc(p.name)} · 파일트리",
+            title = "${esc(p.name)} · ${esc(t("fileTree.heading"))}",
             username = username,
             currentPath = "/projects",
             csrf = csrf,
+            lang = lang,
             body = """
 <header>
-  <h1>파일트리
+  <h1>${esc(t("fileTree.heading"))}
     <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
   </h1>
 </header>
@@ -1741,16 +1771,15 @@ $errHtml
 </div>
 
 <table class="devices">
-  <thead><tr><th>이름</th><th>크기</th><th>수정</th></tr></thead>
+  <thead><tr><th>${esc(t("fileTree.col.name"))}</th><th>${esc(t("fileTree.col.size"))}</th><th>${esc(t("fileTree.col.modified"))}</th></tr></thead>
   <tbody>$rowsHtml</tbody>
 </table>
 
 <p class="hint" style="margin-top:16px">
-  <a href="/projects/${esc(p.id)}" class="chip chip-link">← 프로젝트로</a>
-  <a href="/projects/${esc(p.id)}/console" class="chip chip-link">콘솔로</a>
+  <a href="/projects/${esc(p.id)}" class="chip chip-link">${esc(t("fileTree.back"))}</a>
+  <a href="/projects/${esc(p.id)}/console" class="chip chip-link">${esc(t("fileTree.toConsole"))}</a>
 </p>
-<p class="hint" style="font-size:12px">읽기 + 가벼운 편집만 지원. 이진 파일/1MB 초과/심볼릭 링크는 차단.
-.vibecoder / .gradle / build / node_modules 는 숨김.</p>
+<p class="hint" style="font-size:12px">${esc(t("fileTree.hint"))}</p>
 """
         )
     }
@@ -1766,12 +1795,14 @@ $errHtml
         view: ProjectFileBrowser.FileView?,
         flashErr: String? = null,
         csrf: String? = null,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         val crumbs = renderBreadcrumbs(p.id, relPath, isFile = true)
 
         val bodyHtml = if (view == null) {
-            errHtml.ifEmpty { """<p class="dim">파일을 열 수 없습니다.</p>""" }
+            errHtml.ifEmpty { """<p class="dim">${esc(t("fileView.cannotOpen"))}</p>""" }
         } else {
             val sizeKb = (view.sizeBytes + 512L) / 1024L
             val hlLang = mapMimeToHljs(view.mimeGuess)
@@ -1783,8 +1814,8 @@ $errHtml
       <span class="dim" style="font-size:12px;margin-left:8px">${sizeKb}KB · ${esc(view.mimeGuess)}</span>
     </div>
     <div style="display:flex;gap:6px">
-      <button type="button" id="toggle-mode" class="chip chip-link" style="font-size:12px;padding:4px 10px">View 모드 ↔ Edit 모드</button>
-      <a href="/projects/${esc(p.id)}/tree?path=${parentOf(relPath).encodeUrl()}" class="chip chip-link">← 상위 폴더</a>
+      <button type="button" id="toggle-mode" class="chip chip-link" style="font-size:12px;padding:4px 10px">${esc(t("fileView.toggleMode"))}</button>
+      <a href="/projects/${esc(p.id)}/tree?path=${parentOf(relPath).encodeUrl()}" class="chip chip-link">${esc(t("fileView.parentDir"))}</a>
     </div>
   </div>
 </div>
@@ -1802,10 +1833,10 @@ $errHtml
             style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:13px;tab-size:2;padding:8px;background:#0e0e0e;color:#e8e8e8;border:1px solid #333;border-radius:4px"
   >${esc(view.content)}</textarea>
   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px">
-    <small class="dim">Ctrl+S 로 저장. 이진/심볼릭/1MB 초과는 서버에서 차단.</small>
+    <small class="dim">${esc(t("fileView.editHint"))}</small>
     <div style="display:flex;gap:8px">
-      <a href="/projects/${esc(p.id)}/tree?path=${parentOf(relPath).encodeUrl()}" class="chip chip-link">취소</a>
-      <button type="submit" class="primary" style="width:auto;padding:8px 18px">저장</button>
+      <a href="/projects/${esc(p.id)}/tree?path=${parentOf(relPath).encodeUrl()}" class="chip chip-link">${esc(t("fileView.cancel"))}</a>
+      <button type="submit" class="primary" style="width:auto;padding:8px 18px">${esc(t("fileView.save"))}</button>
     </div>
   </div>
 </form>
@@ -1886,9 +1917,10 @@ $errHtml
             username = username,
             currentPath = "/projects",
             csrf = csrf,
+            lang = lang,
             body = """
 <header>
-  <h1>파일 보기 / 편집
+  <h1>${esc(t("fileView.heading"))}
     <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
   </h1>
 </header>
