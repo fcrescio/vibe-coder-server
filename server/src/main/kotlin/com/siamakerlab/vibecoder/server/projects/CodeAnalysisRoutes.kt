@@ -257,11 +257,21 @@ private object SearchTemplates {
         } else if (matches.isEmpty()) {
             """<tr><td colspan="3" class="dim" style="text-align:center;padding:14px">검색어를 입력하면 모든 프로젝트의 source 트리를 grep 합니다.</td></tr>"""
         } else {
+            // v0.73.0 — Phase 53 #16: file viewer 진입 시 line jump (?line=N) 추가 +
+            // monospace + better contrast. SymbolFinder (v0.54.0) 의 file viewer 가 같은 query 사용.
             matches.joinToString("") { m ->
+                val href = "/projects/${esc(m.projectId)}/view?path=${enc(m.relPath)}&line=${m.lineNumber}"
                 """<tr>
-                  <td><a href="/projects/${esc(m.projectId)}/view?path=${enc(m.relPath)}"><code style="font-size:11px">${esc(m.projectId.take(20))}/${esc(m.relPath)}</code></a></td>
-                  <td class="dim" style="text-align:right;font-size:11px">L${m.lineNumber}</td>
-                  <td><pre style="margin:0;font-size:12px;white-space:pre-wrap;word-break:break-word;max-width:900px">${highlight(m.line, q ?: "", caseSensitive)}</pre></td>
+                  <td style="vertical-align:top">
+                    <a href="$href" style="text-decoration:none">
+                      <code style="font-size:11px;color:var(--primary)">${esc(m.projectId.take(20))}</code>
+                      <span class="dim" style="font-size:11px">/${esc(m.relPath)}</span>
+                    </a>
+                  </td>
+                  <td class="dim" style="text-align:right;font-size:11px;vertical-align:top;padding-top:6px">
+                    <a href="$href" class="dim" style="text-decoration:none">L${m.lineNumber}</a>
+                  </td>
+                  <td style="vertical-align:top"><pre style="margin:0;font-size:12px;white-space:pre-wrap;word-break:break-word;max-width:900px;background:rgba(0,0,0,0.2);padding:6px 10px;border-radius:4px">${highlight(m.line, q ?: "", caseSensitive)}</pre></td>
                 </tr>"""
             }
         }
