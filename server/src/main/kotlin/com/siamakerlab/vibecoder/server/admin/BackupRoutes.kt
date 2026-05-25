@@ -1,6 +1,7 @@
 package com.siamakerlab.vibecoder.server.admin
 
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
+import com.siamakerlab.vibecoder.server.i18n.Messages
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -48,7 +49,7 @@ fun Routing.backupRoutes(
         val sizes = measureSubdirs(workspace.root)
         val autoBackups = service.listAutoBackups()
         call.respondText(
-            renderPage(sess.username, sess.csrf, sizes, autoBackups, authDeps.config.backup),
+            renderPage(sess.username, sess.csrf, sizes, autoBackups, authDeps.config.backup, sess.language),
             ContentType.Text.Html,
         )
     }
@@ -142,61 +143,66 @@ private fun renderPage(
     sizes: List<SubdirSize>,
     autoBackups: List<BackupService.AutoBackupEntry> = emptyList(),
     backupCfg: com.siamakerlab.vibecoder.server.config.BackupSection? = null,
+    lang: String = "en",
 ): String {
+    val t = { key: String -> Messages.t(lang, key) }
     val total = sizes.sumOf { it.bytes }
     val rowsHtml = sizes.joinToString("") { s ->
         val excluded = s.name in setOf("postgres", "dev-tools") || s.name == ".vibecoder"
         val note = when (s.name) {
-            "postgres" -> " <small class=\"dim\">(제외 — pg_dump 권장)</small>"
-            "dev-tools" -> " <small class=\"dim\">(caches/daemon/npm-cache/playwright 제외)</small>"
+            "postgres" -> " <small class=\"dim\">${esc(t("backup.row.pgExcluded"))}</small>"
+            "dev-tools" -> " <small class=\"dim\">${esc(t("backup.row.toolsExcluded"))}</small>"
             else -> ""
         }
         """<tr><td><code>${esc(s.name)}/</code>$note</td><td style="text-align:right">${humanBytes(s.bytes)}</td></tr>"""
     }
+    val runConfirm = t("backup.auto.runConfirm").replace("'", "\\'")
+    val delConfirm = t("backup.auto.delConfirm").replace("'", "\\'")
     return AdminTemplates.shell(
-        title = "백업 / 복원",
+        title = t("backup.title"),
         username = username,
         currentPath = "/backup",
         csrf = csrf,
+        lang = lang,
         body = """
 <header>
-  <h1>워크스페이스 백업 <small class="dim" style="font-size:14px;font-weight:400">v0.34.0</small></h1>
+  <h1>${esc(t("backup.heading"))} <small class="dim" style="font-size:14px;font-weight:400">v0.34.0</small></h1>
 </header>
 
 <div class="card" style="margin-bottom:14px">
-  <h2 style="margin-top:0">현재 크기 (총 ${humanBytes(total)})</h2>
+  <h2 style="margin-top:0">${esc(Messages.t(lang, "backup.currentSize", humanBytes(total)))}</h2>
   <table class="devices" style="margin:0">
-    <thead><tr><th>디렉토리</th><th style="text-align:right">크기</th></tr></thead>
+    <thead><tr><th>${esc(t("backup.col.directory"))}</th><th style="text-align:right">${esc(t("backup.col.size"))}</th></tr></thead>
     <tbody>$rowsHtml</tbody>
   </table>
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">tar.gz 다운로드</h2>
-  <p>워크스페이스 전체를 한 파일로 stream 다운로드합니다.</p>
+  <h2 style="margin-top:0">${esc(t("backup.download.title"))}</h2>
+  <p>${esc(t("backup.download.desc"))}</p>
   <p><a href="/backup/download" class="primary" style="display:inline-block;padding:10px 18px;text-decoration:none">⬇ vibe-workspace-&lt;timestamp&gt;.tar.gz</a></p>
-  <p class="hint" style="margin-top:8px">제외: <code>postgres/</code>, <code>dev-tools/gradle/caches</code>, <code>dev-tools/gradle/daemon</code>, <code>dev-tools/npm-cache</code>, <code>dev-tools/playwright</code>, 빌드 logs/. 일반 백업 크기는 위 표의 합보다 훨씬 작습니다.</p>
+  <p class="hint" style="margin-top:8px">${t("backup.download.hint")}</p>
 </div>
 
 <div class="card" style="margin-top:14px">
-  <h2 style="margin-top:0">자동 백업 (v0.60.0+)</h2>
+  <h2 style="margin-top:0">${esc(t("backup.auto.title"))}</h2>
   ${if (backupCfg == null || !backupCfg.enabled) """
-  <p>현재 <strong class="dim">비활성</strong>. <code>server.yml</code> 의 <code>backup.enabled: true</code> 로 켜고 컨테이너 재기동.</p>
+  <p>${t("backup.auto.disabledMsg")}</p>
   <pre class="diff-block">backup:
   enabled: true
-  cron: "03:00"        # 매일 새벽 3시
-  retentionCount: 7    # 최근 7개 보관</pre>
+  cron: "03:00"${esc(t("backup.auto.cronComment"))}
+  retentionCount: 7${esc(t("backup.auto.retentionComment"))}</pre>
   """ else """
-  <p>현재 <strong class="ok">활성</strong> · cron <code>${esc(backupCfg.cron)}</code> · 최근 <strong>${backupCfg.retentionCount}</strong> 개 보관.</p>
+  <p>${Messages.t(lang, "backup.auto.enabledMsg", esc(backupCfg.cron), backupCfg.retentionCount)}</p>
   """}
   <form method="post" action="/backup/auto/run-now?_csrf=${esc(csrf ?: "")}" style="margin-bottom:10px">
-    <button type="submit" class="chip chip-link" onclick="return confirm('지금 한 번 백업을 만들까요? rotation 도 적용됩니다.')">지금 백업 한 번 실행</button>
+    <button type="submit" class="chip chip-link" onclick="return confirm('$runConfirm')">${esc(t("backup.auto.runBtn"))}</button>
   </form>
   ${if (autoBackups.isEmpty()) """
-  <p class="dim" style="font-size:12px">아직 자동 백업 파일이 없습니다.</p>
+  <p class="dim" style="font-size:12px">${esc(t("backup.auto.noFiles"))}</p>
   """ else """
   <table class="devices" style="margin:0">
-    <thead><tr><th>파일</th><th style="text-align:right">크기</th><th>시각</th><th></th></tr></thead>
+    <thead><tr><th>${esc(t("backup.auto.col.file"))}</th><th style="text-align:right">${esc(t("backup.col.size"))}</th><th>${esc(t("backup.auto.col.time"))}</th><th></th></tr></thead>
     <tbody>
       ${autoBackups.joinToString("") { entry ->
         """<tr>
@@ -205,8 +211,8 @@ private fun renderPage(
           <td class="dim" style="font-size:11px">${esc(java.time.Instant.ofEpochMilli(entry.createdAtMs).toString())}</td>
           <td>
             <a href="/backup/auto/${esc(entry.fileName)}" class="chip chip-link" style="font-size:11px">⬇</a>
-            <form method="post" action="/backup/auto/${esc(entry.fileName)}/delete?_csrf=${esc(csrf ?: "")}" style="display:inline" onsubmit="return confirm('이 백업 파일을 삭제할까요?')">
-              <button type="submit" class="chip chip-danger" style="font-size:11px">삭제</button>
+            <form method="post" action="/backup/auto/${esc(entry.fileName)}/delete?_csrf=${esc(csrf ?: "")}" style="display:inline" onsubmit="return confirm('$delConfirm')">
+              <button type="submit" class="chip chip-danger" style="font-size:11px">${esc(t("backup.auto.delBtn"))}</button>
             </form>
           </td>
         </tr>"""
@@ -217,24 +223,23 @@ private fun renderPage(
 </div>
 
 <div class="card" style="margin-top:14px;background:rgba(80,150,255,0.06)">
-  <h2 style="margin-top:0">PostgreSQL 별도 백업</h2>
-  <p>위 tar.gz 는 running PG 의 data dir 을 포함하지 않습니다 (raw page tear 위험).
-    다음 명령으로 logical dump:</p>
+  <h2 style="margin-top:0">${esc(t("backup.pg.title"))}</h2>
+  <p>${esc(t("backup.pg.desc"))}</p>
   <pre class="diff-block">docker exec vibe-coder-postgres \\
   pg_dump -U vibecoder -F c vibecoder \\
   > vibe-pg-${'$'}(date +%F).pgdump</pre>
-  <p class="hint">복원: <code>pg_restore -U vibecoder -d vibecoder vibe-pg-YYYY-MM-DD.pgdump</code></p>
+  <p class="hint">${t("backup.pg.restoreHint")}</p>
 </div>
 
 <div class="card" style="margin-top:14px;background:rgba(255,150,80,0.06);border-color:var(--warn)">
-  <h2 style="margin-top:0">복원 절차</h2>
-  <p>새 호스트에서:</p>
+  <h2 style="margin-top:0">${esc(t("backup.restore.title"))}</h2>
+  <p>${esc(t("backup.restore.desc"))}</p>
   <pre class="diff-block">mkdir -p vibe-coder/vibe-coder-data
 cd vibe-coder
 tar xzf vibe-workspace-YYYYMMDD-HHmm.tar.gz -C vibe-coder-data/
-# .env / compose.yml / pg dump 별도 복원 후
+${esc(t("backup.restore.bashComment"))}
 docker compose up -d</pre>
-  <p class="hint">tar 안의 path 는 workspace.root 기준 상대경로 — 다른 머신에서 같은 상대구조로 풀면 동작.</p>
+  <p class="hint">${esc(t("backup.restore.hint"))}</p>
 </div>
 """
     )
