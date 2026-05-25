@@ -37,6 +37,60 @@ object Messages {
     }
 
     /**
+     * v0.91.0 — Phase 66 Accept-Language end-to-end.
+     *
+     * RFC 7231 §5.3.5 Accept-Language 헤더 parse — q-value 정렬된 첫 [SUPPORTED]
+     * 매치 반환. 예: `ko-KR,ko;q=0.9,en;q=0.8` → `ko`.
+     *
+     * Region tag 는 무시 (ko-KR → ko, en-US → en). null / 빈 문자열 / 매치 없음
+     * → null (호출자가 fallback chain 의 다음 단계로 진행).
+     *
+     * 잘못된 q-value (parse 실패 / 범위 밖) 는 1.0 으로 간주.
+     */
+    fun fromAcceptLanguage(header: String?): String? {
+        if (header.isNullOrBlank()) return null
+        return header.split(',')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { entry ->
+                val parts = entry.split(';').map { it.trim() }
+                val tag = parts[0].substringBefore('-').lowercase()
+                val q = parts.drop(1)
+                    .firstNotNullOfOrNull { p ->
+                        p.takeIf { it.startsWith("q=", ignoreCase = true) }
+                            ?.substring(2)?.toDoubleOrNull()
+                    }
+                    ?.coerceIn(0.0, 1.0)
+                    ?: 1.0
+                tag to q
+            }
+            .sortedByDescending { it.second }
+            .map { it.first }
+            .firstOrNull { it in SUPPORTED }
+    }
+
+    /**
+     * v0.91.0 — Phase 66 통합 resolve. 우선순위:
+     *   1. Accept-Language 헤더 (per-request, android client 가 device locale 송신).
+     *   2. user.language (DB 컬럼, 사용자가 web admin /settings/language 에서 설정).
+     *   3. serverDefault (server.yml `i18n.defaultLanguage`).
+     *   4. [DEFAULT] ("en").
+     *
+     * SSR 흐름에서는 sess.language 가 이미 `resolve(user.language, serverDefault)`
+     * 결과라 `acceptLanguage=null` 로 호출하면 기존 동작 유지.
+     * JSON API 흐름에서는 Bearer token 인증이라 user.language 가 직접 조회 불가
+     * (DevicePrincipal 만 있음) → Accept-Language 가 주된 소스.
+     */
+    fun resolveFromRequest(
+        acceptLanguage: String?,
+        userLang: String? = null,
+        serverDefault: String? = null,
+    ): String {
+        fromAcceptLanguage(acceptLanguage)?.let { return it }
+        return resolve(userLang, serverDefault)
+    }
+
+    /**
      * key lookup + 인자 치환 (`%s` 가 있으면 `String.format`).
      * key 가 현재 언어에 없으면 [DEFAULT] 번들로 fallback.
      * 그래도 없으면 key 자체 (개발자가 누락 발견 용이).

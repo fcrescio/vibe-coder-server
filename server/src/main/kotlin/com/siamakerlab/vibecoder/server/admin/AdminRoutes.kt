@@ -506,11 +506,31 @@ internal suspend fun io.ktor.server.routing.RoutingContext.requireSessionOrRedir
         token = token, userId = user.id, username = user.username, deviceId = device.id,
         csrf = com.siamakerlab.vibecoder.server.auth.CsrfTokens.tokenFor(token),
         role = user.role,
-        language = com.siamakerlab.vibecoder.server.i18n.Messages.resolve(
-            user.language, deps.config.i18n.defaultLanguage,
+        // v0.91.0 — Phase 66 Accept-Language end-to-end. 헤더 > user.language > server default.
+        // SSR cookie 흐름에서도 mobile webview / vibe-coder-android 가 같은 토큰으로 호출 시
+        // 자기 device locale 을 우선 적용 (DB 컬럼 변경 없이).
+        language = com.siamakerlab.vibecoder.server.i18n.Messages.resolveFromRequest(
+            acceptLanguage = call.request.headers["Accept-Language"],
+            userLang = user.language,
+            serverDefault = deps.config.i18n.defaultLanguage,
         ),
     )
 }
+
+/**
+ * v0.91.0 — Phase 66 JSON API 용 language resolver.
+ * SSR 흐름이 아닌 Bearer 토큰 인증 endpoint 에서 사용.
+ * Accept-Language 헤더 → server default → "en" 순서. user.language 는 device principal
+ * 만 있어서 직접 조회 못 함 — 필요 시 호출자가 명시 전달.
+ */
+internal fun io.ktor.server.application.ApplicationCall.preferredLanguage(
+    serverDefault: String,
+    userLang: String? = null,
+): String = com.siamakerlab.vibecoder.server.i18n.Messages.resolveFromRequest(
+    acceptLanguage = request.headers["Accept-Language"],
+    userLang = userLang,
+    serverDefault = serverDefault,
+)
 
 /**
  * v0.37.0 — admin role 가드. Member 가 접근하면 dashboard 로 redirect (403 redirect).
