@@ -13,9 +13,9 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.io.InputStreamReader
+import java.io.InputStream
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -76,7 +76,10 @@ class KotlinLspService(private val workspace: WorkspacePath) {
         if (!isAvailable || symbolName.isBlank()) return emptyList()
         val projectRoot = workspace.projectRoot(projectId)
         if (!Files.isDirectory(projectRoot)) return emptyList()
-        val instance = instances.getOrPut(projectId) {
+        // v0.75.1 (H2 fix) — `getOrPut` 은 ConcurrentHashMap 에서도 non-atomic
+        // (get → null이면 build → put 분리). 동시 첫 호출 시 LspInstance 두 개 spawn,
+        // 한 프로세스 leak. `computeIfAbsent` 는 java.util.concurrent atomic 보장.
+        val instance = instances.computeIfAbsent(projectId) {
             LspInstance(lspPath!!, projectRoot).also { it.initialize() }
         }
         return runCatching { instance.workspaceSymbol(symbolName, projectRoot) }
@@ -105,9 +108,11 @@ class KotlinLspService(private val workspace: WorkspacePath) {
                 .start()
         }
         private val out: OutputStream by lazy { process.outputStream }
-        private val reader: BufferedReader by lazy {
-            BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8))
-        }
+        // v0.75.1 (H1 fix) — LSP Content-Length 는 UTF-8 **바이트 수**. 기존
+        // BufferedReader + CharArray 는 문자 단위로 읽어서 한글 identifier 포함
+        // 응답이 partial → JSON parse 실패 (검색 결과 sporadic 0건). raw
+        // InputStream 으로 byte 단위 read 후 UTF-8 decode.
+        private val input: InputStream by lazy { process.inputStream }
         private val nextId = AtomicInteger(1)
         private val ioLock = ReentrantLock()
         @Volatile private var initialized = false
@@ -215,28 +220,48 @@ class KotlinLspService(private val workspace: WorkspacePath) {
 
         private fun readMessage(remainingMs: Long): JsonObject? {
             // Content-Length: N\r\n\r\n{json}
+            // v0.75.1 (H1 fix) — header / body 모두 byte 단위.
             val headerLines = mutableListOf<String>()
             val start = System.currentTimeMillis()
             while (true) {
                 if (System.currentTimeMillis() - start > remainingMs) return null
-                val line = readLineSafe() ?: return null
+                val line = readHeaderLineSafe() ?: return null
                 if (line.isEmpty()) break
                 headerLines += line
             }
             val contentLength = headerLines
                 .firstOrNull { it.startsWith("Content-Length:", ignoreCase = true) }
                 ?.substringAfter(':')?.trim()?.toIntOrNull() ?: return null
-            val buf = CharArray(contentLength)
+            val buf = ByteArray(contentLength)
             var read = 0
             while (read < contentLength) {
-                val n = reader.read(buf, read, contentLength - read)
+                val n = input.read(buf, read, contentLength - read)
                 if (n < 0) return null
                 read += n
             }
-            return runCatching { json.parseToJsonElement(String(buf)) as JsonObject }.getOrNull()
+            val text = String(buf, StandardCharsets.UTF_8)
+            return runCatching { json.parseToJsonElement(text) as JsonObject }.getOrNull()
         }
 
-        private fun readLineSafe(): String? = try { reader.readLine() } catch (e: IOException) { null }
+        /**
+         * v0.75.1 (H1 fix) — Header 한 줄 byte 단위 read 후 ASCII 변환.
+         * `\r\n` 또는 `\n` 종료. EOF 시 null.
+         */
+        private fun readHeaderLineSafe(): String? {
+            return try {
+                val baos = ByteArrayOutputStream(64)
+                while (true) {
+                    val c = input.read()
+                    if (c < 0) return if (baos.size() == 0) null else baos.toString("ISO-8859-1")
+                    if (c == 0x0A) break
+                    baos.write(c)
+                }
+                val bytes = baos.toByteArray()
+                // \r 제거 (CRLF).
+                val end = if (bytes.isNotEmpty() && bytes.last() == 0x0D.toByte()) bytes.size - 1 else bytes.size
+                String(bytes, 0, end, StandardCharsets.ISO_8859_1)
+            } catch (e: IOException) { null }
+        }
 
         fun shutdown() {
             runCatching { request("shutdown", buildJsonObject {}, timeoutMs = 5_000) }

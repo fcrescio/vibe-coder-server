@@ -40,6 +40,8 @@ fun Routing.historyRoutes(
     /** v0.64.0 — memo/star endpoint 의 Bearer 토큰 dual-auth 용. */
     tokens: com.siamakerlab.vibecoder.server.auth.TokenService,
     deviceRepo: com.siamakerlab.vibecoder.server.repo.DeviceRepository,
+    /** v0.75.1 (H3 fix) — Bearer 분기에서 Project ACL 검증 위해 필요. */
+    adminUserRepo: com.siamakerlab.vibecoder.server.repo.AdminUserRepository,
 ) {
     get("/projects/{id}/history") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
@@ -109,9 +111,9 @@ fun Routing.historyRoutes(
     // Note: 라우터 등록은 hardcoded path template (Ktor 의 `{name}` placeholder).
     // ApiPath.projectHistoryMemo(...) 는 client 호출용 — pathSeg 가 {} 까지 encode 함.
     post("/api/projects/{id}/history/{turnId}/memo") {
-        if (!authorizeMemoStar(authDeps, tokens, deviceRepo)) return@post
         val turnId = call.parameters["turnId"]
             ?: return@post call.respond(io.ktor.http.HttpStatusCode.BadRequest, "missing turnId")
+        if (!authorizeMemoStar(authDeps, tokens, deviceRepo, adminUserRepo, repo, projects, turnId)) return@post
         val body = call.receiveText()
         val memo = runCatching {
             (kotlinx.serialization.json.Json.parseToJsonElement(body)
@@ -126,9 +128,9 @@ fun Routing.historyRoutes(
     }
 
     post("/api/projects/{id}/history/{turnId}/star") {
-        if (!authorizeMemoStar(authDeps, tokens, deviceRepo)) return@post
         val turnId = call.parameters["turnId"]
             ?: return@post call.respond(io.ktor.http.HttpStatusCode.BadRequest, "missing turnId")
+        if (!authorizeMemoStar(authDeps, tokens, deviceRepo, adminUserRepo, repo, projects, turnId)) return@post
         val starred = call.request.queryParameters["starred"]?.toBooleanStrictOrNull()
             ?: return@post call.respond(io.ktor.http.HttpStatusCode.BadRequest, "missing starred=true|false")
         val ok = repo.setStarred(turnId, starred)
@@ -154,6 +156,11 @@ private suspend fun io.ktor.server.routing.RoutingContext.authorizeMemoStar(
     authDeps: AdminRoutesDeps,
     tokens: com.siamakerlab.vibecoder.server.auth.TokenService,
     deviceRepo: com.siamakerlab.vibecoder.server.repo.DeviceRepository,
+    /** v0.75.1 (H3 fix) — Bearer 분기에서 role + ACL 검증을 위해 필요. */
+    adminUserRepo: com.siamakerlab.vibecoder.server.repo.AdminUserRepository,
+    repo: ConversationTurnRepository,
+    projects: ProjectService,
+    turnId: String,
 ): Boolean {
     val authHeader = call.request.headers["Authorization"]
     val bearer = if (authHeader != null && authHeader.startsWith("Bearer ", ignoreCase = true))
@@ -166,7 +173,21 @@ private suspend fun io.ktor.server.routing.RoutingContext.authorizeMemoStar(
             call.respond(io.ktor.http.HttpStatusCode.Unauthorized, "invalid token")
             return false
         }
-        // Bearer 통과 — CSRF skip.
+        // v0.75.1 (H3 fix) — Bearer 통과 후 Project ACL 검증. 기존엔 turnId 만 알면
+        // ACL 밖 프로젝트의 turn 도 memo/star 가능했음 (JSON variant 와 비대칭).
+        val turn = repo.findById(turnId)
+        if (turn == null) {
+            call.respond(io.ktor.http.HttpStatusCode.NotFound, "not_found")
+            return false
+        }
+        val user = device.userId?.let { adminUserRepo.findById(it) }
+        val isAdmin = user?.isAdmin == true
+        if (device.userId != null &&
+            !projects.canUserAccess(device.userId, isAdmin, turn.projectId)) {
+            call.respond(io.ktor.http.HttpStatusCode.Forbidden, "project_forbidden")
+            return false
+        }
+        // CSRF skip.
         return true
     }
     // 기존 SSR cookie 세션 흐름.

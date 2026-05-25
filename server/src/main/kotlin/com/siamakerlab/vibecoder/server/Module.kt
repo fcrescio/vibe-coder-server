@@ -364,7 +364,7 @@ fun Application.module(ctx: ServerContext) {
         promptRoutes(adminDeps, ctx.promptStore)
         auditRoutes(adminDeps, ctx.auditRepo)
         historyRoutes(adminDeps, ctx.projects, ctx.conversationRepo, ctx.conversationExport,
-            ctx.tokens, ctx.deviceRepo)
+            ctx.tokens, ctx.deviceRepo, ctx.adminUserRepo)
         // v0.30.0 — cross-project conversation search (SSR HTML).
         globalHistorySearchRoutes(adminDeps)
         // v0.64.0 — Phase 43. JSON variant of history / chat history / cross-search /
