@@ -52,14 +52,14 @@ class ProjectFileBrowser(
     fun list(projectId: String, subPath: String): List<Entry> {
         val projectRoot = workspace.projectRoot(projectId)
         if (!projectRoot.exists()) {
-            throw ApiException(404, "project_root_not_found", "프로젝트 폴더가 존재하지 않습니다.")
+            throw ApiException.localized(404, "project_root_not_found", messageKey = "api.fileBrowser.projectRootNotFound")
         }
         val target = if (subPath.isBlank()) projectRoot else PathSafety.normalizeAndCheck(projectRoot, subPath)
         if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-            throw ApiException(404, "path_not_found", "경로가 없습니다: $subPath")
+            throw ApiException.localized(404, "path_not_found", messageKey = "api.fileBrowser.pathNotFound", args = listOf(subPath))
         }
         if (!target.isDirectory()) {
-            throw ApiException(400, "not_a_directory", "디렉토리가 아닙니다: $subPath")
+            throw ApiException.localized(400, "not_a_directory", messageKey = "api.fileBrowser.notADirectory", args = listOf(subPath))
         }
         return Files.list(target).use { stream ->
             stream
@@ -87,31 +87,26 @@ class ProjectFileBrowser(
     fun read(projectId: String, relPath: String): FileView {
         val projectRoot = workspace.projectRoot(projectId)
         if (relPath.isBlank()) {
-            throw ApiException(400, "empty_path", "경로가 필요합니다.")
+            throw ApiException.localized(400, "empty_path", messageKey = "api.fileBrowser.emptyPath")
         }
         val target = PathSafety.normalizeAndCheck(projectRoot, relPath)
         if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-            throw ApiException(404, "file_not_found", "파일이 없습니다: $relPath")
+            throw ApiException.localized(404, "file_not_found", messageKey = "api.fileBrowser.fileNotFound", args = listOf(relPath))
         }
         if (Files.isSymbolicLink(target)) {
-            throw ApiException(403, "symlink_blocked", "심볼릭 링크는 열람 불가입니다.")
+            throw ApiException.localized(403, "symlink_blocked", messageKey = "api.fileBrowser.symlinkBlockedView")
         }
         if (!target.isRegularFile()) {
-            throw ApiException(400, "not_a_file", "파일이 아닙니다.")
+            throw ApiException.localized(400, "not_a_file", messageKey = "api.fileBrowser.notAFile")
         }
         val size = Files.size(target)
         if (size > MAX_VIEW_BYTES) {
-            throw ApiException(
-                413, "file_too_large",
-                "파일이 너무 큽니다 ($size bytes, max ${MAX_VIEW_BYTES} bytes). 콘솔에서 head/tail 등으로 확인하세요.",
-            )
+            throw ApiException.localized(413, "file_too_large",
+                messageKey = "api.fileBrowser.fileTooLarge", args = listOf(size, MAX_VIEW_BYTES))
         }
         val bytes = Files.readAllBytes(target)
         if (looksBinary(bytes)) {
-            throw ApiException(
-                415, "binary_file",
-                "이진 파일로 추정됩니다 (NUL 또는 비텍스트 바이트 다수). UI 에서 열람 불가.",
-            )
+            throw ApiException.localized(415, "binary_file", messageKey = "api.fileBrowser.binaryFile")
         }
         val content = String(bytes, Charsets.UTF_8)
         val mime = guessMime(relPath)
@@ -125,25 +120,23 @@ class ProjectFileBrowser(
     fun write(projectId: String, relPath: String, content: String) {
         val projectRoot = workspace.projectRoot(projectId)
         if (relPath.isBlank()) {
-            throw ApiException(400, "empty_path", "경로가 필요합니다.")
+            throw ApiException.localized(400, "empty_path", messageKey = "api.fileBrowser.emptyPath")
         }
         if (content.length > MAX_VIEW_BYTES) {
-            throw ApiException(
-                413, "content_too_large",
-                "본문이 너무 큽니다 (${content.length} chars). UI 편집 가능 최대치를 초과.",
-            )
+            throw ApiException.localized(413, "content_too_large",
+                messageKey = "api.fileBrowser.contentTooLarge", args = listOf(content.length))
         }
         val target = PathSafety.normalizeAndCheck(projectRoot, relPath)
         if (Files.isSymbolicLink(target)) {
-            throw ApiException(403, "symlink_blocked", "심볼릭 링크는 편집 불가입니다.")
+            throw ApiException.localized(403, "symlink_blocked", messageKey = "api.fileBrowser.symlinkBlockedEdit")
         }
         if (Files.exists(target, LinkOption.NOFOLLOW_LINKS) && !target.isRegularFile()) {
-            throw ApiException(400, "not_a_file", "파일이 아닙니다.")
+            throw ApiException.localized(400, "not_a_file", messageKey = "api.fileBrowser.notAFile")
         }
         // 상위 디렉토리는 존재해야 함 (신규 디렉토리 생성은 본 endpoint 가 안 함)
-        val parent = target.parent ?: throw ApiException(400, "bad_path", "부모 경로가 없습니다.")
+        val parent = target.parent ?: throw ApiException.localized(400, "bad_path", messageKey = "api.fileBrowser.badPath")
         if (!Files.exists(parent)) {
-            throw ApiException(400, "parent_missing", "상위 디렉토리가 존재하지 않습니다: $parent")
+            throw ApiException.localized(400, "parent_missing", messageKey = "api.fileBrowser.parentMissing", args = listOf(parent.toString()))
         }
         // atomic-ish write: tmp → move
         val tmp = target.resolveSibling("${target.fileName}.editing.tmp")

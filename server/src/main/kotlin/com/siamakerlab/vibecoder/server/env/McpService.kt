@@ -94,16 +94,15 @@ class McpService(
      */
     fun spawnBatch(selections: Map<String, Map<String, String>>): String {
         if (selections.isEmpty()) {
-            throw ApiException(400, "no_selection", "선택된 MCP 가 없습니다.")
+            throw ApiException.localized(400, "no_selection", messageKey = "api.mcp.noSelection")
         }
         // 카탈로그에 없는 id 거부, comingSoon 항목도 거부.
         selections.keys.forEach { id ->
             val entry = McpCatalog.get(id)
-                ?: throw ApiException(400, "unknown_mcp", "알 수 없는 MCP id: $id")
+                ?: throw ApiException.localized(400, "unknown_mcp", messageKey = "api.mcp.unknownMcp", args = listOf(id))
             if (entry.comingSoon) {
-                throw ApiException(400, "coming_soon",
-                    "${entry.displayName} 은 아직 vibe-coder 비인터랙티브 환경에서 지원되지 않습니다 " +
-                        "(브라우저 OAuth 콜백 필수). 카탈로그에서 '준비중' 으로 표시되어 있습니다.")
+                throw ApiException.localized(400, "coming_soon",
+                    messageKey = "api.mcp.comingSoon", args = listOf(entry.displayName))
             }
         }
         // 필수 config 누락 검사
@@ -112,8 +111,8 @@ class McpService(
             entry.configFields.filter { it.required }.forEach { f ->
                 val v = cfg[f.key].orEmpty().trim()
                 if (v.isEmpty()) {
-                    throw ApiException(400, "missing_config",
-                        "${entry.displayName}: 필수 항목 '${f.label}' (${f.key}) 가 비어 있습니다.")
+                    throw ApiException.localized(400, "missing_config",
+                        messageKey = "api.mcp.missingConfig", args = listOf("${entry.displayName}: ${f.label}"))
                 }
             }
         }
@@ -167,20 +166,19 @@ class McpService(
         originalFileName: String?,
     ): String {
         val entry = McpCatalog.get(mcpId)
-            ?: throw ApiException(404, "unknown_mcp", "알 수 없는 MCP id: $mcpId")
+            ?: throw ApiException.localized(404, "unknown_mcp", messageKey = "api.mcp.unknownMcp", args = listOf(mcpId))
         val field = entry.configFields.firstOrNull { it.key == key }
-            ?: throw ApiException(404, "unknown_field", "${entry.displayName} 에 '$key' 필드 없음")
+            ?: throw ApiException.localized(404, "unknown_field", messageKey = "api.mcp.unknownField", args = listOf(key, entry.displayName))
         if (!field.isFile) {
-            throw ApiException(400, "not_file_field",
-                "${field.label} 은 파일 업로드 필드가 아닙니다 (텍스트로 전송하세요).")
+            throw ApiException.localized(400, "not_file_field",
+                messageKey = "api.mcp.notFileField", args = listOf(field.label))
         }
         if (bytes.isEmpty()) {
-            throw ApiException(400, "empty", "빈 파일입니다.")
+            throw ApiException.localized(400, "empty", messageKey = "api.mcp.empty")
         }
         if (bytes.size > MAX_SECRET_FILE_BYTES) {
-            throw ApiException(413, "too_large",
-                "파일이 ${MAX_SECRET_FILE_BYTES / 1024}KB 를 초과합니다 (실제 ${bytes.size} bytes). " +
-                    "Secret 파일이 이렇게 크지 않습니다 — 올바른 파일인지 확인하세요.")
+            throw ApiException.localized(413, "too_large",
+                messageKey = "api.mcp.tooLarge", args = listOf(bytes.size, MAX_SECRET_FILE_BYTES))
         }
 
         val secretsDir = claudeConfigDir().resolve("mcp-secrets")
@@ -195,7 +193,7 @@ class McpService(
                 ))
             }
         } catch (e: Throwable) {
-            throw ApiException(500, "io", "mcp-secrets 디렉토리 생성 실패: ${e.message}")
+            throw ApiException.localized(500, "io", messageKey = "api.mcp.secretsDirIo", args = listOf(e.message ?: ""))
         }
 
         // 안전한 파일명 — id/key 는 catalog 에서 온 값이라 검증된 ASCII 이지만,
@@ -212,7 +210,7 @@ class McpService(
             Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING)
         } catch (e: Throwable) {
             runCatching { Files.deleteIfExists(tmp) }
-            throw ApiException(500, "io", "파일 쓰기 실패: ${e.message}")
+            throw ApiException.localized(500, "io", messageKey = "api.mcp.fileWriteIo", args = listOf(e.message ?: ""))
         }
         runCatching {
             Files.setPosixFilePermissions(target, setOf(

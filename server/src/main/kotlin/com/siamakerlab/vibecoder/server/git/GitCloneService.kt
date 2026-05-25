@@ -52,7 +52,7 @@ class GitCloneService(
                         PosixFilePermission.OWNER_EXECUTE))
             }
         } catch (e: Throwable) {
-            throw ApiException(500, "ssh_dir", "~/.ssh 디렉토리 생성 실패: ${e.message}")
+            throw ApiException.localized(500, "ssh_dir", messageKey = "api.gitClone.sshDir", args = listOf(e.message ?: ""))
         }
         val privKey = sshDir.resolve("id_ed25519")
         val pubKey = sshDir.resolve("id_ed25519.pub")
@@ -63,15 +63,15 @@ class GitCloneService(
             val proc = try {
                 ProcessBuilder(cmd).redirectErrorStream(true).start()
             } catch (e: Throwable) {
-                throw ApiException(500, "ssh_keygen", "ssh-keygen 실행 실패: ${e.message}")
+                throw ApiException.localized(500, "ssh_keygen", messageKey = "api.gitClone.sshKeygen", args = listOf(e.message ?: ""))
             }
             if (!proc.waitFor(15, TimeUnit.SECONDS)) {
                 proc.destroyForcibly()
-                throw ApiException(500, "ssh_keygen_timeout", "ssh-keygen 시간 초과")
+                throw ApiException.localized(500, "ssh_keygen_timeout", messageKey = "api.gitClone.sshKeygenTimeout")
             }
             if (proc.exitValue() != 0) {
                 val out = proc.inputStream.bufferedReader().readText()
-                throw ApiException(500, "ssh_keygen_fail", "ssh-keygen exit ${proc.exitValue()}: $out")
+                throw ApiException.localized(500, "ssh_keygen_fail", messageKey = "api.gitClone.sshKeygenFail", args = listOf(proc.exitValue(), out))
             }
             runCatching {
                 Files.setPosixFilePermissions(privKey,
@@ -131,8 +131,8 @@ class GitCloneService(
         val cleanUrl = url.trim()
         validateUrl(cleanUrl)
         if (targetDir.exists() && Files.list(targetDir).use { it.findFirst().isPresent }) {
-            throw ApiException(409, "target_not_empty",
-                "타겟 디렉토리가 비어 있지 않습니다: $targetDir")
+            throw ApiException.localized(409, "target_not_empty",
+                messageKey = "api.gitClone.targetNotEmpty", args = listOf(targetDir.toString()))
         }
         Files.createDirectories(targetDir.parent)
 
@@ -165,14 +165,14 @@ class GitCloneService(
         val proc = try {
             pb.start()
         } catch (e: Throwable) {
-            throw ApiException(500, "spawn_fail", "git clone 실행 실패: ${e.message}")
+            throw ApiException.localized(500, "spawn_fail", messageKey = "api.gitClone.spawnFail", args = listOf(e.message ?: ""))
         }
         proc.inputStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
             lines.forEach(onLog)
         }
         if (!proc.waitFor(10, TimeUnit.MINUTES)) {
             proc.destroyForcibly()
-            throw ApiException(504, "timeout", "git clone 10분 초과 — 네트워크/저장소 크기 확인.")
+            throw ApiException.localized(504, "timeout", messageKey = "api.gitClone.timeout")
         }
         val exit = proc.exitValue()
         if (exit != 0) {
@@ -184,14 +184,13 @@ class GitCloneService(
                     }
                 }
             }
-            throw ApiException(502, "clone_failed",
-                "git clone exit $exit — URL/권한/네트워크를 확인하세요. " +
-                    "private 레포면 환경설정에서 PAT 등록 (HTTPS) 또는 SSH 공개키 등록 (SSH URL).")
+            throw ApiException.localized(502, "clone_failed",
+                messageKey = "api.gitClone.cloneFailed", args = listOf("exit $exit"))
         }
     }
 
     private fun validateUrl(url: String) {
-        if (url.isEmpty()) throw ApiException(400, "empty_url", "clone URL 이 비어 있습니다.")
+        if (url.isEmpty()) throw ApiException.localized(400, "empty_url", messageKey = "api.gitClone.emptyUrl")
         // scheme 비교는 대소문자 무관 (git 의 transport 매칭과 동일).
         val lower = url.lowercase()
         when {
@@ -199,14 +198,14 @@ class GitCloneService(
             lower.startsWith("http://") -> { /* ok — 신뢰는 사용자 책임 */ }
             lower.startsWith("git@") && url.contains(':') -> { /* SSH form */ }
             lower.startsWith("ssh://") -> { /* ok */ }
-            else -> throw ApiException(400, "bad_url_scheme",
-                "지원하지 않는 URL 형식. https:// / http:// / git@host:owner/repo / ssh:// 만 허용.")
+            else -> throw ApiException.localized(400, "bad_url_scheme",
+                messageKey = "api.gitClone.badUrlScheme", args = listOf(url))
         }
         // file://, local-file://, ..(traversal) 모두 case-insensitive 차단.
         // 이전 v0.12.3 까지 substring 검사가 case-sensitive 라 `FILE://` 가 통과해
         // git 의 file transport 가 동작했다 (워크스페이스 탈출 가능성).
         if (lower.contains("file://") || url.contains("..")) {
-            throw ApiException(400, "unsafe_url", "안전하지 않은 URL 패턴입니다.")
+            throw ApiException.localized(400, "unsafe_url", messageKey = "api.gitClone.unsafeUrl")
         }
     }
 

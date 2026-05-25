@@ -50,7 +50,7 @@ fun Routing.consoleRoutes(
         post("/api/projects/{projectId}/claude/console/prompt") {
             call.requireApiWrite()
             val projectId = call.parameters["projectId"]
-                ?: throw ApiException(400, "bad_request", "projectId is required")
+                ?: throw ApiException.localized(400, "bad_request", messageKey = "api.console.projectIdRequired")
             call.requireProjectAcl(projects, projectId)
             // ensure project is registered (404 path matches the rest of the codebase)
             projects.rowOrThrow(projectId)
@@ -59,30 +59,30 @@ fun Routing.consoleRoutes(
             // 미리 차단하고 명확한 가이드를 응답으로 돌려준다.
             val env = envDiagnostics.run()
             if (env.claude.status != CheckStatus.OK) {
-                throw ApiException(503, "claude_cli_missing",
-                    "Claude CLI 가 설치되지 않았습니다. 컨테이너 안에서 'vibe-doctor claude' 를 실행하세요.")
+                throw ApiException.localized(503, "claude_cli_missing", messageKey = "api.console.claudeCliMissing")
             }
             if (env.claudeAuth?.status == CheckStatus.ERROR) {
-                throw ApiException(503, "claude_auth_required",
-                    "Claude CLI 로그인이 필요합니다. 'docker exec -it --user vibe vibe-coder-server claude login' 후 다시 시도하세요.")
+                throw ApiException.localized(503, "claude_auth_required", messageKey = "api.console.claudeAuthRequired")
             }
 
             val body = call.receive<PromptRequestDto>()
             val text = body.text.trim()
-            if (text.isEmpty()) throw ApiException(400, "bad_request", "text is required")
+            if (text.isEmpty()) throw ApiException.localized(400, "bad_request", messageKey = "api.console.textRequired")
             // UTF-8 byte 기준으로 통일 (sendPrompt 내부 검증과 일치). char count 검증은
             // 한국어 등에서 한 글자가 3 byte 가 되어 의도가 어긋났다.
             val byteSize = text.toByteArray(Charsets.UTF_8).size
             if (byteSize > ClaudeSessionManager.MAX_PROMPT_BYTES) {
-                throw ApiException(400, "prompt_too_large",
-                    "prompt exceeds ${ClaudeSessionManager.MAX_PROMPT_BYTES} bytes (got $byteSize)")
+                throw ApiException.localized(400, "prompt_too_large",
+                    messageKey = "api.console.promptTooLarge",
+                    args = listOf(ClaudeSessionManager.MAX_PROMPT_BYTES, byteSize))
             }
 
             try {
                 sessionManager.sendPrompt(projectId, text)
             } catch (e: Exception) {
                 log.warn(e) { "[$projectId] prompt failed" }
-                throw ApiException(500, "claude_send_failed", e.message ?: "unknown error")
+                throw ApiException.localized(500, "claude_send_failed",
+                    messageKey = "api.console.sendFailed", args = listOf(e.message ?: "unknown error"))
             }
 
             val seq = hub.consoleCurrentSeq(LogHub.consoleTopic(projectId))
@@ -92,7 +92,7 @@ fun Routing.consoleRoutes(
         post("/api/projects/{projectId}/claude/console/new") {
             call.requireApiWrite()
             val projectId = call.parameters["projectId"]
-                ?: throw ApiException(400, "bad_request", "projectId is required")
+                ?: throw ApiException.localized(400, "bad_request", messageKey = "api.console.projectIdRequired")
             call.requireProjectAcl(projects, projectId)
             projects.rowOrThrow(projectId)
             sessionManager.startNew(projectId)
@@ -103,7 +103,7 @@ fun Routing.consoleRoutes(
         post("/api/projects/{projectId}/claude/console/cancel") {
             call.requireApiWrite()
             val projectId = call.parameters["projectId"]
-                ?: throw ApiException(400, "bad_request", "projectId is required")
+                ?: throw ApiException.localized(400, "bad_request", messageKey = "api.console.projectIdRequired")
             call.requireProjectAcl(projects, projectId)
             projects.rowOrThrow(projectId)
             sessionManager.cancelTurn(projectId)
@@ -114,7 +114,7 @@ fun Routing.consoleRoutes(
 
         get("/api/projects/{projectId}/claude/status") {
             val projectId = call.parameters["projectId"]
-                ?: throw ApiException(400, "bad_request", "projectId is required")
+                ?: throw ApiException.localized(400, "bad_request", messageKey = "api.console.projectIdRequired")
             call.requireProjectAcl(projects, projectId)
             projects.rowOrThrow(projectId)
             call.respond(statusService.snapshot(projectId))
@@ -123,7 +123,7 @@ fun Routing.consoleRoutes(
         // v0.31.0 — prompt 자동완성 (history 기반 prefix 매치).
         get("/api/projects/{projectId}/claude/prompt-suggestions") {
             val projectId = call.parameters["projectId"]
-                ?: throw ApiException(400, "bad_request", "projectId is required")
+                ?: throw ApiException.localized(400, "bad_request", messageKey = "api.console.projectIdRequired")
             call.requireProjectAcl(projects, projectId)
             projects.rowOrThrow(projectId)
             val prefix = call.request.queryParameters["prefix"]?.trim().orEmpty()

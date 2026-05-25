@@ -73,19 +73,19 @@ class PromptTemplateStore(
     fun create(title: String, category: String, body: String): Template {
         val cleanTitle = title.trim()
         val cleanBody = body.trim()
-        if (cleanTitle.isEmpty()) throw ApiException(400, "empty_title", "제목이 비어 있습니다.")
-        if (cleanBody.isEmpty()) throw ApiException(400, "empty_body", "본문이 비어 있습니다.")
+        if (cleanTitle.isEmpty()) throw ApiException.localized(400, "empty_title", messageKey = "api.prompt.emptyTitle")
+        if (cleanBody.isEmpty()) throw ApiException.localized(400, "empty_body", messageKey = "api.prompt.emptyBody")
         if (cleanTitle.length > MAX_TITLE_LEN)
-            throw ApiException(400, "title_too_long", "제목은 ${MAX_TITLE_LEN}자 이하.")
+            throw ApiException.localized(400, "title_too_long", messageKey = "api.prompt.titleTooLong", args = listOf(MAX_TITLE_LEN))
         if (cleanBody.length > MAX_BODY_LEN)
-            throw ApiException(400, "body_too_long", "본문은 ${MAX_BODY_LEN}자 이하.")
+            throw ApiException.localized(400, "body_too_long", messageKey = "api.prompt.bodyTooLong", args = listOf(MAX_BODY_LEN))
         val cleanCat = category.trim().ifBlank { "General" }
         val now = clock.nowIso()
         val t = Template(Ids.taskId(), cleanTitle, cleanCat, cleanBody, now, now)
         lock.write {
             val s = read()
             if (s.templates.size >= MAX_TOTAL)
-                throw ApiException(400, "limit_reached", "최대 $MAX_TOTAL 개까지 저장 가능합니다.")
+                throw ApiException.localized(400, "limit_reached", messageKey = "api.prompt.limitReached", args = listOf(MAX_TOTAL))
             s.templates.add(t)
             persist(s)
         }
@@ -96,17 +96,17 @@ class PromptTemplateStore(
     fun update(id: String, title: String, category: String, body: String): Template {
         val cleanTitle = title.trim()
         val cleanBody = body.trim()
-        if (cleanTitle.isEmpty()) throw ApiException(400, "empty_title", "제목이 비어 있습니다.")
-        if (cleanBody.isEmpty()) throw ApiException(400, "empty_body", "본문이 비어 있습니다.")
+        if (cleanTitle.isEmpty()) throw ApiException.localized(400, "empty_title", messageKey = "api.prompt.emptyTitle")
+        if (cleanBody.isEmpty()) throw ApiException.localized(400, "empty_body", messageKey = "api.prompt.emptyBody")
         if (cleanTitle.length > MAX_TITLE_LEN)
-            throw ApiException(400, "title_too_long", "제목은 ${MAX_TITLE_LEN}자 이하.")
+            throw ApiException.localized(400, "title_too_long", messageKey = "api.prompt.titleTooLong", args = listOf(MAX_TITLE_LEN))
         if (cleanBody.length > MAX_BODY_LEN)
-            throw ApiException(400, "body_too_long", "본문은 ${MAX_BODY_LEN}자 이하.")
+            throw ApiException.localized(400, "body_too_long", messageKey = "api.prompt.bodyTooLong", args = listOf(MAX_BODY_LEN))
         val cleanCat = category.trim().ifBlank { "General" }
         return lock.write {
             val s = read()
             val idx = s.templates.indexOfFirst { it.id == id }
-            if (idx < 0) throw ApiException(404, "template_not_found", "id=$id")
+            if (idx < 0) throw ApiException.localized(404, "template_not_found", messageKey = "api.prompt.notFound", args = listOf(id))
             val updated = s.templates[idx].copy(
                 title = cleanTitle, category = cleanCat, body = cleanBody,
                 updatedAt = clock.nowIso(),
