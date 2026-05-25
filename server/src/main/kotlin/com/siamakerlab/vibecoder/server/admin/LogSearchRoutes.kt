@@ -1,6 +1,7 @@
 package com.siamakerlab.vibecoder.server.admin
 
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
+import com.siamakerlab.vibecoder.server.i18n.Messages
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.server.application.call
@@ -37,7 +38,7 @@ fun Routing.logSearchRoutes(authDeps: AdminRoutesDeps, svc: LogSearchService) {
             LogMatch(it.projectId, it.buildId, it.lineNumber, it.line)
         }
         call.respondText(
-            renderPage(sess.username, sess.csrf, q, projectFilter, matches),
+            renderPage(sess.username, sess.csrf, q, projectFilter, matches, sess.language),
             ContentType.Text.Html,
         )
     }
@@ -71,11 +72,13 @@ private fun renderPage(
     q: String?,
     projectFilter: String?,
     matches: List<LogMatch>,
+    lang: String = "en",
 ): String {
+    val t = { key: String -> Messages.t(lang, key) }
     val rowsHtml = if (matches.isEmpty() && q != null) {
-        """<tr><td colspan="4" class="dim" style="text-align:center;padding:14px">"${esc(q)}" 에 매치되는 줄이 없습니다 (각 빌드 로그 마지막 2 MB 안에서).</td></tr>"""
+        """<tr><td colspan="4" class="dim" style="text-align:center;padding:14px">${esc(Messages.t(lang, "logsearch.noMatch", q))}</td></tr>"""
     } else if (matches.isEmpty()) {
-        """<tr><td colspan="4" class="dim" style="text-align:center;padding:14px">검색어를 입력하면 모든 빌드 로그를 가로질러 grep 합니다.</td></tr>"""
+        """<tr><td colspan="4" class="dim" style="text-align:center;padding:14px">${esc(t("logsearch.empty"))}</td></tr>"""
     } else {
         matches.joinToString("") { m ->
             """<tr>
@@ -87,29 +90,30 @@ private fun renderPage(
     }
 
     return AdminTemplates.shell(
-        title = "로그 검색",
+        title = t("logsearch.title"),
         username = username,
         currentPath = "/logs",
         csrf = csrf,
+        lang = lang,
         body = """
 <header>
-  <h1>로그 검색 <small class="dim" style="font-size:14px;font-weight:400">v0.32.0 — 모든 빌드 로그</small></h1>
+  <h1>${esc(t("logsearch.title"))} <small class="dim" style="font-size:14px;font-weight:400">${esc(t("logsearch.subtitle"))}</small></h1>
 </header>
 
 <form method="get" action="/logs" class="card" style="margin-bottom:14px;display:grid;grid-template-columns:1fr 200px auto;gap:8px;align-items:end">
-  <label style="margin:0">검색어 (대소문자 무시)
+  <label style="margin:0">${esc(t("logsearch.q.label"))}
     <input type="text" name="q" value="${esc(q)}" placeholder="FAILED / OutOfMemory / lint ..." autofocus>
   </label>
-  <label style="margin:0">프로젝트 필터 (선택)
+  <label style="margin:0">${esc(t("logsearch.project.label"))}
     <input type="text" name="project" value="${esc(projectFilter)}" placeholder="my-app">
   </label>
   <div>
-    <button type="submit" class="primary" style="padding:8px 14px">검색</button>
+    <button type="submit" class="primary" style="padding:8px 14px">${esc(t("logsearch.searchBtn"))}</button>
   </div>
 </form>
 
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-  <small class="dim">${if (q == null) "" else "Top ${matches.size} 매치 (cap=$MAX_MATCHES). 각 빌드 로그 마지막 2 MB 만 scan."}</small>
+  <small class="dim">${if (q == null) "" else esc(Messages.t(lang, "logsearch.summary", matches.size, MAX_MATCHES))}</small>
 </div>
 
 <table class="devices">
@@ -122,8 +126,7 @@ private fun renderPage(
 </table>
 
 <p class="hint" style="margin-top:14px;font-size:12px">
-  Server stdout 로그는 <code>docker logs vibe-coder-server</code> 로 확인. 본 페이지는 빌드 로그
-  (`.vibecoder/&lt;projectId&gt;/logs/&lt;buildId&gt;.log`) 만. 대화 검색은 <a href="/history">/history</a>.
+  ${t("logsearch.bottomHint")}
 </p>
 """
     )

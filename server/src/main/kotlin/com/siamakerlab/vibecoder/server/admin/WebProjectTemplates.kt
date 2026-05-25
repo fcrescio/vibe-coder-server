@@ -78,15 +78,17 @@ object WebProjectTemplates {
         body: String,
         cmd: String,
         detail: String?,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val detailHtml = if (detail.isNullOrBlank()) "" else
-            """<details style="margin-top:8px"><summary class="dim" style="cursor:pointer">자세히</summary>
+            """<details style="margin-top:8px"><summary class="dim" style="cursor:pointer">${esc(t("console.banner.detail"))}</summary>
                <pre class="diff-block" style="margin-top:8px">${esc(detail)}</pre></details>"""
         return """<div class="error" style="margin-bottom:16px;padding:16px">
           <strong style="font-size:14px">${esc(title)}</strong>
           <p style="margin:6px 0">${esc(body)}</p>
           <pre class="diff-block" style="margin:8px 0">${esc(cmd)}</pre>
-          <small class="dim">로그인이 끝나면 이 페이지를 새로고침하세요.</small>
+          <small class="dim">${esc(t("console.banner.refreshHint"))}</small>
           $detailHtml
         </div>"""
     }
@@ -716,12 +718,14 @@ $errHtml
                 body = t("console.banner.cli.body"),
                 cmd = "docker exec -it vibe-coder-server vibe-doctor claude",
                 detail = claudeCli?.detail,
+                lang = lang,
             )
             authMissing -> renderClaudeBanner(
                 title = t("console.banner.auth.title"),
                 body = t("console.banner.auth.body"),
                 cmd = "docker exec -it --user vibe vibe-coder-server claude login",
                 detail = claudeAuth?.detail,
+                lang = lang,
             )
             else -> ""
         }
@@ -848,14 +852,14 @@ $authBannerHtml
     banner.id = 'live-auth-banner';
     banner.className = 'error';
     banner.style.cssText = 'margin-bottom:16px;padding:16px';
-    banner.innerHTML = '<strong style="font-size:14px">Claude CLI 로그인이 필요합니다 (라이브 감지)</strong>' +
-      '<p style="margin:6px 0">현재 응답에서 인증 실패 신호가 감지되었습니다. 컨테이너 안에서 재로그인 후 페이지를 새로고침하세요.</p>' +
+    banner.innerHTML = '<strong style="font-size:14px">' + ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.live.authNeeded"))} + '</strong>' +
+      '<p style="margin:6px 0">' + ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.live.authDesc"))} + '</p>' +
       '<pre class="diff-block" style="margin:8px 0">docker exec -it --user vibe vibe-coder-server claude login</pre>';
     var header = document.querySelector('header');
     if (header && header.parentNode) header.parentNode.insertBefore(banner, header.nextSibling);
     var input = document.getElementById('prompt-input');
     var btn = document.getElementById('send-btn');
-    if (input) { input.disabled = true; input.placeholder = 'Claude 재로그인 후 새로고침하세요.'; }
+    if (input) { input.disabled = true; input.placeholder = ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.live.placeholder"))}; }
     if (btn) btn.disabled = true;
   }
 
@@ -977,7 +981,7 @@ $authBannerHtml
     };
 
     ws.onclose = function(ev) {
-      append('sys', 'ws', 'closed (code ' + ev.code + '); 재연결 5초 후');
+      append('sys', 'ws', (${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.ws.reconnect5s", "___CODE___"))}).replace('___CODE___', ev.code));
       setTimeout(connect, 5000);
     };
 
@@ -1001,7 +1005,7 @@ $authBannerHtml
       await fetch('/api/projects/' + projectId + '/claude/console/cancel', {
         method: 'POST', credentials: 'same-origin',
       });
-      append('sys', 'cancel', '사용자 중단 요청 전송됨');
+      append('sys', 'cancel', ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.cancel.sent"))});
     } catch (e) {
       append('err', 'cancel', String(e));
     } finally {

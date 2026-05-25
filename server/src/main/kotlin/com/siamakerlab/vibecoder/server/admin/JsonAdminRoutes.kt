@@ -105,9 +105,9 @@ fun Routing.jsonAdminRoutes(
             call.requireApiAdmin()
             val req = call.receive<UserCreateRequestDto>()
             if (req.username.isBlank() || req.password.length < 6)
-                throw ApiException(400, "bad_request", "username 필수, password 최소 6자.")
+                throw ApiException(400, "bad_request", "username required, password must be at least 6 chars.")
             if (users.findByUsername(req.username) != null)
-                throw ApiException(409, "duplicate_username", "이미 사용 중인 username 입니다.")
+                throw ApiException(409, "duplicate_username", "username already exists.")
             val role = if (req.role in setOf("admin", "member", "viewer")) req.role else "member"
             val u = users.insert(Ids.deviceId(), req.username, hasher.hash(req.password), role)
             call.respond(HttpStatusCode.Created, u.toDto())
@@ -117,11 +117,11 @@ fun Routing.jsonAdminRoutes(
             val id = call.parameters["userId"]!!
             val req = call.receive<UserRoleUpdateRequestDto>()
             if (req.role !in setOf("admin", "member", "viewer"))
-                throw ApiException(400, "bad_request", "role 은 admin/member/viewer 중 하나.")
+                throw ApiException(400, "bad_request", "role must be one of admin/member/viewer.")
             // 마지막 admin 의 강등 금지.
             val target = users.findById(id) ?: throw ApiException(404, "not_found", "user not found")
             if (target.role == "admin" && req.role != "admin" && users.adminCount() <= 1L)
-                throw ApiException(409, "last_admin", "마지막 admin 의 role 은 변경할 수 없습니다.")
+                throw ApiException(409, "last_admin", "cannot change the role of the last admin.")
             users.setRole(id, req.role)
             call.respond(HttpStatusCode.NoContent)
         }
@@ -130,7 +130,7 @@ fun Routing.jsonAdminRoutes(
             val id = call.parameters["userId"]!!
             val target = users.findById(id) ?: throw ApiException(404, "not_found", "user not found")
             if (target.role == "admin" && users.adminCount() <= 1L)
-                throw ApiException(409, "last_admin", "마지막 admin 은 삭제할 수 없습니다.")
+                throw ApiException(409, "last_admin", "cannot delete the last admin.")
             // device 세션도 모두 invalidate.
             runCatching {
                 @Suppress("UNUSED_VARIABLE")
@@ -338,7 +338,7 @@ fun Routing.jsonAdminRoutes(
             call.requireProjectAcl(projects, pid)
             val req = call.receive<EnvFileSaveRequestDto>()
             if (req.rel !in WHITELISTED_ENV_FILES)
-                throw ApiException(400, "bad_request", "허용되지 않은 env 파일 경로: ${req.rel}")
+                throw ApiException(400, "bad_request", "env file path not allowed: ${req.rel}")
             val abs = workspace.projectRoot(pid).resolve(req.rel)
             Files.createDirectories(abs.parent)
             Files.writeString(abs, req.body)

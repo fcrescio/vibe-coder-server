@@ -755,6 +755,53 @@ internal object MessagesKo {
         "backup.restore.bashComment" to "# .env / compose.yml / pg dump 별도 복원 후",
         "backup.restore.hint" to "tar 안의 path 는 workspace.root 기준 상대경로 — 다른 머신에서 같은 상대구조로 풀면 동작.",
 
+        // ─────────────────────────────────────────────── project ACL admin
+        "acl.unrestricted" to "제한 없음 (모든 프로젝트 보임)",
+        "acl.allowedCount" to "%d개 허용",
+        "acl.title" to "프로젝트 권한",
+        "acl.titleWithUsername" to "%s · 프로젝트 권한",
+        "acl.currentState" to "현재 상태:",
+        "acl.hint" to "체크가 하나도 없으면 <em>제한 없음</em> (모든 프로젝트 표시). 하나라도 체크하면 <em>opt-in 제한</em> 으로 전환되어 체크한 프로젝트만 표시. admin role 은 ACL 무관.",
+        "acl.backToUsers" to "← 사용자 목록",
+        "acl.saveBtn" to "저장",
+        "acl.flash.removed" to "ACL 제거됨 (제한 없음)",
+        "acl.flash.updated" to "%d개 프로젝트로 ACL 갱신됨",
+
+        // ─────────────────────────────────────────────── log search (/logs)
+        "logsearch.noMatch" to "\"%s\" 에 매치되는 줄이 없습니다 (각 빌드 로그 마지막 2 MB 안에서).",
+        "logsearch.empty" to "검색어를 입력하면 모든 빌드 로그를 가로질러 grep 합니다.",
+        "logsearch.title" to "로그 검색",
+        "logsearch.subtitle" to "v0.32.0 — 모든 빌드 로그",
+        "logsearch.q.label" to "검색어 (대소문자 무시)",
+        "logsearch.project.label" to "프로젝트 필터 (선택)",
+        "logsearch.searchBtn" to "검색",
+        "logsearch.summary" to "Top %d 매치 (cap=%d). 각 빌드 로그 마지막 2 MB 만 scan.",
+        "logsearch.bottomHint" to "Server stdout 로그는 <code>docker logs vibe-coder-server</code> 로 확인. 본 페이지는 빌드 로그 (<code>.vibecoder/&lt;projectId&gt;/logs/&lt;buildId&gt;.log</code>) 만. 대화 검색은 <a href=\"/history\">/history</a>.",
+
+        // ─────────────────────────────────────────────── multi-console (/multi-console)
+        "multiconsole.pickAndOpen" to "위에서 보고 싶은 프로젝트들을 체크하고 \"열기\" 를 누르세요. 최대 %d개.",
+        "multiconsole.newTab" to "새 탭에서 열기",
+        "multiconsole.subtitle" to "v0.36.0 — N개 프로젝트 콘솔 동시 view",
+        "multiconsole.pickLabel" to "프로젝트 선택",
+        "multiconsole.maxPanesSuffix" to "(최대 %d개)",
+        "multiconsole.openBtn" to "열기",
+        "multiconsole.iframeHint" to "iframe 으로 같은 origin 의 콘솔 페이지 embed — cookie 인증이 그대로 흘러갑니다. 각 pane 의 ↗ 으로 별도 탭 가능.",
+        "multiconsole.subagentHint" to "Single-agent orchestration → multi-project. 단일 프로젝트에서 여러 sub-agent 를 돌리고 싶다면 Claude Code 의 표준 mechanism — 콘솔에서 \"Use the &lt;agent-name&gt; sub-agent to ...\" prompt 를 입력하면 됩니다. 등록된 agents: <a href=\"/agents\">/agents</a>.",
+
+        // ─────────────────────────────────────────────── flash (extras for mcp/git errorBlurb)
+        "flash.mcp.installRejected" to "설치 거부됨",
+        "flash.git.tokenRegisterRejected" to "등록 거부됨",
+        "flash.git.sshKeygenRejected" to "SSH 키 생성 거부됨",
+
+        // ─────────────────────────────────────────────── console live banner + replay JS strings
+        "console.banner.detail" to "자세히",
+        "console.banner.refreshHint" to "로그인이 끝나면 이 페이지를 새로고침하세요.",
+        "console.live.authNeeded" to "Claude CLI 로그인이 필요합니다 (라이브 감지)",
+        "console.live.authDesc" to "현재 응답에서 인증 실패 신호가 감지되었습니다. 컨테이너 안에서 재로그인 후 페이지를 새로고침하세요.",
+        "console.live.placeholder" to "Claude 재로그인 후 새로고침하세요.",
+        "console.ws.reconnect5s" to "closed (code %s); 재연결 5초 후",
+        "console.cancel.sent" to "사용자 중단 요청 전송됨",
+
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude 인증",
         "claude.option.oauth" to "OAuth (권장)",

@@ -6,6 +6,7 @@ import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import com.siamakerlab.vibecoder.server.env.McpCatalog
 import com.siamakerlab.vibecoder.server.env.McpService
 import com.siamakerlab.vibecoder.server.error.ApiException
+import com.siamakerlab.vibecoder.server.i18n.Messages
 import com.siamakerlab.vibecoder.shared.dto.McpFileUploadResponseDto
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
@@ -66,7 +67,7 @@ fun Routing.mcpRoutes(
             mcp.spawnBatch(selections)
         } catch (e: ApiException) {
             call.respondText(
-                EnvSetupTemplates.errorBlurb(e.message ?: "설치 거부됨"),
+                EnvSetupTemplates.errorBlurb(e.message ?: Messages.t(sess.language, "flash.mcp.installRejected"), sess.language),
                 ContentType.Text.Html, HttpStatusCode.fromValue(e.statusCode),
             )
             return@post
@@ -117,10 +118,10 @@ fun Routing.mcpRoutes(
                 }
             }
         } catch (e: Throwable) {
-            throw ApiException(400, "multipart", "multipart 파싱 실패: ${e.message}")
+            throw ApiException(400, "multipart", "multipart parse failed: ${e.message}")
         }
         val data = bytes ?: throw ApiException(400, "empty",
-            "파일 part 가 비어 있습니다 (input name 무엇이든 허용).")
+            "file part is empty (any input name allowed).")
         val path = mcp.uploadConfigFile(mcpId, fieldKey, data, fileName)
         log.info { "MCP secret file by ${sess.username}: $mcpId/$fieldKey → $path" }
         // ajax 호출이므로 JSON 응답.

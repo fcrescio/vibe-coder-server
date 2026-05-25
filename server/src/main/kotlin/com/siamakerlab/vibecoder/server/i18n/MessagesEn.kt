@@ -777,6 +777,53 @@ internal object MessagesEn {
         "backup.restore.bashComment" to "# After restoring .env / compose.yml / pg dump separately",
         "backup.restore.hint" to "Paths inside the tar are relative to workspace.root — extracting into the same relative structure on another machine works.",
 
+        // ─────────────────────────────────────────────── project ACL admin
+        "acl.unrestricted" to "Unrestricted (all projects visible)",
+        "acl.allowedCount" to "%d allowed",
+        "acl.title" to "Project ACL",
+        "acl.titleWithUsername" to "%s · Project ACL",
+        "acl.currentState" to "Current state:",
+        "acl.hint" to "If nothing is checked → <em>unrestricted</em> (every project shown). Check one or more → <em>opt-in restricted</em>, showing only the checked projects. admin role bypasses ACL.",
+        "acl.backToUsers" to "← Back to users",
+        "acl.saveBtn" to "Save",
+        "acl.flash.removed" to "ACL removed (unrestricted)",
+        "acl.flash.updated" to "ACL updated to %d projects",
+
+        // ─────────────────────────────────────────────── log search (/logs)
+        "logsearch.noMatch" to "No lines match \"%s\" (within the last 2 MB of each build log).",
+        "logsearch.empty" to "Enter a query to grep across every build log.",
+        "logsearch.title" to "Log search",
+        "logsearch.subtitle" to "v0.32.0 — every build log",
+        "logsearch.q.label" to "Query (case-insensitive)",
+        "logsearch.project.label" to "Project filter (optional)",
+        "logsearch.searchBtn" to "Search",
+        "logsearch.summary" to "Top %d matches (cap=%d). Scans only the last 2 MB of each build log.",
+        "logsearch.bottomHint" to "Server stdout log: <code>docker logs vibe-coder-server</code>. This page covers build logs only (<code>.vibecoder/&lt;projectId&gt;/logs/&lt;buildId&gt;.log</code>). For conversation search see <a href=\"/history\">/history</a>.",
+
+        // ─────────────────────────────────────────────── multi-console (/multi-console)
+        "multiconsole.pickAndOpen" to "Check the projects you want above and press \"Open\". Max %d.",
+        "multiconsole.newTab" to "Open in new tab",
+        "multiconsole.subtitle" to "v0.36.0 — N project consoles side by side",
+        "multiconsole.pickLabel" to "Pick projects",
+        "multiconsole.maxPanesSuffix" to "(max %d)",
+        "multiconsole.openBtn" to "Open",
+        "multiconsole.iframeHint" to "iframe-embeds same-origin console pages — cookie auth flows through. Each pane's ↗ button opens it in its own tab.",
+        "multiconsole.subagentHint" to "Single-agent orchestration → multi-project. To run multiple sub-agents inside a single project, use Claude Code's standard mechanism — enter \"Use the &lt;agent-name&gt; sub-agent to ...\" in the console. Registered agents: <a href=\"/agents\">/agents</a>.",
+
+        // ─────────────────────────────────────────────── flash (extras for mcp/git errorBlurb)
+        "flash.mcp.installRejected" to "install rejected",
+        "flash.git.tokenRegisterRejected" to "register rejected",
+        "flash.git.sshKeygenRejected" to "SSH key generation rejected",
+
+        // ─────────────────────────────────────────────── console live banner + replay JS strings
+        "console.banner.detail" to "Details",
+        "console.banner.refreshHint" to "Refresh this page once login completes.",
+        "console.live.authNeeded" to "Claude CLI login required (live detection)",
+        "console.live.authDesc" to "Authentication failure signal detected in the latest response. Re-login inside the container and refresh.",
+        "console.live.placeholder" to "Refresh after re-logging into Claude.",
+        "console.ws.reconnect5s" to "closed (code %s); reconnect in 5s",
+        "console.cancel.sent" to "user cancel request sent",
+
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude authentication",
         "claude.option.oauth" to "OAuth (recommended)",

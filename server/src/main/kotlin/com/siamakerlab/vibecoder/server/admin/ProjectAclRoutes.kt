@@ -2,6 +2,7 @@ package com.siamakerlab.vibecoder.server.admin
 
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
+import com.siamakerlab.vibecoder.server.i18n.Messages
 import com.siamakerlab.vibecoder.server.projects.ProjectService
 import com.siamakerlab.vibecoder.server.repo.AdminUserRepository
 import com.siamakerlab.vibecoder.server.repo.ProjectAclRepository
@@ -54,23 +55,23 @@ fun Routing.projectAclRoutes(
             </label>"""
         }
 
+        val t = { key: String -> Messages.t(sess.language, key) }
         val statusBadge = if (unrestricted)
-            """<span class="warn">제한 없음 (모든 프로젝트 보임)</span>"""
+            """<span class="warn">${esc(t("acl.unrestricted"))}</span>"""
         else
-            """<span class="ok">${granted.size}개 허용</span>"""
+            """<span class="ok">${esc(Messages.t(sess.language, "acl.allowedCount", granted.size))}</span>"""
 
         val body = """
 <header>
-  <h1>프로젝트 권한 <small class="dim" style="font-size:14px;font-weight:400">${esc(target.username)}</small></h1>
+  <h1>${esc(t("acl.title"))} <small class="dim" style="font-size:14px;font-weight:400">${esc(target.username)}</small></h1>
 </header>
 
 ${ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""}
 
 <div class="card" style="margin-bottom:16px">
-  <p style="margin:0 0 6px"><strong>현재 상태: $statusBadge</strong></p>
+  <p style="margin:0 0 6px"><strong>${esc(t("acl.currentState"))} $statusBadge</strong></p>
   <p class="dim" style="margin:0;font-size:12px">
-    체크가 하나도 없으면 <em>제한 없음</em> (모든 프로젝트 표시). 하나라도 체크하면
-    <em>opt-in 제한</em> 으로 전환되어 체크한 프로젝트만 표시. admin role 은 ACL 무관.
+    ${t("acl.hint")}
   </p>
 </div>
 
@@ -78,17 +79,18 @@ ${ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""}
   ${CsrfTokens.hiddenInput(sess.csrf)}
   $rows
   <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
-    <a href="/users" class="chip chip-link">← 사용자 목록</a>
-    <button type="submit" class="primary" style="width:auto;padding:8px 16px">저장</button>
+    <a href="/users" class="chip chip-link">${esc(t("acl.backToUsers"))}</a>
+    <button type="submit" class="primary" style="width:auto;padding:8px 16px">${esc(t("acl.saveBtn"))}</button>
   </div>
 </form>
 """
         call.respondText(
             AdminTemplates.shell(
-                title = "${target.username} · 프로젝트 권한",
+                title = Messages.t(sess.language, "acl.titleWithUsername", target.username),
                 username = sess.username,
                 currentPath = "/users",
                 csrf = sess.csrf,
+                lang = sess.language,
                 body = body,
             ),
             ContentType.Text.Html,
@@ -105,7 +107,8 @@ ${ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""}
         val form = requireCsrf()
         val selected = form.getAll("projectIds")?.toSet() ?: emptySet()
         aclRepo.replaceForUser(target.id, selected, grantedBy = sess.userId)
-        val okMsg = if (selected.isEmpty()) "ACL 제거됨 (제한 없음)" else "${selected.size}개 프로젝트로 ACL 갱신됨"
+        val okMsg = if (selected.isEmpty()) Messages.t(sess.language, "acl.flash.removed")
+            else Messages.t(sess.language, "acl.flash.updated", selected.size)
         call.respondRedirect("/users/${target.id}/projects?ok=${java.net.URLEncoder.encode(okMsg, Charsets.UTF_8)}")
     }
 }

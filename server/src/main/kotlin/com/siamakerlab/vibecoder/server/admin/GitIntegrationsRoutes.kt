@@ -5,6 +5,7 @@ import com.siamakerlab.vibecoder.server.core.Clock
 import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.git.GitCloneService
 import com.siamakerlab.vibecoder.server.git.GitCredentialStore
+import com.siamakerlab.vibecoder.server.i18n.Messages
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -59,7 +60,7 @@ fun Routing.gitIntegrationsRoutes(
             )
         } catch (e: ApiException) {
             call.respondText(
-                EnvSetupTemplates.errorBlurb(e.message ?: "등록 거부됨"),
+                EnvSetupTemplates.errorBlurb(e.message ?: Messages.t(sess.language, "flash.git.tokenRegisterRejected"), sess.language),
                 ContentType.Text.Html, HttpStatusCode.fromValue(e.statusCode),
             )
             return@post
@@ -88,7 +89,7 @@ fun Routing.gitIntegrationsRoutes(
             cloneSvc.ensureSshKeyExists()
         } catch (e: ApiException) {
             call.respondText(
-                EnvSetupTemplates.errorBlurb(e.message ?: "SSH 키 생성 거부됨"),
+                EnvSetupTemplates.errorBlurb(e.message ?: Messages.t(sess.language, "flash.git.sshKeygenRejected"), sess.language),
                 ContentType.Text.Html, HttpStatusCode.fromValue(e.statusCode),
             )
             return@post

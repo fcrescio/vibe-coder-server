@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.i18n.Messages
 import com.siamakerlab.vibecoder.server.projects.ProjectService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
@@ -37,7 +38,7 @@ fun Routing.multiConsoleRoutes(authDeps: AdminRoutesDeps, projects: ProjectServi
         val knownIds = ids.filter { id -> runCatching { projects.get(id) }.isSuccess }
         val all = projects.list()
         call.respondText(
-            renderPage(sess.username, sess.csrf, knownIds, all),
+            renderPage(sess.username, sess.csrf, knownIds, all, sess.language),
             ContentType.Text.Html,
         )
     }
@@ -55,7 +56,9 @@ private fun renderPage(
     csrf: String?,
     selectedIds: List<String>,
     allProjects: List<com.siamakerlab.vibecoder.shared.dto.ProjectDto>,
+    lang: String = "en",
 ): String {
+    val t = { key: String -> Messages.t(lang, key) }
     val n = selectedIds.size
     // grid-template 결정
     val gridStyle = when (n) {
@@ -73,7 +76,7 @@ private fun renderPage(
 
     val panesHtml = if (n == 0) {
         """<div class="card" style="text-align:center;padding:30px">
-          <p>위에서 보고 싶은 프로젝트들을 체크하고 "열기" 를 누르세요. 최대 ${MAX_PANES}개.</p>
+          <p>${esc(Messages.t(lang, "multiconsole.pickAndOpen", MAX_PANES))}</p>
         </div>"""
     } else {
         selectedIds.joinToString("\n") { id ->
@@ -81,7 +84,7 @@ private fun renderPage(
 <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;min-height:500px">
   <div style="background:var(--surface);padding:8px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)">
     <strong><code>${esc(id)}</code></strong>
-    <a href="/projects/${esc(id)}/console" target="_blank" rel="noopener" class="chip chip-link" title="새 탭에서 열기">↗</a>
+    <a href="/projects/${esc(id)}/console" target="_blank" rel="noopener" class="chip chip-link" title="${esc(t("multiconsole.newTab"))}">↗</a>
   </div>
   <iframe src="/projects/${esc(id)}/console" style="border:0;width:100%;flex:1;background:#000"></iframe>
 </div>"""
@@ -93,13 +96,14 @@ private fun renderPage(
         username = username,
         currentPath = "/multi-console",
         csrf = csrf,
+        lang = lang,
         body = """
 <header>
-  <h1>Multi-console <small class="dim" style="font-size:14px;font-weight:400">v0.36.0 — N개 프로젝트 콘솔 동시 view</small></h1>
+  <h1>Multi-console <small class="dim" style="font-size:14px;font-weight:400">${esc(t("multiconsole.subtitle"))}</small></h1>
 </header>
 
 <form method="get" action="/multi-console" class="card" style="margin-bottom:14px">
-  <p style="margin:0 0 8px"><strong>프로젝트 선택</strong> (최대 ${MAX_PANES}개)</p>
+  <p style="margin:0 0 8px"><strong>${esc(t("multiconsole.pickLabel"))}</strong> ${esc(Messages.t(lang, "multiconsole.maxPanesSuffix", MAX_PANES))}</p>
   <div style="margin-bottom:10px">$checkboxes</div>
   <input type="hidden" name="_csrf_placeholder">
   <button type="submit" class="primary" style="padding:8px 14px"
@@ -111,10 +115,9 @@ private fun renderPage(
       // form GET 으로 보내는 대신 직접 URL 조립 (체크박스 multiple 가 form 에서 그대로 가지만 안전하게)
       window.location = '/multi-console?projects=' + encodeURIComponent(ids.join(','));
       return false;
-    ">열기</button>
+    ">${esc(t("multiconsole.openBtn"))}</button>
   <p class="hint" style="margin:8px 0 0;font-size:11px">
-    iframe 으로 같은 origin 의 콘솔 페이지 embed — cookie 인증이 그대로 흘러갑니다.
-    각 pane 의 ↗ 으로 별도 탭 가능.
+    ${esc(t("multiconsole.iframeHint"))}
   </p>
 </form>
 
@@ -123,10 +126,7 @@ $panesHtml
 </div>
 
 <p class="hint" style="margin-top:14px;font-size:12px">
-  Single-agent orchestration → multi-project. 단일 프로젝트에서 여러 sub-agent 를
-  돌리고 싶다면 Claude Code 의 표준 mechanism — 콘솔에서
-  "Use the &lt;agent-name&gt; sub-agent to ..." prompt 를 입력하면 됩니다.
-  등록된 agents: <a href="/agents">/agents</a>.
+  ${t("multiconsole.subagentHint")}
 </p>
 """
     )
