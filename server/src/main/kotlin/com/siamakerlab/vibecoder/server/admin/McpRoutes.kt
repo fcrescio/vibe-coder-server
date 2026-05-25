@@ -40,7 +40,7 @@ fun Routing.mcpRoutes(
         val states = mcp.detectAll().associateBy { it.id }
         val flash = call.request.queryParameters["flash"]
         call.respondText(
-            McpTemplates.catalogPage(sess.username, states, flash, csrf = sess.csrf),
+            McpTemplates.catalogPage(sess.username, states, flash, csrf = sess.csrf, lang = sess.language),
             ContentType.Text.Html,
         )
     }

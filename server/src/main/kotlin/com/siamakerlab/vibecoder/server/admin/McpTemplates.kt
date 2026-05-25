@@ -3,6 +3,7 @@ package com.siamakerlab.vibecoder.server.admin
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.env.McpCatalog
 import com.siamakerlab.vibecoder.server.env.McpService
+import com.siamakerlab.vibecoder.server.i18n.Messages
 
 /**
  * MCP 카탈로그 페이지 SSR — v0.8.0.
@@ -17,6 +18,9 @@ import com.siamakerlab.vibecoder.server.env.McpService
  * 페이지 하단에 "추가 MCP 직접 설치" 안내 — 카탈로그에 없는 MCP 도
  * `docker exec -it vibe-coder-server bash` 로 들어가 `npm install -g <pkg>` 하면
  * v0.7.0 의 npm-global bind mount 덕에 영구 보존됨.
+ *
+ * v0.86.0 Phase 64.10 — 모든 사용자 가시 한국어 i18n 키화 + JS strings 도 jsLit 으로
+ * render 시점 치환.
  */
 object McpTemplates {
 
@@ -28,51 +32,67 @@ object McpTemplates {
             .replace("\"", "&quot;")
             .replace("'", "&#39;")
 
+    private fun escJs(s: String): String =
+        s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
+
+    private fun jsLit(s: String): String = "'${escJs(s)}'"
+
     fun catalogPage(
         username: String,
         states: Map<String, McpService.EntryState>,
         flash: String?,
         csrf: String? = null,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> Messages.t(lang, key) }
         val total = McpCatalog.size
         val recommended = McpCatalog.recommendedIds.size
         val installedCount = states.values.count { it.status == McpService.Status.INSTALLED }
 
-        val flashHtml = flashBlurb(flash)
+        val flashHtml = flashBlurb(flash, lang)
         val categoriesHtml = McpCatalog.byCategory.entries.joinToString("\n") { (cat, list) ->
-            renderCategory(cat, list, states, csrf)
+            renderCategory(cat, list, states, csrf, lang)
         }
+        // JS 안에서 쓰이는 i18n 메시지들 — render 시점 jsLit 화.
+        // confirm/alert/upload status 메시지 5개 + parametric 2개 (sentinel-replace 패턴).
+        val jsAlertNoSelection = jsLit(t("mcp.js.alertNoSelection"))
+        // alertPendingFile: "%s" → ___FNAME___ sentinel → JS .replace
+        val jsAlertPendingFile = jsLit(Messages.t(lang, "mcp.js.alertPendingFile", "___FNAME___"))
+        // confirmInstall: "%d" → ___COUNT___ sentinel → JS .replace
+        val jsConfirmInstall = jsLit(Messages.t(lang, "mcp.js.confirmInstall", "___COUNT___"))
+        val jsUploadingPrefix = jsLit(t("mcp.js.uploadingPrefix"))
+        val jsUploadingSuffix = jsLit(t("mcp.js.uploadingSuffix"))
+        val jsUploadDonePrefix = jsLit(t("mcp.js.uploadDonePrefix"))
+        val jsUploadFailed = jsLit(t("mcp.js.uploadFailed"))
         return AdminTemplates.shell(
-            title = "MCP 카탈로그",
+            title = t("mcp.title"),
             username = username,
             currentPath = "/env-setup",
             csrf = csrf,
+            lang = lang,
             body = """
 <header>
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
     <div>
-      <h1 style="margin:0">MCP 카탈로그</h1>
-      <p class="dim" style="margin:4px 0 0;font-size:13px">총 $total 개 · 추천 $recommended 개 · 현재 설치 $installedCount 개</p>
+      <h1 style="margin:0">${esc(t("mcp.title"))}</h1>
+      <p class="dim" style="margin:4px 0 0;font-size:13px">${esc(Messages.t(lang, "mcp.subtitle", total, recommended, installedCount))}</p>
     </div>
-    <a href="/env-setup" class="chip chip-link">← 빌드환경</a>
+    <a href="/env-setup" class="chip chip-link">${esc(t("mcp.backToEnv"))}</a>
   </div>
 </header>
 
 $flashHtml
 
 <div class="card" style="margin-bottom:16px">
-  <h2 style="margin-top:0">사용법</h2>
+  <h2 style="margin-top:0">${esc(t("mcp.howto.title"))}</h2>
   <ol style="margin:6px 0 0 20px;line-height:1.8;font-size:13px">
-    <li>원하는 MCP 의 체크박스를 선택하세요. ★ 표시는 vibe-coder 에서 검증된 추천 항목.</li>
-    <li>토큰 / API 키 / URL 등이 필요한 항목은 항목 안의 입력란에 직접 채워주세요.</li>
-    <li>하단의 <strong>"선택 항목 설치"</strong> 또는 <strong>"선택 항목 제거"</strong> 버튼.</li>
-    <li>설치된 MCP 는 Claude 콘솔에서 즉시 사용 가능 (자식 프로세스 재기동 불요).</li>
+    <li>${esc(t("mcp.howto.step1"))}</li>
+    <li>${esc(t("mcp.howto.step2"))}</li>
+    <li>${t("mcp.howto.step3")}</li>
+    <li>${esc(t("mcp.howto.step4"))}</li>
   </ol>
   <p class="hint" style="margin-top:10px;font-size:12px">
-    <strong>Trust tier</strong> —
-    <span class="ok">VERIFIED</span>: Anthropic 또는 1st-party 벤더 공식 ·
-    <span class="warn">COMMUNITY</span>: 인기 3rd party (패키지명 변동 가능) ·
-    <span class="dim">EXPERIMENTAL</span>: 패키지 이름 미확정 — 설치 실패 가능 (직접 수정 권장)
+    ${t("mcp.trust.line")}
   </p>
 </div>
 
@@ -83,38 +103,37 @@ $flashHtml
   <div class="card" style="margin-top:16px;position:sticky;bottom:0;background:var(--card-bg,#1a1a1a);border:2px solid var(--ok);padding:14px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
       <div>
-        <strong>선택한 항목</strong> <span id="select-count" class="ok">0</span> 개
-        <span class="dim" style="font-size:12px">— 토큰 입력 누락 시 검증 오류로 거부됩니다</span>
+        <strong>${esc(t("mcp.selected"))}</strong> <span id="select-count" class="ok">0</span> ${esc(t("mcp.selectedSuffix"))}
+        <span class="dim" style="font-size:12px">${esc(t("mcp.selectedHint"))}</span>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button type="submit" class="primary" style="padding:8px 18px"
                 formaction="/env-setup/mcp/install"
-                onclick="return confirmInstall()">선택 항목 설치</button>
+                onclick="return confirmInstall()">${esc(t("mcp.installBtn"))}</button>
         <button type="submit" style="padding:8px 14px"
                 formaction="/env-setup/mcp/unregister" formnovalidate
-                onclick="return confirm('선택한 MCP 들을 .mcp.json 에서 제거합니다. npm 패키지 자체는 디스크에 남습니다. 계속할까요?')">선택 항목 제거</button>
+                onclick="return confirm(${jsLit(t("mcp.unregisterConfirm"))})">${esc(t("mcp.unregisterBtn"))}</button>
       </div>
     </div>
   </div>
 </form>
 
 <div class="card" style="margin-top:24px;background:rgba(160,120,200,0.06)">
-  <h2 style="margin-top:0">📦 카탈로그에 없는 MCP 를 직접 설치하려면</h2>
-  <p>다음 명령으로 컨테이너에 들어가 vibe 사용자로 직접 npm 설치 후
-  <code>~/.claude/.mcp.json</code> 의 <code>mcpServers</code> 에 entry 를 추가하세요.</p>
+  <h2 style="margin-top:0">${esc(t("mcp.customCard.title"))}</h2>
+  <p>${t("mcp.customCard.desc")}</p>
 
   <pre class="diff-block">docker exec -it --user vibe vibe-coder-server bash
 
-# 1) npm 설치 — prefix 가 /home/vibe/.local 이라 bind volume 에 영구 저장됩니다
-npm install -g &lt;패키지명&gt;
+${esc(t("mcp.customCard.npmComment"))}
+npm install -g ${esc(t("mcp.customCard.placeholder"))}
 
-# 2) .mcp.json 에 등록 (.claude/.mcp.json 직접 편집 또는 아래 한 줄)
+${esc(t("mcp.customCard.registerComment"))}
 cat &gt; ~/.claude/.mcp.json &lt;&lt;'JSON'
 {
   "mcpServers": {
     "my-mcp": {
       "command": "npx",
-      "args": ["-y", "&lt;패키지명&gt;"],
+      "args": ["-y", "${esc(t("mcp.customCard.placeholder"))}"],
       "env": { "MY_TOKEN": "..." }
     }
   }
@@ -122,15 +141,10 @@ cat &gt; ~/.claude/.mcp.json &lt;&lt;'JSON'
 JSON</pre>
 
   <p class="hint" style="margin-top:10px;font-size:12px">
-    ✅ <strong>영구 보존</strong>: <code>/home/vibe/.local</code> 와
-    <code>/home/vibe/.claude</code> 는 호스트 <code>./vibe-coder-data/</code> 의
-    bind mount 입니다. 직접 설치한 MCP 도 <code>docker compose pull && up -d</code>
-    이후 사라지지 않습니다.
+    ${t("mcp.customCard.persistHint")}
   </p>
   <p class="hint" style="font-size:12px">
-    🔍 잘 만든 MCP 를 찾으려면 <a href="https://github.com/modelcontextprotocol/servers" target="_blank" rel="noreferrer">modelcontextprotocol/servers</a>,
-    <a href="https://glama.ai/mcp/servers" target="_blank" rel="noreferrer">Glama MCP Registry</a>,
-    <a href="https://www.npmjs.com/search?q=keywords%3Amcp" target="_blank" rel="noreferrer">npm 검색 (mcp 키워드)</a> 추천.
+    ${t("mcp.customCard.findHint")}
   </p>
 </div>
 
@@ -160,7 +174,7 @@ JSON</pre>
   window.confirmInstall = function() {
     var n = form.querySelectorAll('input[name="select"]:checked').length;
     if (n === 0) {
-      alert('설치할 MCP 를 하나 이상 선택하세요.');
+      alert($jsAlertNoSelection);
       return false;
     }
     // 파일 입력이 있는데 path hidden 이 비어있으면 차단 — 사용자가 file 선택만 하고
@@ -177,10 +191,10 @@ JSON</pre>
       }
     });
     if (pendingFile) {
-      alert('파일 업로드 대기 중: ' + pendingFile + '. 업로드 완료 후 다시 시도하세요.');
+      alert(($jsAlertPendingFile).replace('___FNAME___', pendingFile));
       return false;
     }
-    return confirm(n + '개 MCP 를 설치합니다 (예상 1~5분 / 항목). 진행 페이지로 이동합니다. 계속할까요?');
+    return confirm(($jsConfirmInstall).replace('___COUNT___', n));
   };
 
   // v0.11.0 — file input onChange 시 즉시 ajax 업로드 → 응답 path 를 hidden 에 채움.
@@ -195,7 +209,7 @@ JSON</pre>
       var f = fileInput.files && fileInput.files[0];
       if (!f) { pathInput.value = ''; statusEl.textContent = ''; return; }
       statusEl.className = 'mcp-file-status dim';
-      statusEl.textContent = '⏳ 업로드 중... (' + (f.size / 1024).toFixed(1) + ' KB)';
+      statusEl.textContent = $jsUploadingPrefix + (f.size / 1024).toFixed(1) + $jsUploadingSuffix;
       var fd = new FormData();
       fd.append('file', f);
       fetch('/env-setup/mcp/' + encodeURIComponent(mcpId) + '/file/' + encodeURIComponent(fieldKey) +
@@ -208,11 +222,11 @@ JSON</pre>
       }).then(function(resp) {
         pathInput.value = resp.path || '';
         statusEl.className = 'mcp-file-status ok';
-        statusEl.textContent = '✓ 업로드 완료 → ' + resp.path;
+        statusEl.textContent = $jsUploadDonePrefix + resp.path;
       }).catch(function(err) {
         pathInput.value = '';
         statusEl.className = 'mcp-file-status warn';
-        statusEl.textContent = '✗ ' + (err.message || '업로드 실패');
+        statusEl.textContent = '✗ ' + (err.message || $jsUploadFailed);
       });
     });
   });
@@ -239,14 +253,17 @@ JSON</pre>
         )
     }
 
-    private fun flashBlurb(code: String?): String = when (code) {
-        "no-selection" -> """<div class="card" style="margin-bottom:12px;background:rgba(255,150,80,0.06);border-color:var(--warn)">
-          <p style="margin:0;color:var(--warn)">⚠ 선택된 MCP 가 없습니다. 체크박스를 하나 이상 선택하세요.</p>
-        </div>"""
-        "unregistered" -> """<div class="card" style="margin-bottom:12px;background:rgba(105,219,124,0.06);border-color:var(--ok)">
-          <p style="margin:0;color:var(--ok)">✓ 선택한 항목이 .mcp.json 에서 제거되었습니다. npm 패키지 자체는 디스크에 남아 있어 재등록 시 즉시 사용 가능.</p>
-        </div>"""
-        else -> ""
+    private fun flashBlurb(code: String?, lang: String): String {
+        val t = { key: String -> Messages.t(lang, key) }
+        return when (code) {
+            "no-selection" -> """<div class="card" style="margin-bottom:12px;background:rgba(255,150,80,0.06);border-color:var(--warn)">
+              <p style="margin:0;color:var(--warn)">${esc(t("mcp.flash.noSelection"))}</p>
+            </div>"""
+            "unregistered" -> """<div class="card" style="margin-bottom:12px;background:rgba(105,219,124,0.06);border-color:var(--ok)">
+              <p style="margin:0;color:var(--ok)">${esc(t("mcp.flash.unregistered"))}</p>
+            </div>"""
+            else -> ""
+        }
     }
 
     private fun renderCategory(
@@ -254,8 +271,9 @@ JSON</pre>
         entries: List<McpCatalog.McpEntry>,
         states: Map<String, McpService.EntryState>,
         csrf: String?,
+        lang: String,
     ): String {
-        val cards = entries.joinToString("\n") { renderEntry(it, states[it.id], csrf) }
+        val cards = entries.joinToString("\n") { renderEntry(it, states[it.id], csrf, lang) }
         return """
 <section style="margin-top:18px">
   <h2 style="margin-bottom:10px;font-size:16px;border-bottom:1px solid #333;padding-bottom:6px">${esc(category.label)}</h2>
@@ -265,7 +283,8 @@ JSON</pre>
 </section>"""
     }
 
-    private fun renderEntry(entry: McpCatalog.McpEntry, state: McpService.EntryState?, csrf: String?): String {
+    private fun renderEntry(entry: McpCatalog.McpEntry, state: McpService.EntryState?, csrf: String?, lang: String): String {
+        val t = { key: String -> Messages.t(lang, key) }
         val checked = state?.status == McpService.Status.INSTALLED ||
                       state?.status == McpService.Status.REGISTERED_ONLY
         val recClass = if (entry.recommended) "recommended" else ""
@@ -275,25 +294,25 @@ JSON</pre>
             McpCatalog.Trust.EXPERIMENTAL -> "dim" to "EXPERIMENTAL"
         }
         val statusChip = when (state?.status) {
-            McpService.Status.INSTALLED -> """<span class="ok" style="font-size:11px">✓ 설치됨</span>"""
-            McpService.Status.REGISTERED_ONLY -> """<span class="warn" style="font-size:11px">△ 등록만</span>"""
+            McpService.Status.INSTALLED -> """<span class="ok" style="font-size:11px">${esc(t("mcp.entry.installed"))}</span>"""
+            McpService.Status.REGISTERED_ONLY -> """<span class="warn" style="font-size:11px">${esc(t("mcp.entry.registeredOnly"))}</span>"""
             McpService.Status.NOT_INSTALLED -> ""
             else -> ""
         }
-        val starHtml = if (entry.recommended) """<span title="추천" style="color:#ffd700">★</span>""" else ""
-        val configHtml = if (entry.comingSoon) "" else renderConfigFields(entry, state?.configValues.orEmpty())
+        val starHtml = if (entry.recommended) """<span title="${esc(t("mcp.entry.recommendedTitle"))}" style="color:#ffd700">★</span>""" else ""
+        val configHtml = if (entry.comingSoon) "" else renderConfigFields(entry, state?.configValues.orEmpty(), lang)
         val homepageLink = entry.homepage?.let {
-            """<a href="${esc(it)}" target="_blank" rel="noreferrer" class="dim" style="font-size:11px">↗ 문서</a>"""
+            """<a href="${esc(it)}" target="_blank" rel="noreferrer" class="dim" style="font-size:11px">${esc(t("mcp.entry.docsLink"))}</a>"""
         }.orEmpty()
 
         // v0.12.1 — comingSoon 항목은 checkbox disabled + "준비중" 배지 + 카드 흐리게.
         val comingSoonChip = if (entry.comingSoon) {
-            """<span class="dim" style="font-size:10px;padding:2px 6px;border-radius:3px;border:1px solid var(--text-dim)">⏳ 준비중</span>"""
+            """<span class="dim" style="font-size:10px;padding:2px 6px;border-radius:3px;border:1px solid var(--text-dim)">${esc(t("mcp.entry.comingSoon"))}</span>"""
         } else ""
         val cardStyle = if (entry.comingSoon) "padding:12px;opacity:0.55;cursor:not-allowed" else "padding:12px"
         val cbDisabled = if (entry.comingSoon) "disabled" else ""
         val cbTitle = if (entry.comingSoon) {
-            "title=\"브라우저 OAuth 콜백이 필수라 현재 환경에서 미지원\""
+            "title=\"${esc(t("mcp.entry.comingSoonTitle"))}\""
         } else ""
 
         return """
@@ -321,15 +340,16 @@ JSON</pre>
     private fun renderConfigFields(
         entry: McpCatalog.McpEntry,
         existing: Map<String, String>,
+        lang: String,
     ): String {
         if (entry.configFields.isEmpty()) return ""
         val fields = entry.configFields.joinToString("\n") { f ->
-            if (f.isFile) renderFileField(entry, f, existing)
+            if (f.isFile) renderFileField(entry, f, existing, lang)
             else renderTextField(entry, f, existing)
         }
         return """
 <div class="config-block" style="margin-top:8px;padding-top:8px;border-top:1px dashed #333;display:none">
-  <p class="dim" style="font-size:11px;margin:0 0 4px">설정 필요:</p>
+  <p class="dim" style="font-size:11px;margin:0 0 4px">${esc(Messages.t(lang, "mcp.field.required"))}</p>
   $fields
 </div>"""
     }
@@ -338,6 +358,7 @@ JSON</pre>
         entry: McpCatalog.McpEntry,
         f: McpCatalog.ConfigField,
         existing: Map<String, String>,
+        lang: String,
     ): String {
         // 기존 업로드된 path 가 있으면 표시 + "교체" 버튼.
         // 새 파일 선택 시 즉시 ajax POST → 응답 path 를 hidden input 에 채움.
@@ -350,11 +371,12 @@ JSON</pre>
         val pathDisplay = if (existingPath.isNotEmpty()) {
             """<p class="dim" style="font-size:11px;margin:2px 0 0;font-family:ui-monospace,Menlo,monospace">📎 ${esc(existingPath)}</p>"""
         } else ""
+        val fileLabel = Messages.t(lang, "mcp.entry.fileLabel")
         return """
 <div class="mcp-file-field" style="margin-top:6px"
      data-mcp-id="${esc(entry.id)}" data-field-key="${esc(f.key)}">
   <label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:2px">
-    ${esc(f.label)} <span class="dim" style="font-size:10px">(파일)</span>${if (f.required) " <span class=\"warn\">*</span>" else ""}
+    ${esc(f.label)} <span class="dim" style="font-size:10px">${esc(fileLabel)}</span>${if (f.required) " <span class=\"warn\">*</span>" else ""}
   </label>
   <input type="file" class="mcp-file-input" accept="${esc(accept)}" $req
          style="font-size:11px">

@@ -6,6 +6,7 @@ import com.siamakerlab.vibecoder.server.auth.PasswordHasher
 import com.siamakerlab.vibecoder.server.auth.PasswordPolicy
 import com.siamakerlab.vibecoder.server.auth.UsernamePolicy
 import com.siamakerlab.vibecoder.server.core.Ids
+import com.siamakerlab.vibecoder.server.i18n.Messages
 import com.siamakerlab.vibecoder.server.repo.AdminUserRepository
 import com.siamakerlab.vibecoder.server.repo.DeviceRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -44,7 +45,7 @@ fun Routing.usersRoutes(
         val sess = requireSessionOrRedirect(deps) ?: return@get
         val me = userRepo.findById(sess.userId) ?: run { call.respondRedirect("/login"); return@get }
         if (!me.isAdmin) {
-            call.respondRedirect("/?err=${enc("관리자 전용 페이지")}")
+            call.respondRedirect("/?err=${enc(Messages.t(sess.language, "users.flash.adminOnlyPage"))}")
             return@get
         }
         val users = userRepo.listAll()
@@ -52,7 +53,7 @@ fun Routing.usersRoutes(
         val ok = call.request.queryParameters["ok"]
         val err = call.request.queryParameters["err"]
         call.respondText(
-            UsersTemplates.page(sess.username, sess.userId, users, adminCount, ok, err, sess.csrf),
+            UsersTemplates.page(sess.username, sess.userId, users, adminCount, ok, err, sess.csrf, sess.language),
             ContentType.Text.Html,
         )
     }
@@ -62,7 +63,7 @@ fun Routing.usersRoutes(
         requireCsrf()
         val me = userRepo.findById(sess.userId) ?: run { call.respondRedirect("/login"); return@post }
         if (!me.isAdmin) {
-            call.respondRedirect("/?err=${enc("관리자 전용")}")
+            call.respondRedirect("/?err=${enc(Messages.t(sess.language, "users.flash.adminOnly"))}")
             return@post
         }
         val form = call.receiveParameters()
@@ -79,14 +80,14 @@ fun Routing.usersRoutes(
             return@post
         }
         if (userRepo.findByUsername(username) != null) {
-            call.respondRedirect("/users?err=${enc("이미 존재하는 username: $username")}")
+            call.respondRedirect("/users?err=${enc(Messages.t(sess.language, "users.flash.exists", username))}")
             return@post
         }
         val hash = hasher.hash(password)
         userRepo.insert(Ids.deviceId(), username, hash, role)
         log.info { "user created: $username role=$role by ${sess.username}" }
         deps.audit.userCreate(sess.userId, call.request.local.remoteHost, username, role)
-        call.respondRedirect("/users?ok=${enc("user '$username' ($role) 생성됨")}")
+        call.respondRedirect("/users?ok=${enc(Messages.t(sess.language, "users.flash.created", username, role))}")
     }
 
     post("/users/{id}/role") {
@@ -94,7 +95,7 @@ fun Routing.usersRoutes(
         requireCsrf()
         val me = userRepo.findById(sess.userId) ?: run { call.respondRedirect("/login"); return@post }
         if (!me.isAdmin) {
-            call.respondRedirect("/?err=${enc("관리자 전용")}")
+            call.respondRedirect("/?err=${enc(Messages.t(sess.language, "users.flash.adminOnly"))}")
             return@post
         }
         val targetId = call.parameters["id"]!!
@@ -109,7 +110,7 @@ fun Routing.usersRoutes(
         }
         // 마지막 admin 강등 차단
         if (target.isAdmin && newRole != "admin" && userRepo.adminCount() <= 1) {
-            call.respondRedirect("/users?err=${enc("마지막 admin 은 강등할 수 없습니다.")}")
+            call.respondRedirect("/users?err=${enc(Messages.t(sess.language, "users.flash.cantDemoteLastAdmin"))}")
             return@post
         }
         userRepo.setRole(targetId, newRole)
@@ -123,7 +124,7 @@ fun Routing.usersRoutes(
         requireCsrf()
         val me = userRepo.findById(sess.userId) ?: run { call.respondRedirect("/login"); return@post }
         if (!me.isAdmin) {
-            call.respondRedirect("/?err=${enc("관리자 전용")}")
+            call.respondRedirect("/?err=${enc(Messages.t(sess.language, "users.flash.adminOnly"))}")
             return@post
         }
         val targetId = call.parameters["id"]!!
@@ -132,11 +133,11 @@ fun Routing.usersRoutes(
             return@post
         }
         if (target.id == sess.userId) {
-            call.respondRedirect("/users?err=${enc("자기 자신은 삭제할 수 없습니다.")}")
+            call.respondRedirect("/users?err=${enc(Messages.t(sess.language, "users.flash.cantDeleteSelf"))}")
             return@post
         }
         if (target.isAdmin && userRepo.adminCount() <= 1) {
-            call.respondRedirect("/users?err=${enc("마지막 admin 은 삭제할 수 없습니다.")}")
+            call.respondRedirect("/users?err=${enc(Messages.t(sess.language, "users.flash.cantDeleteLastAdmin"))}")
             return@post
         }
         // device row 도 cascade — 토큰 즉시 무효화.
@@ -145,7 +146,7 @@ fun Routing.usersRoutes(
         userRepo.delete(targetId)
         log.info { "user delete: ${target.username} (devices=${devices.size}) by ${sess.username}" }
         deps.audit.userDelete(sess.userId, call.request.local.remoteHost, target.username)
-        call.respondRedirect("/users?ok=${enc("user '${target.username}' 삭제됨 (devices=${devices.size})")}")
+        call.respondRedirect("/users?ok=${enc(Messages.t(sess.language, "users.flash.deleted", target.username, devices.size))}")
     }
 }
 
@@ -157,6 +158,9 @@ private object UsersTemplates {
             .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             .replace("\"", "&quot;").replace("'", "&#39;")
 
+    private fun escJs(s: String): String =
+        s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
+
     fun page(
         currentUsername: String,
         currentUserId: String,
@@ -165,7 +169,9 @@ private object UsersTemplates {
         ok: String?,
         err: String?,
         csrf: String?,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> Messages.t(lang, key) }
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""
 
@@ -188,9 +194,10 @@ private object UsersTemplates {
                 else -> "admin"
             }
             val roleBtnLabel = "→ $nextRole"
+            val deleteConfirm = Messages.t(lang, "users.row.deleteConfirm", u.username)
 
             """<tr>
-              <td><strong>${esc(u.username)}</strong>${if (isMe) " <small class=\"dim\">(나)</small>" else ""}$totpBadge</td>
+              <td><strong>${esc(u.username)}</strong>${if (isMe) " <small class=\"dim\">${esc(t("users.row.me"))}</small>" else ""}$totpBadge</td>
               <td>$roleBadge</td>
               <td class="dim" style="font-family:ui-monospace,Menlo,monospace;font-size:11px">${esc(u.createdAt)}</td>
               <td class="dim" style="font-family:ui-monospace,Menlo,monospace;font-size:11px">${esc(u.lastLoginAt ?: "-")}</td>
@@ -199,44 +206,45 @@ private object UsersTemplates {
                 <form method="post" action="/users/${esc(u.id)}/role" style="display:inline">
                   ${CsrfTokens.hiddenInput(csrf)}
                   <input type="hidden" name="role" value="$nextRole">
-                  <button type="submit" class="chip chip-link" onclick="return confirm('${esc(u.username)} → $nextRole?')">$roleBtnLabel</button>
+                  <button type="submit" class="chip chip-link" onclick="return confirm('${escJs(u.username)} → $nextRole?')">$roleBtnLabel</button>
                 </form>""" else ""}
-                <a href="/users/${esc(u.id)}/projects" class="chip chip-link" title="v0.49.0+ 프로젝트 ACL 편집">권한</a>
+                <a href="/users/${esc(u.id)}/projects" class="chip chip-link" title="${esc(t("users.row.aclTitle"))}">${esc(t("users.row.acl"))}</a>
                 ${if (canDelete) """
                 <form method="post" action="/users/${esc(u.id)}/delete" style="display:inline">
                   ${CsrfTokens.hiddenInput(csrf)}
-                  <button type="submit" class="chip chip-danger" onclick="return confirm('user ${esc(u.username)} 영구 삭제? device row 도 cascade.')">삭제</button>
+                  <button type="submit" class="chip chip-danger" onclick="return confirm('${escJs(deleteConfirm)}')">${esc(t("users.row.deleteBtn"))}</button>
                 </form>""" else ""}
               </td>
             </tr>"""
         }
 
         return AdminTemplates.shell(
-            title = "사용자 관리",
+            title = t("users.title"),
             username = currentUsername,
             currentPath = "/users",
             csrf = csrf,
+            lang = lang,
             body = """
 <header>
-  <h1>사용자 관리 <small class="dim" style="font-size:14px;font-weight:400">v0.37.0 — admin / member · admin 수 = $adminCount</small></h1>
+  <h1>${esc(t("users.title"))} <small class="dim" style="font-size:14px;font-weight:400">${esc(Messages.t(lang, "users.subtitle.adminCount", adminCount))}</small></h1>
 </header>
 
 $okHtml
 $errHtml
 
 <table class="devices" style="margin-bottom:14px">
-  <thead><tr><th>username</th><th>role</th><th>가입</th><th>마지막 로그인</th><th>동작</th></tr></thead>
+  <thead><tr><th>username</th><th>role</th><th>${esc(t("users.col.signup"))}</th><th>${esc(t("users.col.lastLogin"))}</th><th>${esc(t("users.col.action"))}</th></tr></thead>
   <tbody>$rows</tbody>
 </table>
 
 <div class="card">
-  <h2 style="margin-top:0">신규 사용자 추가</h2>
+  <h2 style="margin-top:0">${esc(t("users.newCard.title"))}</h2>
   <form method="post" action="/users" style="display:grid;grid-template-columns:1fr 1fr 140px auto;gap:8px;align-items:end">
     ${CsrfTokens.hiddenInput(csrf)}
     <label style="margin:0">username
       <input name="username" required pattern="[a-zA-Z0-9._\\-]{3,32}" placeholder="alice">
     </label>
-    <label style="margin:0">password (≥ 8자)
+    <label style="margin:0">${esc(t("users.newCard.passwordLabel"))}
       <input name="password" type="password" required minlength="8">
     </label>
     <label style="margin:0">role
@@ -247,15 +255,11 @@ $errHtml
       </select>
     </label>
     <div>
-      <button type="submit" class="primary" style="padding:8px 14px">생성</button>
+      <button type="submit" class="primary" style="padding:8px 14px">${esc(t("users.newCard.submit"))}</button>
     </div>
   </form>
   <p class="hint" style="margin-top:10px;font-size:12px">
-    Role 정책 (v0.40.0+):<br>
-    <strong>admin</strong> = 모든 권한 (사용자 관리 / 설정 / audit / backup / 2FA / agents 등).<br>
-    <strong>member</strong> = 프로젝트 / 콘솔 / 빌드 등 작업 페이지 (모든 write 가능).<br>
-    <strong>viewer</strong> = read-only. 콘솔 prompt / 빌드 큐 / git commit / settings 변경 등 차단.<br>
-    마지막 admin 은 강등/삭제 불가. 프로젝트별 ACL 은 후속 minor.
+    ${t("users.newCard.hint")}
   </p>
 </div>
 """
