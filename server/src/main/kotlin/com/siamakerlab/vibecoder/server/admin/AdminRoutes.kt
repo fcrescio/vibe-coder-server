@@ -343,7 +343,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
     get("/password") {
         val sess = requireSessionOrRedirect(deps) ?: return@get
         call.respondText(
-            AdminTemplates.passwordPage(sess.username, csrf = sess.csrf),
+            AdminTemplates.passwordPage(sess.username, csrf = sess.csrf, lang = sess.language),
             ContentType.Text.Html,
         )
     }
@@ -359,6 +359,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
                 AdminTemplates.passwordPage(
                     sess.username, csrf = sess.csrf,
                     flashErr = "새 비밀번호 확인이 일치하지 않습니다.",
+                    lang = sess.language,
                 ),
                 ContentType.Text.Html,
                 HttpStatusCode.BadRequest,
@@ -374,7 +375,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             val msg = (result.exceptionOrNull() as? ApiException)?.message
                 ?: "비밀번호 변경 실패"
             call.respondText(
-                AdminTemplates.passwordPage(sess.username, csrf = sess.csrf, flashErr = msg),
+                AdminTemplates.passwordPage(sess.username, csrf = sess.csrf, flashErr = msg, lang = sess.language),
                 ContentType.Text.Html,
                 HttpStatusCode.BadRequest,
             )
@@ -385,6 +386,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             AdminTemplates.passwordPage(
                 sess.username, csrf = sess.csrf,
                 flashOk = "비밀번호가 변경되었습니다.",
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )
@@ -398,6 +400,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             AdminTemplates.devicesPage(
                 sess.username, devices, sess.deviceId,
                 flashOk = ok, csrf = sess.csrf,
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )
@@ -409,7 +412,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
         val id = call.parameters["id"]
         if (id == null || id == sess.deviceId) {
             call.respondText(
-                AdminTemplates.errorPage(400, "현재 세션은 revoke할 수 없습니다. 로그아웃을 사용하세요."),
+                AdminTemplates.errorPage(400, "현재 세션은 revoke할 수 없습니다. 로그아웃을 사용하세요.", lang = sess.language),
                 ContentType.Text.Html,
                 HttpStatusCode.BadRequest,
             )

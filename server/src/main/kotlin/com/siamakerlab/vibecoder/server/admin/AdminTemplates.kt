@@ -371,8 +371,8 @@ object AdminTemplates {
     </dl>
   </div>
 
-  ${renderClaudeUsageCard(claudeUsage)}
-  ${renderDiskUsageCard(diskSnapshot)}
+  ${renderClaudeUsageCard(claudeUsage, lang)}
+  ${renderDiskUsageCard(diskSnapshot, lang)}
 </section>
 """
         )
@@ -381,12 +381,13 @@ object AdminTemplates {
     /**
      * v0.29.0 — 대시보드 디스크 사용량 카드.
      */
-    private fun renderDiskUsageCard(snap: com.siamakerlab.vibecoder.server.disk.DiskMonitor.Snapshot?): String {
+    private fun renderDiskUsageCard(snap: com.siamakerlab.vibecoder.server.disk.DiskMonitor.Snapshot?, lang: String = "en"): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         if (snap == null) {
             return """
   <div class="card">
-    <h2>디스크 사용량 (v0.29.0)</h2>
-    <p class="hint">아직 측정 안 됨. 백그라운드 monitor 가 다음 사이클(10분)에 갱신합니다.</p>
+    <h2>${esc(t("dashboard.disk.title"))}</h2>
+    <p class="hint">${esc(t("dashboard.disk.empty"))}</p>
   </div>"""
         }
         val pct = snap.usedPercent
@@ -398,16 +399,16 @@ object AdminTemplates {
         val totalGb = snap.totalBytes / 1_073_741_824.0
         return """
   <div class="card">
-    <h2>디스크 사용량 (v0.29.0)</h2>
+    <h2>${esc(t("dashboard.disk.title"))}</h2>
     <dl>
-      <dt>사용량</dt><dd>${pct}%</dd>
-      <dt>총 용량</dt><dd>${"%.1f".format(totalGb)} GB</dd>
-      <dt>가용</dt><dd>${"%.1f".format(snap.freeGb)} GB</dd>
+      <dt>${esc(t("dashboard.disk.usage"))}</dt><dd>${pct}%</dd>
+      <dt>${esc(t("dashboard.disk.total"))}</dt><dd>${"%.1f".format(totalGb)} GB</dd>
+      <dt>${esc(t("dashboard.disk.free"))}</dt><dd>${"%.1f".format(snap.freeGb)} GB</dd>
     </dl>
     <div style="margin-top:8px; background:#e5e7eb; border-radius:4px; height:8px; overflow:hidden;">
       <div style="width:${pct}%; background:${color}; height:100%;"></div>
     </div>
-    <p class="hint">임계치 도달 시 등록된 이메일 / webhook 으로 알림. 캐시 정리: <a href="/settings/cache">/settings/cache</a></p>
+    <p class="hint">${t("dashboard.diskHint")} <a href="/settings/cache">/settings/cache</a></p>
   </div>"""
     }
 
@@ -417,24 +418,25 @@ object AdminTemplates {
      * `ClaudeUsageMonitor` 의 마지막 snapshot 이 없거나 percent 추출 실패 시 비활성
      * 안내. 추출된 percent 가 있으면 80%↑ 노랑 / 95%↑ 빨강 strip + reset 시각.
      */
-    private fun renderClaudeUsageCard(snapshot: com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto?): String {
+    private fun renderClaudeUsageCard(snapshot: com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto?, lang: String = "en"): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         if (snapshot == null) {
             return """
   <div class="card">
-    <h2>Claude 사용량 (v0.21.0)</h2>
-    <p class="hint">아직 사용량 정보 없음. 백그라운드 폴링이 다음 사이클(기본 5분)에 갱신합니다. <code>/settings/email</code> 에서 임계치 조정 가능.</p>
+    <h2>${esc(t("dashboard.claude.title"))}</h2>
+    <p class="hint">${t("dashboard.claude.empty")}</p>
   </div>"""
         }
         val pct = snapshot.usagePercent
         if (pct == null) {
             return """
   <div class="card">
-    <h2>Claude 사용량 (v0.21.0)</h2>
+    <h2>${esc(t("dashboard.claude.title"))}</h2>
     <dl>
-      <dt>마지막 폴링</dt><dd>${esc(snapshot.updatedAt)}</dd>
-      <dt>quota line</dt><dd><code>${esc(snapshot.quotaRemaining ?: "(파싱 실패)")}</code></dd>
+      <dt>${esc(t("dashboard.claude.lastPolled"))}</dt><dd>${esc(snapshot.updatedAt)}</dd>
+      <dt>${esc(t("dashboard.usageQuotaLine"))}</dt><dd><code>${esc(snapshot.quotaRemaining ?: t("dashboard.usageParseFailed"))}</code></dd>
     </dl>
-    <p class="hint">Claude CLI <code>/status</code> 출력에서 percent 를 추출하지 못했습니다. CLI 버전이 새 포맷일 가능성.</p>
+    <p class="hint">${t("dashboard.claude.quotaParseFail")}</p>
   </div>"""
         }
         val level = when {
@@ -448,22 +450,22 @@ object AdminTemplates {
             else -> "#059669"
         }
         val resetLine = if (snapshot.resetAt != null) {
-            """<dt>리셋</dt><dd>${esc(snapshot.resetAt)}</dd>"""
+            """<dt>${esc(t("dashboard.usageReset"))}</dt><dd>${esc(snapshot.resetAt)}</dd>"""
         } else ""
         val barWidth = pct.coerceIn(0, 100)
         return """
   <div class="card">
-    <h2>Claude 사용량 (v0.21.0)</h2>
+    <h2>${esc(t("dashboard.claude.title"))}</h2>
     <dl>
-      <dt>사용량</dt><dd><span class="$level">${pct}%</span></dd>
+      <dt>${esc(t("dashboard.disk.usage"))}</dt><dd><span class="$level">${pct}%</span></dd>
       $resetLine
-      <dt>plan</dt><dd>${esc(snapshot.plan ?: "-")}</dd>
-      <dt>model</dt><dd>${esc(snapshot.model ?: "-")}</dd>
+      <dt>${esc(t("dashboard.claude.plan"))}</dt><dd>${esc(snapshot.plan ?: "-")}</dd>
+      <dt>${esc(t("dashboard.claude.model"))}</dt><dd>${esc(snapshot.model ?: "-")}</dd>
     </dl>
     <div style="margin-top:8px; background:#e5e7eb; border-radius:4px; height:8px; overflow:hidden;">
       <div style="width:${barWidth}%; background:${color}; height:100%;"></div>
     </div>
-    <p class="hint">임계치 도달 시 등록된 이메일로 알림. 설정: <a href="/settings/email">/settings/email</a></p>
+    <p class="hint">${t("dashboard.usageEmailHint")} <a href="/settings/email">/settings/email</a></p>
   </div>"""
     }
 
@@ -562,30 +564,33 @@ $errHtml
         flashOk: String? = null,
         flashErr: String? = null,
         csrf: String? = null,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         return shell(
-            title = "비밀번호 변경",
+            title = t("password.title"),
             username = username,
             currentPath = "/password",
             csrf = csrf,
+            lang = lang,
             body = """
-<header><h1>비밀번호 변경</h1></header>
+<header><h1>${esc(t("password.heading"))}</h1></header>
 $okHtml
 $errHtml
 <form method="post" action="/password" class="auth-card narrow">
   ${CsrfTokens.hiddenInput(csrf)}
-  <label>현재 비밀번호
+  <label>${esc(t("password.currentLabel"))}
     <input name="currentPassword" type="password" required>
   </label>
-  <label>새 비밀번호 (영문+숫자 8자 이상)
+  <label>${esc(t("password.newLabel"))}
     <input name="newPassword" type="password" required minlength="8">
   </label>
-  <label>새 비밀번호 확인
+  <label>${esc(t("password.confirmLabel"))}
     <input name="newPasswordConfirm" type="password" required minlength="8">
   </label>
-  <button type="submit" class="primary">변경</button>
+  <button type="submit" class="primary">${esc(t("password.submit"))}</button>
 </form>
 """
         )
@@ -601,12 +606,14 @@ $errHtml
         currentDeviceId: String,
         flashOk: String? = null,
         csrf: String? = null,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
         val rows = devices.joinToString("\n") { d ->
             val isCurrent = d.id == currentDeviceId
             val action = if (isCurrent) {
-                """<span class="dim">(현재 세션)</span>"""
+                """<span class="dim">${esc(t("devices.currentSession"))}</span>"""
             } else {
                 """<form method="post" action="/devices/${esc(d.id)}/revoke" style="display:inline">
                      ${CsrfTokens.hiddenInput(csrf)}
@@ -622,22 +629,22 @@ $errHtml
               </tr>"""
         }
         return shell(
-            title = "디바이스",
+            title = t("devices.title"),
             username = username,
             currentPath = "/devices",
             csrf = csrf,
+            lang = lang,
             body = """
-<header><h1>연결된 디바이스</h1></header>
+<header><h1>${esc(t("devices.title"))}</h1></header>
 $okHtml
 <table class="devices">
   <thead>
-    <tr><th>이름</th><th>채널</th><th>생성</th><th>최근 접속</th><th></th></tr>
+    <tr><th>${esc(t("devices.column.name"))}</th><th>${esc(t("common.type"))}</th><th>${esc(t("common.date"))}</th><th>${esc(t("devices.column.lastSeen"))}</th><th></th></tr>
   </thead>
   <tbody>
     $rows
   </tbody>
 </table>
-<p class="hint">revoke 시 해당 토큰이 즉시 무효화됩니다. 사용 중이던 앱/브라우저는 재로그인 필요.</p>
 """
         )
     }
@@ -646,17 +653,23 @@ $okHtml
     // 에러 페이지
     // ────────────────────────────────────────────────────────────────────
 
-    fun errorPage(code: Int, message: String): String = shell(
-        title = "오류 $code",
-        showNav = false,
-        body = """
+    fun errorPage(code: Int, message: String, lang: String = "en"): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
+        val tArgs = { key: String, args: Array<Any?> -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key, *args) }
+        val title = tArgs("error.page.title", arrayOf<Any?>(code.toString()))
+        return shell(
+            title = title,
+            showNav = false,
+            lang = lang,
+            body = """
 <div class="auth-card">
-  <h1>오류 $code</h1>
+  <h1>${esc(title)}</h1>
   <p>${esc(message)}</p>
-  <a href="/" class="primary-link">대시보드로</a>
+  <a href="/" class="primary-link">${esc(t("error.page.toDashboard"))}</a>
 </div>
 """
-    )
+        )
+    }
 
     data class SettingsView(
         val serverName: String,
