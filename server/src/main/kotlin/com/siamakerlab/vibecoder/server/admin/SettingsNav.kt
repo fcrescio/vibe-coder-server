@@ -110,7 +110,7 @@ internal object SettingsNav {
         }
     }
 
-    // CSS + 탭 컨테이너 — raw string 안 nested template 회피를 위해 plain string.
-    private const val TAB_BAR_PREFIX = "<div class=\"settings-tabs\" style=\"display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid #2a2f3a;margin:-8px -8px 14px -8px;padding:0 8px 0 8px\"><style>.settings-tabs .tab{padding:10px 14px;text-decoration:none;color:#9aa0aa;border-bottom:2px solid transparent;font-size:14px;transition:all 0.15s}.settings-tabs .tab:hover{color:#e6e6e6}.settings-tabs .tab.active{color:#e6e6e6;border-bottom-color:#facc15;font-weight:600}</style>"
+    // v0.69.1 — CSS 는 admin.css 의 .settings-tabs 로 이동. HTML wrapper 만 emit.
+    private const val TAB_BAR_PREFIX = "<div class=\"settings-tabs\">"
     private const val TAB_BAR_SUFFIX = "</div>"
 }
