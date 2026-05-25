@@ -492,6 +492,56 @@ internal object MessagesKo {
         "env.error.codeSubmitRejected" to "코드 제출 거부",
         "env.error.installStartFailed" to "설치 시작 실패",
 
+        // ─────────────────────────────────────────────── flash (route redirects)
+        // ── project ──
+        "flash.project.created" to "프로젝트가 생성되었습니다.",
+        "flash.project.deleted" to "프로젝트가 삭제되었습니다.",
+        "flash.project.notFound" to "프로젝트 '%s' 를 찾을 수 없습니다.",
+        "flash.project.notExist" to "프로젝트가 존재하지 않습니다.",
+        "flash.project.createFailed" to "프로젝트 생성 실패",
+        // ── form validation ──
+        "flash.form.projectIdRequired" to "프로젝트 ID 를 입력하세요.",
+        "flash.form.appNameRequired" to "앱 이름을 입력하세요.",
+        "flash.form.packageNameRequired" to "패키지명을 입력하세요.",
+        "flash.form.cloneUrlRequired" to "Clone URL 을 입력하세요 (https:// 또는 git@host:owner/repo).",
+        // ── build ──
+        "flash.build.queueFailed" to "빌드 큐 등록 실패",
+        "flash.build.notFound" to "빌드 '%s' 를 찾을 수 없습니다.",
+        // ── publish (play / testflight) ──
+        "flash.publish.aabRequired" to "AAB 경로를 입력하세요.",
+        "flash.publish.ipaRequired" to ".ipa 경로를 입력하세요.",
+        "flash.publish.uploadFailed" to "업로드 prompt 전송 실패: %s",
+        // ── file ──
+        "flash.file.uploadFailed" to "업로드 실패",
+        "flash.file.noFileSelected" to "파일이 선택되지 않았습니다.",
+        "flash.file.uploaded" to "'%s' 업로드 완료.",
+        "flash.file.deleteFailed" to "파일 삭제 실패",
+        "flash.file.deleted" to "파일이 삭제되었습니다.",
+        "flash.file.listFailed" to "listing 실패",
+        "flash.file.openFailed" to "파일 열기 실패",
+        "flash.file.saveFailed" to "저장 실패",
+        // ── git ──
+        "flash.git.commitFailed" to "commit/push 실패",
+        // ── auth (setup / login) ──
+        "flash.auth.usernameRequired" to "사용자명을 입력하세요.",
+        "flash.auth.passwordRequired" to "비밀번호를 입력하세요.",
+        "flash.auth.passwordMismatch" to "비밀번호 확인이 일치하지 않습니다.",
+        "flash.auth.setupFailed" to "초기 설정 실패",
+        "flash.auth.loginFailed" to "로그인 실패",
+        // ── settings ──
+        "flash.settings.saveFailed" to "저장 실패: %s",
+        // ── password ──
+        "flash.password.confirmMismatch" to "새 비밀번호 확인이 일치하지 않습니다.",
+        "flash.password.changeFailed" to "비밀번호 변경 실패",
+        "flash.password.changed" to "비밀번호가 변경되었습니다.",
+        // ── device ──
+        "flash.device.revoked" to "디바이스 토큰이 무효화되었습니다.",
+        "flash.device.cantRevokeCurrent" to "현재 세션은 revoke할 수 없습니다. 로그아웃을 사용하세요.",
+        // ── access guards ──
+        "flash.access.adminOnly" to "관리자 전용 페이지입니다.",
+        "flash.access.viewerReadonly" to "viewer 권한으로는 변경할 수 없습니다.",
+        "flash.access.projectDenied" to "이 프로젝트에 대한 권한이 없습니다.",
+
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude 인증",
         "claude.option.oauth" to "OAuth (권장)",

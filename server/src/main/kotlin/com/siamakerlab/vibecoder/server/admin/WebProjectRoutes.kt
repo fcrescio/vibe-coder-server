@@ -10,6 +10,7 @@ import com.siamakerlab.vibecoder.server.files.ProjectFileBrowser
 import com.siamakerlab.vibecoder.server.files.UploadService
 import com.siamakerlab.vibecoder.server.git.GitReader
 import com.siamakerlab.vibecoder.server.git.GitWriter
+import com.siamakerlab.vibecoder.server.i18n.Messages
 import com.siamakerlab.vibecoder.server.projects.ProjectService
 import com.siamakerlab.vibecoder.server.repo.ArtifactRepository
 import com.siamakerlab.vibecoder.server.repo.BuildRepository
@@ -73,7 +74,7 @@ fun Routing.webProjectRoutes(
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val list = projects.listForUser(sess.userId, sess.isAdmin)
         val err = call.request.queryParameters["err"]
-        val ok = call.request.queryParameters["ok"]?.let { "프로젝트가 생성되었습니다." }
+        val ok = call.request.queryParameters["ok"]?.let { Messages.t(sess.language, "flash.project.created") }
         call.respondText(
             WebProjectTemplates.projectsPage(
                 sess.username, list, flashErr = err, flashOk = ok, csrf = sess.csrf, lang = sess.language,
@@ -96,11 +97,11 @@ fun Routing.webProjectRoutes(
         val templateId = params["templateId"]?.trim()?.ifBlank { null }
 
         val basicErr = when {
-            projectId.isBlank() -> "프로젝트 ID 를 입력하세요."
-            appName.isBlank() -> "앱 이름을 입력하세요."
-            packageName.isBlank() -> "패키지명을 입력하세요."
+            projectId.isBlank() -> Messages.t(sess.language, "flash.form.projectIdRequired")
+            appName.isBlank() -> Messages.t(sess.language, "flash.form.appNameRequired")
+            packageName.isBlank() -> Messages.t(sess.language, "flash.form.packageNameRequired")
             sourceType == "clone" && cloneUrl.isNullOrBlank() ->
-                "Clone URL 을 입력하세요 (https:// 또는 git@host:owner/repo)."
+                Messages.t(sess.language, "flash.form.cloneUrlRequired")
             else -> null
         }
         if (basicErr != null) {
@@ -131,7 +132,7 @@ fun Routing.webProjectRoutes(
         }
 
         val created = result.getOrElse { e ->
-            val msg = (e as? ApiException)?.message ?: e.message ?: "프로젝트 생성 실패"
+            val msg = (e as? ApiException)?.message ?: e.message ?: Messages.t(sess.language, "flash.project.createFailed")
             log.warn(e) { "project register failed: $projectId by ${sess.username}" }
             val list = projects.listForUser(sess.userId, sess.isAdmin)
             call.respondText(
@@ -154,7 +155,7 @@ fun Routing.webProjectRoutes(
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val id = call.parameters["id"]!!
         val p = runCatching { projects.get(id) }.getOrElse {
-            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
             return@get
         }
         val recent = buildRepo.listForProject(id, limit = 5).map { row ->
@@ -183,7 +184,7 @@ fun Routing.webProjectRoutes(
         val removed = projects.delete(id)
         log.info { "project delete: id=$id removed=$removed by ${sess.username}" }
         authDeps.audit.projectDelete(sess.userId, id, call.request.local.remoteHost, removed)
-        val ok = if (removed) "프로젝트가 삭제되었습니다." else "프로젝트가 존재하지 않습니다."
+        val ok = if (removed) Messages.t(sess.language, "flash.project.deleted") else Messages.t(sess.language, "flash.project.notExist")
         call.respondRedirect("/projects?ok=${ok.encodeUrl()}")
     }
 
@@ -192,7 +193,7 @@ fun Routing.webProjectRoutes(
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val id = call.parameters["id"]!!
         val p = runCatching { projects.get(id) }.getOrElse {
-            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
             return@get
         }
         val alive = sessionManager.isAlive(id)
@@ -233,7 +234,7 @@ fun Routing.webProjectRoutes(
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val id = call.parameters["id"]!!
         val p = runCatching { projects.get(id) }.getOrElse {
-            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
             return@get
         }
         val rows = buildRepo.listForProject(id, limit = 100)
@@ -266,7 +267,7 @@ fun Routing.webProjectRoutes(
         requireCsrf()
         val id = call.parameters["id"]!!
         val row = runCatching { builds.enqueueDebug(id, hub) }.getOrElse { e ->
-            val msg = (e as? ApiException)?.message ?: e.message ?: "빌드 큐 등록 실패"
+            val msg = (e as? ApiException)?.message ?: e.message ?: Messages.t(sess.language, "flash.build.queueFailed")
             log.warn(e) { "build enqueue failed: $id" }
             call.respondRedirect("/projects/$id/builds?err=${msg.encodeUrl()}")
             return@post
@@ -282,12 +283,12 @@ fun Routing.webProjectRoutes(
         val id = call.parameters["id"]!!
         val buildId = call.parameters["buildId"]!!
         val p = runCatching { projects.get(id) }.getOrElse {
-            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
             return@get
         }
         val row = buildRepo.get(buildId)
         if (row == null || row.projectId != id) {
-            call.respondRedirect("/projects/$id/builds?err=${"빌드 '$buildId' 를 찾을 수 없습니다.".encodeUrl()}")
+            call.respondRedirect("/projects/$id/builds?err=${Messages.t(sess.language, "flash.build.notFound", buildId).encodeUrl()}")
             return@get
         }
         val dto = BuildDto(
@@ -349,7 +350,7 @@ fun Routing.webProjectRoutes(
         val id = call.parameters["id"]!!
         val buildId = call.parameters["buildId"]!!
         val p = runCatching { projects.get(id) }.getOrElse {
-            call.respondRedirect("/projects?err=${"프로젝트 '$id' 를 찾을 수 없습니다.".encodeUrl()}")
+            call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
             return@post
         }
         val form = call.receiveParameters()
@@ -357,7 +358,7 @@ fun Routing.webProjectRoutes(
         val track = form["track"]?.trim().orEmpty().ifBlank { "internal" }
         val notes = form["releaseNotes"]?.trim()
         if (aabPath.isBlank()) {
-            call.respondRedirect("/projects/$id/builds/$buildId?play_err=${"AAB 경로를 입력하세요.".encodeUrl()}")
+            call.respondRedirect("/projects/$id/builds/$buildId?play_err=${Messages.t(sess.language, "flash.publish.aabRequired").encodeUrl()}")
             return@post
         }
         runCatching {
@@ -370,7 +371,7 @@ fun Routing.webProjectRoutes(
         }.onFailure { e ->
             log.warn(e) { "play upload trigger failed: $id $buildId" }
             authDeps.audit.playUploadFailed(sess.userId, id, buildId, call.request.local.remoteHost, e.message)
-            call.respondRedirect("/projects/$id/builds/$buildId?play_err=${("업로드 prompt 전송 실패: ${e.message}").encodeUrl()}")
+            call.respondRedirect("/projects/$id/builds/$buildId?play_err=${Messages.t(sess.language, "flash.publish.uploadFailed", e.message ?: "").encodeUrl()}")
             return@post
         }
         log.info { "play upload prompt sent: project=$id build=$buildId track=$track aab=$aabPath by ${sess.username}" }
@@ -388,7 +389,7 @@ fun Routing.webProjectRoutes(
         val id = call.parameters["id"]!!
         val buildId = call.parameters["buildId"]!!
         runCatching { projects.get(id) }.getOrElse {
-            call.respondRedirect("/projects?err=${"프로젝트 '$id' 를 찾을 수 없습니다.".encodeUrl()}")
+            call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
             return@post
         }
         val form = call.receiveParameters()
@@ -396,7 +397,7 @@ fun Routing.webProjectRoutes(
         val groups = form["distributionGroups"]?.trim()?.takeIf { it.isNotBlank() }
         val notes = form["releaseNotes"]?.trim()
         if (ipaPath.isBlank()) {
-            call.respondRedirect("/projects/$id/builds/$buildId?tf_err=${".ipa 경로를 입력하세요.".encodeUrl()}")
+            call.respondRedirect("/projects/$id/builds/$buildId?tf_err=${Messages.t(sess.language, "flash.publish.ipaRequired").encodeUrl()}")
             return@post
         }
         runCatching {
@@ -409,7 +410,7 @@ fun Routing.webProjectRoutes(
         }.onFailure { e ->
             log.warn(e) { "testflight upload trigger failed: $id $buildId" }
             authDeps.audit.testFlightUploadFailed(sess.userId, id, buildId, call.request.local.remoteHost, e.message)
-            call.respondRedirect("/projects/$id/builds/$buildId?tf_err=${("업로드 prompt 전송 실패: ${e.message}").encodeUrl()}")
+            call.respondRedirect("/projects/$id/builds/$buildId?tf_err=${Messages.t(sess.language, "flash.publish.uploadFailed", e.message ?: "").encodeUrl()}")
             return@post
         }
         log.info { "testflight upload prompt sent: project=$id build=$buildId ipa=$ipaPath groups=$groups by ${sess.username}" }
@@ -437,7 +438,7 @@ fun Routing.webProjectRoutes(
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val id = call.parameters["id"]!!
         val p = runCatching { projects.get(id) }.getOrElse {
-            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
             return@get
         }
         val files = uploads.list(id)
@@ -475,7 +476,7 @@ fun Routing.webProjectRoutes(
                     }
                     if (row.isFailure) {
                         val e = row.exceptionOrNull()!!
-                        fail = (e as? ApiException)?.message ?: e.message ?: "업로드 실패"
+                        fail = (e as? ApiException)?.message ?: e.message ?: Messages.t(sess.language, "flash.file.uploadFailed")
                         log.warn(e) { "upload failed: project=$id file=$name" }
                     } else {
                         saved = row.getOrNull()?.originalName
@@ -491,11 +492,11 @@ fun Routing.webProjectRoutes(
             return@post
         }
         if (saved == null) {
-            call.respondRedirect("/projects/$id/files?err=${"파일이 선택되지 않았습니다.".encodeUrl()}")
+            call.respondRedirect("/projects/$id/files?err=${Messages.t(sess.language, "flash.file.noFileSelected").encodeUrl()}")
             return@post
         }
         log.info { "upload ok: project=$id file=$saved by ${sess.username}" }
-        call.respondRedirect("/projects/$id/files?ok=${"'${saved}' 업로드 완료.".encodeUrl()}")
+        call.respondRedirect("/projects/$id/files?ok=${Messages.t(sess.language, "flash.file.uploaded", saved ?: "").encodeUrl()}")
     }
 
     get("/projects/{id}/files/{fileId}/download") {
@@ -524,12 +525,12 @@ fun Routing.webProjectRoutes(
         val result = runCatching { uploads.delete(id, fileId) }
         if (result.isFailure) {
             val e = result.exceptionOrNull()!!
-            val msg = (e as? ApiException)?.message ?: e.message ?: "파일 삭제 실패"
+            val msg = (e as? ApiException)?.message ?: e.message ?: Messages.t(sess.language, "flash.file.deleteFailed")
             call.respondRedirect("/projects/$id/files?err=${msg.encodeUrl()}")
             return@post
         }
         log.info { "file deleted: $fileId project=$id by ${sess.username}" }
-        call.respondRedirect("/projects/$id/files?ok=${"파일이 삭제되었습니다.".encodeUrl()}")
+        call.respondRedirect("/projects/$id/files?ok=${Messages.t(sess.language, "flash.file.deleted").encodeUrl()}")
     }
 
     // ── 파일 트리 / 보기 / 편집 (v0.13.0) ─────────────────────────────
@@ -537,12 +538,12 @@ fun Routing.webProjectRoutes(
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val id = call.parameters["id"]!!
         val p = runCatching { projects.get(id) }.getOrElse {
-            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
             return@get
         }
         val subPath = call.request.queryParameters["path"].orEmpty()
         val entries = runCatching { fileBrowser.list(id, subPath) }.getOrElse {
-            val msg = (it as? ApiException)?.message ?: it.message ?: "listing 실패"
+            val msg = (it as? ApiException)?.message ?: it.message ?: Messages.t(sess.language, "flash.file.listFailed")
             call.respondText(
                 WebProjectTemplates.fileTreePage(
                     sess.username, p, subPath, emptyList(),
@@ -567,11 +568,11 @@ fun Routing.webProjectRoutes(
         val id = call.parameters["id"]!!
         val relPath = call.request.queryParameters["path"].orEmpty()
         val p = runCatching { projects.get(id) }.getOrElse {
-            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
             return@get
         }
         val view = runCatching { fileBrowser.read(id, relPath) }.getOrElse {
-            val msg = (it as? ApiException)?.message ?: it.message ?: "파일 열기 실패"
+            val msg = (it as? ApiException)?.message ?: it.message ?: Messages.t(sess.language, "flash.file.openFailed")
             call.respondText(
                 WebProjectTemplates.fileViewPage(
                     sess.username, p, relPath, null,
@@ -601,7 +602,7 @@ fun Routing.webProjectRoutes(
         try {
             fileBrowser.write(id, relPath, content)
         } catch (e: Throwable) {
-            val msg = (e as? ApiException)?.message ?: e.message ?: "저장 실패"
+            val msg = (e as? ApiException)?.message ?: e.message ?: Messages.t(sess.language, "flash.file.saveFailed")
             call.respondRedirect("/projects/$id/view?path=${relPath.encodeUrl()}&err=${msg.encodeUrl()}")
             return@post
         }
@@ -614,7 +615,7 @@ fun Routing.webProjectRoutes(
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val id = call.parameters["id"]!!
         val p = runCatching { projects.get(id) }.getOrElse {
-            call.respondRedirect("/projects?err=${("프로젝트 '$id' 를 찾을 수 없습니다.").encodeUrl()}")
+            call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
             return@get
         }
         val source = Path.of(p.sourcePath)
@@ -651,7 +652,7 @@ fun Routing.webProjectRoutes(
         val result = try {
             gitWriter.commitAndPush(source, message, push = push, onlyTracked = onlyTracked)
         } catch (e: Throwable) {
-            val msg = (e as? ApiException)?.message ?: e.message ?: "commit/push 실패"
+            val msg = (e as? ApiException)?.message ?: e.message ?: Messages.t(sess.language, "flash.git.commitFailed")
             authDeps.audit.let { /* audit via REST API path only — SSR ignores for noise */ }
             call.respondRedirect("/projects/$id/git?flash=${msg.take(200).encodeUrl()}")
             return@post
@@ -695,7 +696,7 @@ fun Routing.webProjectRoutes(
         val id = call.parameters["id"]!!
         // ProjectService.get 으로 존재 확인 (잘못된 id → 404).
         val p = runCatching { projects.get(id) }.getOrElse {
-            call.respondRedirect("/projects?err=${"프로젝트 '$id' 를 찾을 수 없습니다.".encodeUrl()}")
+            call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
             return@get
         }
         log.info { "project zip download: $id by ${sess.username}" }

@@ -12,6 +12,7 @@ import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.env.EnvDiagnostics
 import com.siamakerlab.vibecoder.server.env.StatusService
 import com.siamakerlab.vibecoder.server.error.ApiException
+import com.siamakerlab.vibecoder.server.i18n.Messages
 import com.siamakerlab.vibecoder.server.repo.AdminUserRepository
 import com.siamakerlab.vibecoder.server.repo.DeviceRepository
 import io.ktor.http.ContentType
@@ -107,15 +108,16 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
         val password = params["password"].orEmpty()
         val confirm = params["passwordConfirm"].orEmpty()
 
+        val lang = deps.config.i18n.defaultLanguage
         val err = when {
-            username.isEmpty() -> "사용자명을 입력하세요."
-            password.isEmpty() -> "비밀번호를 입력하세요."
-            password != confirm -> "비밀번호 확인이 일치하지 않습니다."
+            username.isEmpty() -> Messages.t(lang, "flash.auth.usernameRequired")
+            password.isEmpty() -> Messages.t(lang, "flash.auth.passwordRequired")
+            password != confirm -> Messages.t(lang, "flash.auth.passwordMismatch")
             else -> UsernamePolicy.violation(username) ?: PasswordPolicy.violation(password)
         }
         if (err != null) {
             call.respondText(
-                AdminTemplates.setupPage(error = err, lang = deps.config.i18n.defaultLanguage),
+                AdminTemplates.setupPage(error = err, lang = lang),
                 ContentType.Text.Html,
                 HttpStatusCode.BadRequest,
             )
@@ -130,9 +132,9 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
                 channel = "web",
             )
         }.getOrElse { e ->
-            val msg = (e as? ApiException)?.message ?: "초기 설정 실패"
+            val msg = (e as? ApiException)?.message ?: Messages.t(lang, "flash.auth.setupFailed")
             call.respondText(
-                AdminTemplates.setupPage(error = msg, lang = deps.config.i18n.defaultLanguage),
+                AdminTemplates.setupPage(error = msg, lang = lang),
                 ContentType.Text.Html,
                 HttpStatusCode.BadRequest,
             )
@@ -177,7 +179,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
                 hasPasskey = { uid -> deps.webauthnService.hasCredentials(uid) },
             )
         }.getOrElse { e ->
-            val msg = (e as? ApiException)?.message ?: "로그인 실패"
+            val msg = (e as? ApiException)?.message ?: Messages.t(deps.config.i18n.defaultLanguage, "flash.auth.loginFailed")
             val reasonCode = (e as? ApiException)?.code ?: "unknown"
             // v0.26.0 — TOTP 1단계 통과 → 같은 폼에 코드 입력 단계 노출.
             if (reasonCode == "totp_required") {
@@ -333,7 +335,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             com.siamakerlab.vibecoder.server.config.ConfigPersistence.save(newConfig)
         } catch (e: Throwable) {
             log.error(e) { "config persist failed" }
-            call.respondRedirect("/settings?err=${java.net.URLEncoder.encode("저장 실패: ${e.message}", "UTF-8")}")
+            call.respondRedirect("/settings?err=${java.net.URLEncoder.encode(Messages.t(sess.language, "flash.settings.saveFailed", e.message ?: ""), "UTF-8")}")
             return@post
         }
         log.info { "settings persisted by ${sess.username} → ${result.targetPath} (backup=${result.backupPath})" }
@@ -358,7 +360,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             call.respondText(
                 AdminTemplates.passwordPage(
                     sess.username, csrf = sess.csrf,
-                    flashErr = "새 비밀번호 확인이 일치하지 않습니다.",
+                    flashErr = Messages.t(sess.language, "flash.password.confirmMismatch"),
                     lang = sess.language,
                 ),
                 ContentType.Text.Html,
@@ -373,7 +375,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
         if (result.isFailure) {
             deps.audit.passwordChange(sess.userId, ip, ok = false)
             val msg = (result.exceptionOrNull() as? ApiException)?.message
-                ?: "비밀번호 변경 실패"
+                ?: Messages.t(sess.language, "flash.password.changeFailed")
             call.respondText(
                 AdminTemplates.passwordPage(sess.username, csrf = sess.csrf, flashErr = msg, lang = sess.language),
                 ContentType.Text.Html,
@@ -385,7 +387,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
         call.respondText(
             AdminTemplates.passwordPage(
                 sess.username, csrf = sess.csrf,
-                flashOk = "비밀번호가 변경되었습니다.",
+                flashOk = Messages.t(sess.language, "flash.password.changed"),
                 lang = sess.language,
             ),
             ContentType.Text.Html,
@@ -395,7 +397,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
     get("/devices") {
         val sess = requireSessionOrRedirect(deps) ?: return@get
         val devices = deps.deviceRepo.listAll()
-        val ok = call.request.queryParameters["ok"]?.let { "디바이스 토큰이 무효화되었습니다." }
+        val ok = call.request.queryParameters["ok"]?.let { Messages.t(sess.language, "flash.device.revoked") }
         call.respondText(
             AdminTemplates.devicesPage(
                 sess.username, devices, sess.deviceId,
@@ -412,7 +414,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
         val id = call.parameters["id"]
         if (id == null || id == sess.deviceId) {
             call.respondText(
-                AdminTemplates.errorPage(400, "현재 세션은 revoke할 수 없습니다. 로그아웃을 사용하세요.", lang = sess.language),
+                AdminTemplates.errorPage(400, Messages.t(sess.language, "flash.device.cantRevokeCurrent"), lang = sess.language),
                 ContentType.Text.Html,
                 HttpStatusCode.BadRequest,
             )
@@ -518,7 +520,7 @@ internal suspend fun io.ktor.server.routing.RoutingContext.requireAdminOrRedirec
     sess: WebSession,
 ): Boolean {
     if (sess.isAdmin) return true
-    val msg = java.net.URLEncoder.encode("관리자 전용 페이지입니다.", Charsets.UTF_8)
+    val msg = java.net.URLEncoder.encode(Messages.t(sess.language, "flash.access.adminOnly"), Charsets.UTF_8)
     call.respondRedirect("/?err=$msg")
     return false
 }
@@ -531,7 +533,7 @@ internal suspend fun io.ktor.server.routing.RoutingContext.requireWriteAccessOrR
     sess: WebSession,
 ): Boolean {
     if (sess.canWrite) return true
-    val msg = java.net.URLEncoder.encode("viewer 권한으로는 변경할 수 없습니다.", Charsets.UTF_8)
+    val msg = java.net.URLEncoder.encode(Messages.t(sess.language, "flash.access.viewerReadonly"), Charsets.UTF_8)
     call.respondRedirect("/?err=$msg")
     return false
 }
@@ -546,7 +548,7 @@ internal suspend fun io.ktor.server.routing.RoutingContext.requireProjectAccessO
     projectId: String,
 ): Boolean {
     if (projects.canUserAccess(sess.userId, sess.isAdmin, projectId)) return true
-    val msg = java.net.URLEncoder.encode("이 프로젝트에 대한 권한이 없습니다.", Charsets.UTF_8)
+    val msg = java.net.URLEncoder.encode(Messages.t(sess.language, "flash.access.projectDenied"), Charsets.UTF_8)
     call.respondRedirect("/projects?err=$msg")
     return false
 }

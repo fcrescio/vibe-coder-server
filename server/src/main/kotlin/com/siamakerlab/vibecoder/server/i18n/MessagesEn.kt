@@ -514,6 +514,56 @@ internal object MessagesEn {
         "env.error.codeSubmitRejected" to "code submission rejected",
         "env.error.installStartFailed" to "install start failed",
 
+        // ─────────────────────────────────────────────── flash (route redirects)
+        // ── project ──
+        "flash.project.created" to "Project created.",
+        "flash.project.deleted" to "Project deleted.",
+        "flash.project.notFound" to "Project '%s' not found.",
+        "flash.project.notExist" to "Project does not exist.",
+        "flash.project.createFailed" to "Project creation failed",
+        // ── form validation ──
+        "flash.form.projectIdRequired" to "Enter a project ID.",
+        "flash.form.appNameRequired" to "Enter an app name.",
+        "flash.form.packageNameRequired" to "Enter a package name.",
+        "flash.form.cloneUrlRequired" to "Enter a clone URL (https:// or git@host:owner/repo).",
+        // ── build ──
+        "flash.build.queueFailed" to "Build queue submission failed",
+        "flash.build.notFound" to "Build '%s' not found.",
+        // ── publish (play / testflight) ──
+        "flash.publish.aabRequired" to "Enter an AAB path.",
+        "flash.publish.ipaRequired" to "Enter an .ipa path.",
+        "flash.publish.uploadFailed" to "Upload prompt send failed: %s",
+        // ── file ──
+        "flash.file.uploadFailed" to "Upload failed",
+        "flash.file.noFileSelected" to "No file selected.",
+        "flash.file.uploaded" to "'%s' uploaded.",
+        "flash.file.deleteFailed" to "File deletion failed",
+        "flash.file.deleted" to "File deleted.",
+        "flash.file.listFailed" to "Listing failed",
+        "flash.file.openFailed" to "Could not open the file",
+        "flash.file.saveFailed" to "Save failed",
+        // ── git ──
+        "flash.git.commitFailed" to "commit/push failed",
+        // ── auth (setup / login) ──
+        "flash.auth.usernameRequired" to "Enter a username.",
+        "flash.auth.passwordRequired" to "Enter a password.",
+        "flash.auth.passwordMismatch" to "Password confirmation does not match.",
+        "flash.auth.setupFailed" to "Initial setup failed",
+        "flash.auth.loginFailed" to "Login failed",
+        // ── settings ──
+        "flash.settings.saveFailed" to "save failed: %s",
+        // ── password ──
+        "flash.password.confirmMismatch" to "New password confirmation does not match.",
+        "flash.password.changeFailed" to "Password change failed",
+        "flash.password.changed" to "Password changed.",
+        // ── device ──
+        "flash.device.revoked" to "Device token revoked.",
+        "flash.device.cantRevokeCurrent" to "You can't revoke the current session. Use Logout instead.",
+        // ── access guards ──
+        "flash.access.adminOnly" to "This page is admin-only.",
+        "flash.access.viewerReadonly" to "Viewer role cannot make changes.",
+        "flash.access.projectDenied" to "You don't have access to this project.",
+
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude authentication",
         "claude.option.oauth" to "OAuth (recommended)",
