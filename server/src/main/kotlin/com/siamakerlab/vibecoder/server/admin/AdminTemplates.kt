@@ -124,28 +124,30 @@ object AdminTemplates {
     // Setup
     // ────────────────────────────────────────────────────────────────────
 
-    fun setupPage(error: String? = null): String {
+    fun setupPage(error: String? = null, lang: String = "en"): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (error != null) """<div class="error">${esc(error)}</div>""" else ""
         return shell(
-            title = "초기 설정",
+            title = t("auth.setup.title"),
             showNav = false,
+            lang = lang,
             body = """
 <div class="auth-card">
-  <h1>Vibe Coder 초기 설정</h1>
-  <p class="dim">처음 사용 시 admin 계정을 만드세요. 이 계정으로 웹/앱 모두 로그인합니다.</p>
+  <h1>${esc(t("auth.setup.heading"))}</h1>
+  <p class="dim">${esc(t("auth.setup.intro"))}</p>
   $errHtml
   <form method="post" action="/setup">
-    <label>사용자명
+    <label>${esc(t("auth.setup.usernameLabel"))}
       <input name="username" required minlength="3" maxlength="32" autofocus
              pattern="[A-Za-z0-9._-]{3,32}">
     </label>
-    <label>비밀번호 (영문+숫자 8자 이상)
+    <label>${esc(t("auth.setup.passwordHint"))}
       <input name="password" type="password" required minlength="8">
     </label>
-    <label>비밀번호 확인
+    <label>${esc(t("auth.setup.passwordConfirm"))}
       <input name="passwordConfirm" type="password" required minlength="8">
     </label>
-    <button type="submit" class="primary">계정 생성하고 시작</button>
+    <button type="submit" class="primary">${esc(t("auth.setup.submit"))}</button>
   </form>
 </div>
 """
@@ -163,57 +165,62 @@ object AdminTemplates {
          *  하고 코드 입력 필드만 노출. null 이면 1단계 폼. */
         totpUsername: String? = null,
         totpPassword: String? = null,
+        /** v0.78.0 — Phase 64 i18n. 로그인 전이라 user 식별 안 됨 → server default 만 사용. */
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (error != null) """<div class="error">${esc(error)}</div>""" else ""
         val nextField = if (next != null) """<input type="hidden" name="next" value="${esc(next)}">""" else ""
         // v0.26.0 — 2단계 (TOTP) 폼.
         if (totpUsername != null && totpPassword != null) {
             return shell(
-                title = "2단계 인증",
+                title = t("auth.login.totp.title"),
                 showNav = false,
+                lang = lang,
                 body = """
 <div class="auth-card">
-  <h1>2단계 인증</h1>
-  <p class="hint">Authenticator 앱에 표시된 6자리 코드를 입력하세요.</p>
+  <h1>${esc(t("auth.login.totp.heading"))}</h1>
+  <p class="hint">${esc(t("auth.login.totp.body"))}</p>
   $errHtml
   <form method="post" action="/login">
     $nextField
     <input type="hidden" name="username" value="${esc(totpUsername)}">
     <input type="hidden" name="password" value="${esc(totpPassword)}">
-    <label>TOTP 코드
+    <label>${esc(t("auth.login.totp.code"))}
       <input name="totpCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autofocus>
     </label>
-    <button type="submit" class="primary">확인</button>
+    <button type="submit" class="primary">${esc(t("auth.login.totp.submit"))}</button>
   </form>
-  <p class="hint" style="margin-top:12px"><a href="/login">← 사용자 다시 선택</a></p>
+  <p class="hint" style="margin-top:12px"><a href="/login">${esc(t("auth.login.totp.back"))}</a></p>
 </div>
 """
             )
         }
         return shell(
-            title = "로그인",
+            title = t("auth.login.title"),
             showNav = false,
+            lang = lang,
             body = """
 <div class="auth-card">
-  <h1>로그인</h1>
+  <h1>${esc(t("auth.login.heading"))}</h1>
   $errHtml
   <form method="post" action="/login" id="login-form">
     $nextField
-    <label>사용자명
+    <label>${esc(t("auth.login.usernameLabel"))}
       <input name="username" id="login-username" required autofocus>
     </label>
-    <label>비밀번호
+    <label>${esc(t("auth.login.passwordLabel"))}
       <input name="password" type="password" required>
     </label>
-    <button type="submit" class="primary">로그인</button>
+    <button type="submit" class="primary">${esc(t("auth.login.submit"))}</button>
   </form>
   <hr style="margin:18px 0;border-color:#222">
   <div style="text-align:center">
     <button type="button" id="passkey-login-btn" class="chip chip-link"
             style="font-size:13px;padding:8px 14px" disabled>
-      🔑 Passkey 로 로그인
+      ${esc(t("auth.login.passkey.btn"))}
     </button>
-    <p class="hint" id="passkey-status" style="margin:8px 0 0;font-size:11px">사용자명 입력 후 활성화…</p>
+    <p class="hint" id="passkey-status" style="margin:8px 0 0;font-size:11px">${esc(t("auth.login.passkey.hint.disabled"))}</p>
   </div>
 </div>
 <script>
@@ -242,7 +249,7 @@ object AdminTemplates {
 
   btn.addEventListener('click', async function() {
     btn.disabled = true;
-    status.textContent = 'challenge 받는 중…';
+    status.textContent = ${jsLitString(t("auth.login.passkey.fetching"))};
     try {
       var optsRes = await fetch('/api/webauthn/assert/options', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -251,9 +258,9 @@ object AdminTemplates {
       if (!optsRes.ok) throw new Error('options ' + optsRes.status);
       var opts = await optsRes.json();
       if (!opts.allowCredentialIds || opts.allowCredentialIds.length === 0) {
-        status.textContent = '이 사용자에게는 등록된 passkey 가 없습니다.'; btn.disabled = false; return;
+        status.textContent = ${jsLitString(t("auth.login.passkey.noCred"))}; btn.disabled = false; return;
       }
-      status.textContent = '인증기 사용 중…';
+      status.textContent = ${jsLitString(t("auth.login.passkey.using"))};
       var cred = await navigator.credentials.get({
         publicKey: {
           challenge: b64UrlToBuf(opts.challenge),
@@ -284,7 +291,7 @@ object AdminTemplates {
       var dest = ${if (next != null) "\"${esc(next)}\"" else "'/'"};
       location.href = dest;
     } catch (e) {
-      status.textContent = '실패: ' + (e.message || e);
+      status.textContent = ${jsLitString(t("auth.login.passkey.fail"))} + (e.message || e);
       btn.disabled = false;
     }
   });
@@ -307,56 +314,60 @@ object AdminTemplates {
         claudeUsage: com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto? = null,
         diskSnapshot: com.siamakerlab.vibecoder.server.disk.DiskMonitor.Snapshot? = null,
         csrf: String? = null,
+        lang: String = "en",
     ): String {
-        val claudeBadge = if (status.claudeAvailable) "<span class=\"ok\">✓ OK</span>" else "<span class=\"warn\">✗ 미설치</span>"
-        val sdkBadge = if (status.androidSdkAvailable) "<span class=\"ok\">✓ OK</span>" else "<span class=\"warn\">✗ doctor 실행 필요</span>"
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
+        val tArgs = { key: String, args: Array<Any?> -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key, *args) }
+        val claudeBadge = if (status.claudeAvailable) "<span class=\"ok\">${esc(t("dashboard.claudeOk"))}</span>" else "<span class=\"warn\">${esc(t("dashboard.claudeMissing"))}</span>"
+        val sdkBadge = if (status.androidSdkAvailable) "<span class=\"ok\">${esc(t("dashboard.sdkOk"))}</span>" else "<span class=\"warn\">${esc(t("dashboard.sdkMissing"))}</span>"
         val authBadge = when (claudeAuth?.status) {
-            com.siamakerlab.vibecoder.shared.dto.CheckStatus.OK -> "<span class=\"ok\">✓ 로그인됨</span>"
-            com.siamakerlab.vibecoder.shared.dto.CheckStatus.ERROR -> "<span class=\"warn\">✗ 로그인 필요</span>"
-            com.siamakerlab.vibecoder.shared.dto.CheckStatus.WARNING -> "<span class=\"dim\">(비활성)</span>"
+            com.siamakerlab.vibecoder.shared.dto.CheckStatus.OK -> "<span class=\"ok\">${esc(t("dashboard.signedIn"))}</span>"
+            com.siamakerlab.vibecoder.shared.dto.CheckStatus.ERROR -> "<span class=\"warn\">${esc(t("dashboard.signinRequired"))}</span>"
+            com.siamakerlab.vibecoder.shared.dto.CheckStatus.WARNING -> "<span class=\"dim\">${esc(t("dashboard.disabled"))}</span>"
             null -> "<span class=\"dim\">-</span>"
         }
         val authHint = if (claudeAuth?.status == com.siamakerlab.vibecoder.shared.dto.CheckStatus.ERROR) {
-            """<p class="hint">로그인: <code>docker exec -it --user vibe vibe-coder-server claude login</code></p>"""
+            """<p class="hint">${t("dashboard.claudeLoginHint")}</p>"""
         } else ""
 
         return shell(
-            title = "대시보드",
+            title = t("dashboard.title"),
             username = username,
             currentPath = "/",
             csrf = csrf,
+            lang = lang,
             body = """
-<header><h1>대시보드</h1></header>
+<header><h1>${esc(t("dashboard.heading"))}</h1></header>
 
 <section class="grid">
   <div class="card">
-    <h2>서버</h2>
+    <h2>${esc(t("dashboard.card.server"))}</h2>
     <dl>
-      <dt>이름</dt><dd>${esc(status.serverName)}</dd>
-      <dt>버전</dt><dd>${esc(status.serverVersion)}</dd>
-      <dt>JVM</dt><dd>${esc(status.javaVersion)}</dd>
-      <dt>OS</dt><dd>${esc(status.osName)}</dd>
-      <dt>워크스페이스</dt><dd>${esc(status.workspaceRoot)}</dd>
+      <dt>${esc(t("dashboard.card.server.name"))}</dt><dd>${esc(status.serverName)}</dd>
+      <dt>${esc(t("dashboard.card.server.version"))}</dt><dd>${esc(status.serverVersion)}</dd>
+      <dt>${esc(t("dashboard.card.server.jvm"))}</dt><dd>${esc(status.javaVersion)}</dd>
+      <dt>${esc(t("dashboard.card.server.os"))}</dt><dd>${esc(status.osName)}</dd>
+      <dt>${esc(t("dashboard.card.server.workspace"))}</dt><dd>${esc(status.workspaceRoot)}</dd>
     </dl>
   </div>
 
   <div class="card">
-    <h2>환경</h2>
+    <h2>${esc(t("dashboard.card.env"))}</h2>
     <dl>
-      <dt>Claude CLI</dt><dd>$claudeBadge</dd>
-      <dt>Claude 로그인</dt><dd>$authBadge</dd>
-      <dt>Android SDK</dt><dd>$sdkBadge</dd>
+      <dt>${esc(t("dashboard.card.env.claudeCli"))}</dt><dd>$claudeBadge</dd>
+      <dt>${esc(t("dashboard.card.env.claudeAuth"))}</dt><dd>$authBadge</dd>
+      <dt>${esc(t("dashboard.card.env.androidSdk"))}</dt><dd>$sdkBadge</dd>
     </dl>
     $authHint
-    <p class="hint">SDK가 미설치면 컨테이너 안에서 <code>vibe-doctor</code> 를 실행하세요.</p>
+    <p class="hint">${t("dashboard.card.env.doctorHint")}</p>
   </div>
 
   <div class="card">
-    <h2>활동</h2>
+    <h2>${esc(t("dashboard.card.activity"))}</h2>
     <dl>
-      <dt>프로젝트</dt><dd>${status.projectCount}개</dd>
-      <dt>실행 중 빌드</dt><dd>${runningBuilds}개</dd>
-      <dt>연결된 디바이스</dt><dd>${deviceCount}개</dd>
+      <dt>${esc(t("dashboard.card.activity.projects"))}</dt><dd>${esc(tArgs("dashboard.card.count", arrayOf<Any?>(status.projectCount)))}</dd>
+      <dt>${esc(t("dashboard.card.activity.runningBuilds"))}</dt><dd>${esc(tArgs("dashboard.card.count", arrayOf<Any?>(runningBuilds)))}</dd>
+      <dt>${esc(t("dashboard.card.activity.devices"))}</dt><dd>${esc(tArgs("dashboard.card.count", arrayOf<Any?>(deviceCount)))}</dd>
     </dl>
   </div>
 

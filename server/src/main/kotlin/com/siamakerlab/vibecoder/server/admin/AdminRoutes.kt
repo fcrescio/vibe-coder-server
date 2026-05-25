@@ -83,6 +83,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             claudeUsage = claudeUsage,
             diskSnapshot = diskSnapshot,
             csrf = sess.csrf,
+            lang = sess.language,
         )
         call.respondText(html, ContentType.Text.Html)
     }
@@ -93,7 +94,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             call.respondRedirect("/login")
             return@get
         }
-        call.respondText(AdminTemplates.setupPage(), ContentType.Text.Html)
+        call.respondText(AdminTemplates.setupPage(lang = deps.config.i18n.defaultLanguage), ContentType.Text.Html)
     }
 
     post("/setup") {
@@ -114,7 +115,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
         }
         if (err != null) {
             call.respondText(
-                AdminTemplates.setupPage(error = err),
+                AdminTemplates.setupPage(error = err, lang = deps.config.i18n.defaultLanguage),
                 ContentType.Text.Html,
                 HttpStatusCode.BadRequest,
             )
@@ -131,7 +132,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
         }.getOrElse { e ->
             val msg = (e as? ApiException)?.message ?: "초기 설정 실패"
             call.respondText(
-                AdminTemplates.setupPage(error = msg),
+                AdminTemplates.setupPage(error = msg, lang = deps.config.i18n.defaultLanguage),
                 ContentType.Text.Html,
                 HttpStatusCode.BadRequest,
             )
@@ -149,7 +150,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             return@get
         }
         val next = call.request.queryParameters["next"]
-        call.respondText(AdminTemplates.loginPage(next = next), ContentType.Text.Html)
+        call.respondText(AdminTemplates.loginPage(next = next, lang = deps.config.i18n.defaultLanguage), ContentType.Text.Html)
     }
 
     post("/login") {
@@ -181,7 +182,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             // v0.26.0 — TOTP 1단계 통과 → 같은 폼에 코드 입력 단계 노출.
             if (reasonCode == "totp_required") {
                 call.respondText(
-                    AdminTemplates.loginPage(next = next, totpUsername = username, totpPassword = password),
+                    AdminTemplates.loginPage(next = next, totpUsername = username, totpPassword = password, lang = deps.config.i18n.defaultLanguage),
                     ContentType.Text.Html,
                     HttpStatusCode.OK,
                 )
@@ -195,6 +196,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
                     // invalid_totp 면 2단계 폼에 머무름.
                     totpUsername = if (reasonCode == "invalid_totp") username else null,
                     totpPassword = if (reasonCode == "invalid_totp") password else null,
+                    lang = deps.config.i18n.defaultLanguage,
                 ),
                 ContentType.Text.Html,
                 HttpStatusCode.Unauthorized,
