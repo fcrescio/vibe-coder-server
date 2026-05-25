@@ -802,6 +802,15 @@ internal object MessagesKo {
         "console.ws.reconnect5s" to "closed (code %s); 재연결 5초 후",
         "console.cancel.sent" to "사용자 중단 요청 전송됨",
 
+        // ─────────────────────────────────────────────── build detail (PR-level git metadata)
+        "build.detail.gitBranch" to "Branch",
+        "build.detail.gitSha" to "Commit",
+        "build.compare.scopeSameBranch" to "같은 branch 의 직전 SUCCESS 와 비교.",
+        "build.compare.scopeAny" to "모든 branch 의 직전 SUCCESS 와 비교 (cross-branch).",
+        "build.compare.crossBranchLink" to "전체 branch 와 비교하기 →",
+        "build.compare.sameBranchLink" to "← 같은 branch 비교로 돌아가기",
+        "build.compare.branchInfo" to "%s (%s) → %s (%s)",
+
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude 인증",
         "claude.option.oauth" to "OAuth (권장)",

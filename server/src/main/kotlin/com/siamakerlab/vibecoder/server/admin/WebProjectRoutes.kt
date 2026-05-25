@@ -163,6 +163,7 @@ fun Routing.webProjectRoutes(
                 id = row.id, projectId = row.projectId, variant = row.variant, status = row.status,
                 startedAt = row.startedAt ?: row.createdAt, finishedAt = row.finishedAt,
                 artifactId = row.artifactId, errorMessage = row.errorMessage,
+                gitBranch = row.gitBranch, gitSha = row.gitSha,
             )
         }
         val err = call.request.queryParameters["err"]
@@ -243,6 +244,7 @@ fun Routing.webProjectRoutes(
                 id = row.id, projectId = row.projectId, variant = row.variant, status = row.status,
                 startedAt = row.startedAt ?: row.createdAt, finishedAt = row.finishedAt,
                 artifactId = row.artifactId, errorMessage = row.errorMessage,
+                gitBranch = row.gitBranch, gitSha = row.gitSha,
             )
         }
         val artifacts = artifactRepo.listForProject(id).associateBy { it.buildId }
@@ -295,6 +297,7 @@ fun Routing.webProjectRoutes(
             id = row.id, projectId = row.projectId, variant = row.variant, status = row.status,
             startedAt = row.startedAt ?: row.createdAt, finishedAt = row.finishedAt,
             artifactId = row.artifactId, errorMessage = row.errorMessage,
+            gitBranch = row.gitBranch, gitSha = row.gitSha,
         )
         val artifact = row.artifactId?.let { artifactRepo.get(id, it) }
 
@@ -315,8 +318,11 @@ fun Routing.webProjectRoutes(
         } else null
 
         // v0.58.0 — Phase 37 이전 성공 빌드와의 비교 (size / duration delta).
+        // v0.89.0 — Phase 65 PR 별 비교 (기본=same branch). ?compare=any 면 cross-branch
+        //   fallback (main 머지 직후 PR vs main 비교 use case).
+        val crossBranch = call.request.queryParameters["compare"] == "any"
         val comparison = if (row.status.name == "SUCCESS") {
-            runCatching { builds.compareWithPrevious(id, buildId, artifactRepo) }.getOrNull()
+            runCatching { builds.compareWithPrevious(id, buildId, artifactRepo, crossBranch = crossBranch) }.getOrNull()
         } else null
 
         call.respondText(

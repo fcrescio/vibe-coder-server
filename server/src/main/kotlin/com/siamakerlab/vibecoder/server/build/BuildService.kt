@@ -145,22 +145,35 @@ class BuildService(
     /**
      * v0.58.0 — Phase 37 compare this build against the previous successful build of the
      * same project. `null` = no prior successful build (this is the first one).
+     *
+     * v0.89.0 — Phase 65 #4 PR 별 비교. 기본적으로 같은 git branch 의 직전 SUCCESS
+     * 만 매치 (PR-level apples-to-apples). [crossBranch]=true 면 v0.58.0 의 기존
+     * 동작 (브랜치 무관 직전 SUCCESS) 으로 fallback — main 머지 직후 PR vs main
+     * 비교 같은 use case. branch 가 null (git 미초기화) 인 빌드는 자동으로
+     * cross-branch 로 처리.
      */
     fun compareWithPrevious(
         projectId: String,
         buildId: String,
         artifactRepo: com.siamakerlab.vibecoder.server.repo.ArtifactRepository,
+        crossBranch: Boolean = false,
     ): BuildComparison? {
         val current = buildRepo.get(buildId) ?: return null
         if (current.projectId != projectId) return null
         if (current.status != TaskStatus.SUCCESS) return null
-        val previous = buildRepo.previousSuccessfulBefore(projectId, current.createdAt) ?: return null
+        val previous = if (crossBranch || current.gitBranch.isNullOrBlank()) {
+            buildRepo.previousSuccessfulBefore(projectId, current.createdAt)
+        } else {
+            buildRepo.previousSuccessfulInBranch(projectId, current.gitBranch, current.createdAt)
+        } ?: return null
 
         val curArt = current.artifactId?.let { artifactRepo.get(projectId, it) }
         val prevArt = previous.artifactId?.let { artifactRepo.get(projectId, it) }
         return BuildComparison(
             current = BuildSnapshot.of(current, curArt?.sizeBytes),
             previous = BuildSnapshot.of(previous, prevArt?.sizeBytes),
+            scope = if (crossBranch || current.gitBranch.isNullOrBlank())
+                BuildComparison.Scope.ANY else BuildComparison.Scope.SAME_BRANCH,
         )
     }
 
@@ -169,6 +182,8 @@ class BuildService(
         val createdAt: String,
         val durationMs: Long?,
         val apkSizeBytes: Long?,
+        val gitBranch: String? = null,
+        val gitSha: String? = null,
     ) {
         companion object {
             fun of(row: BuildRow, apkSizeBytes: Long?) = BuildSnapshot(
@@ -183,15 +198,26 @@ class BuildService(
                     }.getOrNull()
                 } else null,
                 apkSizeBytes = apkSizeBytes,
+                gitBranch = row.gitBranch,
+                gitSha = row.gitSha,
             )
         }
     }
 
-    data class BuildComparison(val current: BuildSnapshot, val previous: BuildSnapshot) {
+    data class BuildComparison(
+        val current: BuildSnapshot,
+        val previous: BuildSnapshot,
+        /** v0.89.0 — 비교 scope. SAME_BRANCH 이 PR-level 비교, ANY 는 시계열 직전. */
+        val scope: Scope = Scope.SAME_BRANCH,
+    ) {
+        enum class Scope { SAME_BRANCH, ANY }
+
         val durationDeltaMs: Long? = if (current.durationMs != null && previous.durationMs != null)
             current.durationMs - previous.durationMs else null
         val apkSizeDeltaBytes: Long? = if (current.apkSizeBytes != null && previous.apkSizeBytes != null)
             current.apkSizeBytes - previous.apkSizeBytes else null
+        /** current vs previous 가 동일 branch 인지. ANY scope 일 때만 false 가능. */
+        val sameBranch: Boolean = current.gitBranch != null && current.gitBranch == previous.gitBranch
     }
 
     /**

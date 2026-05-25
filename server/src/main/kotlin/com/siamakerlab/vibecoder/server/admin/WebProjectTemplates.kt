@@ -348,6 +348,9 @@ object WebProjectTemplates {
     private fun renderBuildComparison(
         cmp: com.siamakerlab.vibecoder.server.build.BuildService.BuildComparison?,
         lang: String = "en",
+        /** v0.89.0 — cross-branch toggle link 용. null 이면 토글 link 안 보임. */
+        projectId: String? = null,
+        buildId: String? = null,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         if (cmp == null) return ""
@@ -374,12 +377,35 @@ object WebProjectTemplates {
             }
             return """<span class="$cls" style="font-size:12px;margin-left:6px">($sign${formatter(delta)})</span>"""
         }
+        // v0.89.0 — Phase 65 #4 scope badge + branch info + toggle link.
+        val scopeHtml = if (cmp.scope == com.siamakerlab.vibecoder.server.build.BuildService.BuildComparison.Scope.SAME_BRANCH) {
+            """<span class="ok" style="font-size:11px">${esc(t("build.compare.scopeSameBranch"))}</span>"""
+        } else {
+            """<span class="warn" style="font-size:11px">${esc(t("build.compare.scopeAny"))}</span>"""
+        }
+        val branchInfoHtml = if (cmp.current.gitBranch != null || cmp.previous.gitBranch != null) {
+            val info = com.siamakerlab.vibecoder.server.i18n.Messages.t(
+                lang, "build.compare.branchInfo",
+                cmp.previous.gitBranch ?: "-", cmp.previous.gitSha?.take(8) ?: "-",
+                cmp.current.gitBranch ?: "-", cmp.current.gitSha?.take(8) ?: "-",
+            )
+            """<p class="dim" style="margin:4px 0 8px;font-size:11px;font-family:ui-monospace,Menlo,monospace">${esc(info)}</p>"""
+        } else ""
+        val toggleHtml = if (projectId != null && buildId != null) {
+            val label = if (cmp.scope == com.siamakerlab.vibecoder.server.build.BuildService.BuildComparison.Scope.SAME_BRANCH)
+                t("build.compare.crossBranchLink") else t("build.compare.sameBranchLink")
+            val href = if (cmp.scope == com.siamakerlab.vibecoder.server.build.BuildService.BuildComparison.Scope.SAME_BRANCH)
+                "/projects/${esc(projectId)}/builds/${esc(buildId)}?compare=any"
+            else "/projects/${esc(projectId)}/builds/${esc(buildId)}"
+            """<a href="$href" class="chip chip-link" style="font-size:11px;margin-left:8px">${esc(label)}</a>"""
+        } else ""
         return """
 <div class="card" style="margin-bottom:16px">
-  <h2>${esc(t("build.compare.title"))}</h2>
+  <h2>${esc(t("build.compare.title"))} $scopeHtml $toggleHtml</h2>
   <p class="dim" style="margin:0 0 8px;font-size:12px">
     ${com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "build.compare.desc", esc(cmp.previous.id.take(12)), esc(cmp.previous.createdAt))}
   </p>
+  $branchInfoHtml
   <table class="table" style="width:100%">
     <thead>
       <tr><th>${esc(t("build.compare.col.metric"))}</th><th>${esc(t("build.compare.col.previous"))}</th><th>${esc(t("build.compare.col.current"))}</th><th>${esc(t("build.compare.col.delta"))}</th></tr>
@@ -1437,6 +1463,8 @@ ${renderBuildHistoryChart(builds, artifactsByBuild, lang)}
   <dl style="margin-top:12px;display:grid;grid-template-columns:max-content 1fr;gap:6px 12px">
     <dt class="dim">${esc(t("build.detail.startedAt"))}</dt><dd>${esc(b.startedAt)}</dd>
     <dt class="dim">${esc(t("build.detail.finishedAt"))}</dt><dd>${esc(b.finishedAt ?: "-")}</dd>
+    ${b.gitBranch?.let { """<dt class="dim">${esc(t("build.detail.gitBranch"))}</dt><dd><code>${esc(it)}</code></dd>""" } ?: ""}
+    ${b.gitSha?.let { """<dt class="dim">${esc(t("build.detail.gitSha"))}</dt><dd><code title="${esc(it)}">${esc(it.take(12))}</code></dd>""" } ?: ""}
   </dl>
   $errorHtml
 </div>
@@ -1447,7 +1475,7 @@ ${renderBuildHistoryChart(builds, artifactsByBuild, lang)}
   ${renderSignerInspection(signerInspection, lang)}
 </div>
 
-${renderBuildComparison(comparison, lang)}
+${renderBuildComparison(comparison, lang, p.id, b.id)}
 
 ${renderPlayUploadCard(p, b, playPrecheck, playFlashOk, playFlashErr, csrf, lang)}
 ${renderTestFlightUploadCard(p, b, testFlightPrecheck, tfFlashOk, tfFlashErr, csrf, lang)}

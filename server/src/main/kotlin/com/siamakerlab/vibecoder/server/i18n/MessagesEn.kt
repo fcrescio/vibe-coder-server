@@ -824,6 +824,15 @@ internal object MessagesEn {
         "console.ws.reconnect5s" to "closed (code %s); reconnect in 5s",
         "console.cancel.sent" to "user cancel request sent",
 
+        // ─────────────────────────────────────────────── build detail (PR-level git metadata)
+        "build.detail.gitBranch" to "Branch",
+        "build.detail.gitSha" to "Commit",
+        "build.compare.scopeSameBranch" to "Compared against the previous SUCCESS on the same branch.",
+        "build.compare.scopeAny" to "Compared against the latest SUCCESS across every branch (cross-branch).",
+        "build.compare.crossBranchLink" to "Compare against any branch instead →",
+        "build.compare.sameBranchLink" to "← Back to same-branch comparison",
+        "build.compare.branchInfo" to "%s (%s) → %s (%s)",
+
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude authentication",
         "claude.option.oauth" to "OAuth (recommended)",
