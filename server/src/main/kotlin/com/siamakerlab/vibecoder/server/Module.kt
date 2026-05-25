@@ -215,6 +215,8 @@ data class ServerContext(
     val apkVerifier: com.siamakerlab.vibecoder.server.artifacts.ApkVerifier,
     /** v0.72.0 — Phase 52 #4 FCM 실 발송 (Firebase 환경 변수 시 활성). */
     val fcmSender: com.siamakerlab.vibecoder.server.notify.FcmSender,
+    /** v0.74.0 — Phase 57 #7 Kotlin LSP (KOTLIN_LSP_PATH 환경 변수 시 활성). */
+    val kotlinLspService: com.siamakerlab.vibecoder.server.projects.KotlinLspService,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -433,7 +435,7 @@ fun Application.module(ctx: ServerContext) {
         // v0.49.0 — Phase 28 Project ACL 관리 UI.
         projectAclRoutes(adminDeps, ctx.projects, ctx.adminUserRepo, ctx.projectAclRepo)
         // v0.54.0 — Phase 33 symbol definition lookup (best-effort regex).
-        symbolRoutes(adminDeps, ctx.projects, ctx.symbolFinder)
+        symbolRoutes(adminDeps, ctx.projects, ctx.symbolFinder, ctx.kotlinLspService)
         // v0.55.0 — Phase 34 Prometheus /metrics endpoint.
         metricsRoutes(adminDeps, ctx.metrics)
         wsRoutes(ctx.hub, ctx.deviceRepo, ctx.tokens, ctx.sessionManager,

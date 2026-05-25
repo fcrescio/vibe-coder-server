@@ -263,6 +263,8 @@ fun main(args: Array<String>) {
     val apkVerifier = com.siamakerlab.vibecoder.server.artifacts.ApkVerifier(workspace, artifactRepo)
     // v0.54.0 — Phase 33 best-effort symbol definition finder.
     val symbolFinder = com.siamakerlab.vibecoder.server.projects.SymbolFinder(workspace)
+    // v0.74.0 — Phase 57 #7 Kotlin LSP (KOTLIN_LSP_PATH 시 활성). 미설정 시 stub.
+    val kotlinLspService = com.siamakerlab.vibecoder.server.projects.KotlinLspService(workspace)
     // v0.60.0 — Phase 39 Backup service + scheduler.
     val backupService = com.siamakerlab.vibecoder.server.admin.BackupService(workspace)
     val backupScheduler = com.siamakerlab.vibecoder.server.admin.BackupScheduler(
@@ -418,6 +420,7 @@ fun main(args: Array<String>) {
         logSearchService = logSearchService,
         apkVerifier = apkVerifier,
         fcmSender = fcmSender,
+        kotlinLspService = kotlinLspService,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {
@@ -425,6 +428,7 @@ fun main(args: Array<String>) {
         kotlinx.coroutines.runBlocking { subAgentManager.shutdown() }
         runCatching { claudeUsageMonitor.shutdown() }
         runCatching { diskMonitor.shutdown() }
+        runCatching { kotlinLspService.shutdown() }
         runCatching { buildScheduler.shutdown() }
         runCatching { backupScheduler.shutdown() }
         runCatching { conversationArchiver.shutdown() }

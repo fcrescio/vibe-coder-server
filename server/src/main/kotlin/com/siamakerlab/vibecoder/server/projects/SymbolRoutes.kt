@@ -31,7 +31,19 @@ fun Routing.symbolRoutes(
     authDeps: AdminRoutesDeps,
     projects: ProjectService,
     finder: SymbolFinder,
+    /** v0.74.0 — Phase 57 #7: optional Kotlin LSP. 활성화 시 우선 + regex fallback. */
+    lsp: KotlinLspService? = null,
 ) {
+    fun lookup(projectId: String, name: String): List<SymbolFinder.Hit> {
+        if (lsp?.isAvailable == true) {
+            val lspHits = lsp.definition(projectId, name)
+            if (lspHits.isNotEmpty()) {
+                return lspHits.map { SymbolFinder.Hit(it.relPath, it.lineNumber, it.line, it.kind) }
+            }
+        }
+        return finder.find(projectId, name)
+    }
+
     // ── JSON API ────────────────────────────────────────────────────────────
     authenticate(AUTH_BEARER) {
         get("/api/projects/{projectId}/symbols") {
@@ -39,7 +51,7 @@ fun Routing.symbolRoutes(
                 ?: return@get call.respond(HttpStatusCode.BadRequest, "missing projectId")
             call.requireProjectAcl(projects, projectId)
             val name = call.request.queryParameters["name"].orEmpty()
-            val hits = finder.find(projectId, name)
+            val hits = lookup(projectId, name)
             val json = buildString {
                 append("{\"hits\":[")
                 hits.forEachIndexed { i, h ->
@@ -63,7 +75,7 @@ fun Routing.symbolRoutes(
         val id = call.parameters["id"] ?: return@get call.respondRedirect("/projects")
         if (!requireProjectAccessOrRedirect(sess, projects, id)) return@get
         val q = call.request.queryParameters["q"]?.trim().orEmpty()
-        val hits = if (q.isNotEmpty()) finder.find(id, q) else emptyList()
+        val hits = if (q.isNotEmpty()) lookup(id, q) else emptyList()
         val p = runCatching { projects.get(id) }.getOrNull()
             ?: return@get call.respondRedirect("/projects?err=not_found")
 

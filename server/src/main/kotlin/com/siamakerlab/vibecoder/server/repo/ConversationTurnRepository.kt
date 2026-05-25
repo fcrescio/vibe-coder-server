@@ -146,7 +146,14 @@ class ConversationTurnRepository(private val clock: Clock) {
         //          자동 분기. simple tsvector 가 한국어 형태소 분석을 안 해서 정확도가
         //          낮은 문제 회피. pg_trgm GIN 인덱스가 ILIKE 도 인덱스 사용.
         q?.let { rawQ ->
-            c = c and if (isAsciiOnly(rawQ)) TsvectorMatchOp(rawQ) else TrigramIlikeOp(rawQ)
+            // v0.75.0 — Phase 58 #8: 환경 변수 VIBECODER_MECAB_ENABLED=true 시 mecab-ko
+            // PG 함수 사용 (siamakerlab/postgres-mecab-ko:17 image + init-mecab.sql 실행 전제).
+            // 미설정 / 함수 부재 시 기존 trigram (ILIKE) fallback.
+            c = c and when {
+                isAsciiOnly(rawQ) -> TsvectorMatchOp(rawQ)
+                MECAB_ENABLED -> MecabTokenMatchOp(rawQ)
+                else -> TrigramIlikeOp(rawQ)
+            }
         }
         // v0.52.0 — agent_name 필터링.
         when (agentName) {
@@ -192,6 +199,31 @@ class ConversationTurnRepository(private val clock: Clock) {
             queryBuilder.append("content ILIKE ")
             queryBuilder.registerArgument(TextColumnType(), "%$escaped%")
         }
+    }
+
+    /**
+     * v0.75.0 — Phase 58 #8. mecab-ko 형태소 분석 array overlap.
+     *
+     * 활성화 전제:
+     *  - PG 가 siamakerlab/postgres-mecab-ko:17 이미지 (docker/postgres-mecab/Dockerfile).
+     *  - init-mecab.sql 실행 (mecab_kor_tokens, mecab_kor_query SQL 함수 정의).
+     *  - 환경 변수 VIBECODER_MECAB_ENABLED=true.
+     *
+     * Query: `mecab_kor_tokens(content) && mecab_kor_query(?)` — array overlap.
+     * generated column + GIN 인덱스 추가 시 빠름 (init-mecab.sql 의 주석 참조).
+     */
+    private class MecabTokenMatchOp(private val q: String) : Op<Boolean>() {
+        override fun toQueryBuilder(queryBuilder: QueryBuilder) {
+            queryBuilder.append("mecab_kor_tokens(content) && mecab_kor_query(")
+            queryBuilder.registerArgument(TextColumnType(), q)
+            queryBuilder.append(")")
+        }
+    }
+
+    companion object {
+        /** v0.75.0 — mecab 활성화 flag. 부팅 시 한 번만 평가. */
+        private val MECAB_ENABLED: Boolean =
+            System.getenv("VIBECODER_MECAB_ENABLED")?.lowercase()?.let { it == "true" || it == "1" } == true
     }
 
     /** ASCII printable 만 포함하면 tsvector (영어), 한 글자라도 non-ASCII 면 trigram. */

@@ -170,8 +170,8 @@ class EmulatorService {
 
     /**
      * 디폴트 AVD 자동 생성 — `vibe-default`. 이미 존재하면 no-op.
-     * `system-images;android-35;google_apis;x86_64` 가 사전 설치돼 있어야 함
-     * (:full 이미지에 포함 예정).
+     * v0.76.0 — Phase 59 #13: system-image 가 없으면 자동 sdkmanager install 시도.
+     * `system-images;android-35;google_apis;x86_64` (~500MB) 다운로드 후 AVD create.
      */
     fun createDefaultAvd(name: String = "vibe-default", apiLevel: Int = 35): LaunchResult {
         val sdk = System.getenv("ANDROID_HOME")?.ifBlank { null }
@@ -180,11 +180,17 @@ class EmulatorService {
         if (!Files.exists(Path.of(avdmanager))) return LaunchResult(false, null, "avdmanager not found")
         if (!sanitizeAvdName(name)) return LaunchResult(false, null, "invalid AVD name")
         if (runAvdmanagerList(sdk).contains(name)) return LaunchResult(true, null, "AVD '$name' already exists")
+
+        // v0.76.0 — Phase 59 #13: system-image 자동 ensure.
+        val ensureResult = ensureSystemImage(sdk, apiLevel)
+        if (!ensureResult.first) {
+            return LaunchResult(false, null, "system-image install failed: ${ensureResult.second.take(300)}")
+        }
+
         val pkg = "system-images;android-$apiLevel;google_apis;x86_64"
         val cmd = listOf(avdmanager, "create", "avd", "-n", name, "-k", pkg, "-d", "pixel_6", "--force")
         return try {
             val pb = ProcessBuilder(cmd).redirectErrorStream(true)
-            // avdmanager 가 prompt 를 띄울 수 있어 echo "no" 로 hardware profile 질의 무시.
             pb.redirectInput(ProcessBuilder.Redirect.PIPE)
             val proc = pb.start()
             proc.outputStream.use { it.write("no\n".toByteArray()) }
@@ -199,6 +205,72 @@ class EmulatorService {
         } catch (e: Throwable) {
             LaunchResult(false, null, e.message ?: e.javaClass.simpleName)
         }
+    }
+
+    /**
+     * v0.76.0 — Phase 59 #13: system-image 자동 install.
+     * `sdkmanager --list_installed` 로 존재 확인 → 없으면 `sdkmanager --install`.
+     * Returns (ok, log).
+     */
+    private fun ensureSystemImage(sdk: String, apiLevel: Int): Pair<Boolean, String> {
+        val sdkmanager = "$sdk/cmdline-tools/latest/bin/sdkmanager"
+        if (!Files.exists(Path.of(sdkmanager))) return false to "sdkmanager not found"
+        val pkg = "system-images;android-$apiLevel;google_apis;x86_64"
+
+        // 1. 설치 여부 확인.
+        val installedCheck = runCatching {
+            val pb = ProcessBuilder(sdkmanager, "--list_installed").redirectErrorStream(true)
+            val proc = pb.start()
+            val out = proc.inputStream.bufferedReader().readText()
+            if (!proc.waitFor(30, TimeUnit.SECONDS)) {
+                proc.destroyForcibly(); ""
+            } else out
+        }.getOrDefault("")
+        if (installedCheck.lineSequence().any { it.contains(pkg) }) {
+            return true to "system-image $pkg already installed"
+        }
+
+        // 2. Install. License 자동 accept (yes 입력 다수 line).
+        log.info { "Installing $pkg via sdkmanager — ~500MB download, may take 1-3 minutes" }
+        return try {
+            val cmd = listOf(sdkmanager, "--install", pkg)
+            val pb = ProcessBuilder(cmd).redirectErrorStream(true).redirectInput(ProcessBuilder.Redirect.PIPE)
+            val proc = pb.start()
+            proc.outputStream.use { it.write("y\ny\ny\ny\ny\n".toByteArray()) }
+            val out = proc.inputStream.bufferedReader().readText()
+            if (!proc.waitFor(600, TimeUnit.SECONDS)) {  // 10분 timeout (큰 다운로드).
+                proc.destroyForcibly()
+                false to "sdkmanager install timeout (10min)"
+            } else {
+                (proc.exitValue() == 0) to out.takeLast(800)
+            }
+        } catch (e: Throwable) {
+            false to (e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    /**
+     * v0.76.0 — Phase 59 #13: boot 완료 대기 (launchAvd 후 호출).
+     * `adb -s <serial> shell getprop sys.boot_completed` 가 "1" 반환할 때 까지 polling.
+     * timeout 2분 — 큰 emulator 는 첫 boot 시 더 길 수 있음.
+     */
+    fun waitForBoot(deviceSerial: String, timeoutSec: Int = 120): Boolean {
+        val sdk = System.getenv("ANDROID_HOME")?.ifBlank { null } ?: return false
+        val adb = "$sdk/platform-tools/adb"
+        if (!Files.exists(Path.of(adb))) return false
+        val deadline = System.currentTimeMillis() + timeoutSec * 1000L
+        while (System.currentTimeMillis() < deadline) {
+            val booted = runCatching {
+                val pb = ProcessBuilder(adb, "-s", deviceSerial, "shell", "getprop", "sys.boot_completed")
+                    .redirectErrorStream(true)
+                val proc = pb.start()
+                val out = proc.inputStream.bufferedReader().readText().trim()
+                if (!proc.waitFor(5, TimeUnit.SECONDS)) { proc.destroyForcibly(); "" } else out
+            }.getOrDefault("")
+            if (booted == "1") return true
+            Thread.sleep(2000)
+        }
+        return false
     }
 
     private fun isAvdRunning(name: String): Boolean {
