@@ -202,6 +202,22 @@ $rowsHtml
         call.respondText("""{"ok":true}""", ContentType.Application.Json)
     }
 
+    // ── JSON: 새 세션 강제 시작 (v0.66.0 신규 — main console 의 .../console/new 와 대칭) ─
+    post("/api/projects/{id}/agents/{agent}/console/new") {
+        val id = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+        val agentName = call.parameters["agent"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+        if (!AGENT_NAME_PATTERN.matches(agentName)) {
+            return@post call.respond(HttpStatusCode.BadRequest)
+        }
+        authorizeAgentJson(authDeps, tokens, deviceRepo, projects, id, requireWrite = true)
+            ?: return@post
+        if (agentRegistry.read(agentName) == null) {
+            return@post call.respond(HttpStatusCode.NotFound, "agent not registered")
+        }
+        manager.startNew(id, agentName)
+        call.respondText("""{"ok":true}""", ContentType.Application.Json)
+    }
+
     post("/projects/{id}/agents/{agent}/new") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
         if (!requireWriteAccessOrRedirect(sess)) return@post

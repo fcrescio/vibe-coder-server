@@ -7,6 +7,8 @@ import com.siamakerlab.vibecoder.server.auth.requireDevice
 import com.siamakerlab.vibecoder.server.auth.requireProjectAcl
 import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.projects.ProjectService
+import com.siamakerlab.vibecoder.shared.dto.GitCommitRequestDto
+import com.siamakerlab.vibecoder.shared.dto.GitCommitResponseDto
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
@@ -15,7 +17,6 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
-import kotlinx.serialization.Serializable
 
 /**
  * v0.18.0 — Read-only git API + 새 write API (commit & push).
@@ -73,18 +74,5 @@ fun Routing.gitRoutes(
     }
 }
 
-@Serializable
-data class GitCommitRequestDto(
-    val message: String,
-    val push: Boolean = true,
-    val onlyTracked: Boolean = false,
-)
-
-@Serializable
-data class GitCommitResponseDto(
-    val committed: Boolean,
-    val pushed: Boolean,
-    val branch: String,
-    val sha: String?,
-    val log: String,
-)
+// v0.66.0 — GitCommitRequestDto/ResponseDto 가 shared SSOT 로 이동
+// (com.siamakerlab.vibecoder.shared.dto.GitDtos.kt).

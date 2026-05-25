@@ -178,6 +178,24 @@ object ApiPath {
     fun projectZipJson(projectId: String) =
         "/api/projects/${pathSeg(projectId)}/zip"
 
+    // ─────────────────────────────────────────────────────────────────────
+    // v0.66.0 — Phase 45. Android client 가 호출하지 않던 기능들 JSON API 회수.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * v0.66.0 신규 — 신규 프로젝트 starter 템플릿 카탈로그.
+     * 응답: ProjectTemplatesResponseDto. 정적 데이터라 캐싱 안전.
+     */
+    const val PROJECT_TEMPLATES = "/api/project-templates"
+
+    /**
+     * v0.66.0 신규 — sub-agent 세션 강제 새 시작 (main console 의 [claudeConsoleNew] 와 대칭).
+     * 기존 SSR `/projects/{id}/agents/{agent}/new` (redirect 응답) 는 그대로 유지.
+     * 응답: AgentPromptAcceptedDto.
+     */
+    fun agentConsoleNew(projectId: String, agent: String) =
+        "/api/projects/${pathSeg(projectId)}/agents/${pathSeg(agent)}/console/new"
+
     /**
      * v0.31+ — Claude 입력 자동완성.
      * Query: `prefix`, `limit`. 응답: PromptSuggestionsResponseDto.

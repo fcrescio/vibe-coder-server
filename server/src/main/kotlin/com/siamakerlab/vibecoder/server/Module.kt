@@ -50,6 +50,7 @@ import com.siamakerlab.vibecoder.server.claude.historyRoutes
 import com.siamakerlab.vibecoder.server.claude.jsonHistoryRoutes
 import com.siamakerlab.vibecoder.server.claude.jsonUsageRoutes
 import com.siamakerlab.vibecoder.server.projects.jsonProjectZipRoutes
+import com.siamakerlab.vibecoder.server.projects.projectTemplateRoutes
 import com.siamakerlab.vibecoder.server.emulator.emulatorRoutes
 import com.siamakerlab.vibecoder.server.emulator.vncProxyRoutes
 import com.siamakerlab.vibecoder.server.notify.emailSettingsRoutes
@@ -389,6 +390,8 @@ fun Application.module(ctx: ServerContext) {
             ctx.tokens, ctx.deviceRepo)
         // v0.65.0 — Phase 44 `/api/projects/{id}/zip` JSON variant (Bearer 토큰 인증).
         jsonProjectZipRoutes(ctx.projects, ctx.projectArchiver)
+        // v0.66.0 — Phase 45 신규 프로젝트 starter 템플릿 카탈로그 (Bearer).
+        projectTemplateRoutes()
         // v0.46.0 — Phase 25 Web Push (VAPID, payload-less).
         pushRoutes(adminDeps, ctx.webPushNotifier, ctx.pushSubscriptionRepo)
         // v0.47.0 — Phase 26 Claude /status raw 노출 (cache 통계 등 미래 정보 자동 가시화).
