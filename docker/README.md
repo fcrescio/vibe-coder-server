@@ -124,13 +124,19 @@ ${VIBE_DATA_ROOT}/                          컨테이너
 │   ├── npm-global/             →  /home/vibe/.local                  (MCP `npm -g`)
 │   ├── npm-cache/              →  /home/vibe/.npm                    (npx 캐시)
 │   ├── playwright/             →  /home/vibe/.cache/ms-playwright    (선택)
-│   └── config/                 →  /home/vibe/.config                 (도구 설정)
+│   ├── config/                 →  /home/vibe/.config                 (도구 설정)
+│   └── ssh/                    →  /home/vibe/.ssh                    (v1.2.0+ SSH 키)
 └── claude/                     →  /home/vibe/.claude                 (OAuth/MCP 등록)
 ```
 
-`dev-tools/` 안의 6개 디렉토리는 모두 "한 번 다운로드 → 영구 보존" 도구
+`dev-tools/` 안의 7개 디렉토리는 모두 "한 번 다운로드 → 영구 보존" 도구
 캐시입니다. **이미지 업그레이드(`docker compose pull && up -d`) 후에도
 절대 사라지지 않습니다.**
+
+**v1.2.0+ SSH 키 (`dev-tools/ssh/`)**: 컨테이너 첫 부팅 시 entrypoint 가
+ED25519 키쌍 (`id_ed25519` + `id_ed25519.pub`) 을 자동 생성. 이미 키가 있으면
+**절대 덮어쓰지 않음** — 서버 이미지 교체 시 동일 키 유지. 설정 → SSH Key 페이지
+에서 공개키 복사하여 Gitea / GitHub 등에 등록.
 
 ### 백업 / 이전
 

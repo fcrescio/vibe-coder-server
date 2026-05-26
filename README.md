@@ -700,6 +700,11 @@ services:
       - ./vibe-coder-data/dev-tools/npm-cache:/home/vibe/.npm
       - ./vibe-coder-data/dev-tools/playwright:/home/vibe/.cache/ms-playwright
       - ./vibe-coder-data/dev-tools/config:/home/vibe/.config
+      # v1.2.0 — SSH key (vibe-coder uses for git clone/push over SSH). On first
+      # boot the entrypoint auto-generates an ED25519 keypair in this volume; it
+      # is never overwritten on subsequent boots, so the key survives image
+      # upgrades. View / regenerate it under Settings → SSH Key.
+      - ./vibe-coder-data/dev-tools/ssh:/home/vibe/.ssh
       - ./vibe-coder-data/claude:/home/vibe/.claude
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:17880/health"]
@@ -740,6 +745,7 @@ your SDK, Gradle cache, MCP servers, Playwright browsers, or Claude auth.
 | npx cache                         | `./vibe-coder-data/dev-tools/npm-cache/`            | `/home/vibe/.npm`               | ✅ kept |
 | Playwright browsers (optional)    | `./vibe-coder-data/dev-tools/playwright/`           | `/home/vibe/.cache/ms-playwright` | ✅ kept |
 | Other tool config                 | `./vibe-coder-data/dev-tools/config/`               | `/home/vibe/.config`            | ✅ kept |
+| **SSH key (v1.2.0+)**             | `./vibe-coder-data/dev-tools/ssh/`                  | `/home/vibe/.ssh`               | ✅ kept |
 | Claude auth (OAuth / API key / MCP registrations) | `./vibe-coder-data/claude/`         | `/home/vibe/.claude`            | ✅ kept |
 | **Server body** (Ktor + Claude CLI + JDK + Node) | image layer                          | —                               | 🔄 replaced |
 

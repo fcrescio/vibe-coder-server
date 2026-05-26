@@ -436,9 +436,17 @@ ${VIBE_DATA_ROOT}/                          container
 │   ├── npm-global/             →  /home/vibe/.local                (MCP packages)
 │   ├── npm-cache/              →  /home/vibe/.npm                  (npx cache)
 │   ├── playwright/             →  /home/vibe/.cache/ms-playwright  (optional)
-│   └── config/                 →  /home/vibe/.config               (tool config)
+│   ├── config/                 →  /home/vibe/.config               (tool config)
+│   └── ssh/                    →  /home/vibe/.ssh                  (v1.2.0+ SSH key — auto-generated on first boot)
 └── claude/                     →  /home/vibe/.claude               (OAuth / API key / MCP registrations)
 ```
+
+> **v1.2.0+ SSH key auto-provisioning.** On first boot the entrypoint generates
+> an ED25519 keypair at `dev-tools/ssh/id_ed25519`. Once present, it is
+> **never overwritten** on subsequent boots — your key survives image
+> upgrades. View / copy / regenerate it under Settings → SSH Key in the admin
+> UI. Requires `openssh-client` in the image (included since v1.3.1; v1.2.0
+> and v1.3.0 had a missing-package regression — upgrade to v1.3.1 or later).
 
 > **v0.7.0 fixed a data-loss bug.** Pre-0.7.0 stored MCP servers in the
 > image's system directory (`/usr/local/lib/node_modules`), so they vanished
