@@ -82,7 +82,9 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
     line-height: 1;
 }
 
-/* v1.6.2 — 사이드바 상단 접기 버튼. v1.7.6 — brand 아래 가운데 배치. */
+/* v1.6.2 — 사이드바 상단 접기 버튼. v1.7.6 — brand 아래 가운데 배치.
+   v1.7.10 — flex center 로 글리프 정확히 가운데 정렬 (이전엔 line-height 24px
+   + height 28px mismatch 로 우하단으로 밀려 보였음). */
 .sidebar-toggle {
     background: transparent;
     border: 1px solid var(--border);
@@ -93,10 +95,12 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
     padding: 0;
     cursor: pointer;
     font: inherit;
-    line-height: 24px;
-    text-align: center;
+    line-height: 1;
     flex-shrink: 0;
     align-self: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 .sidebar-toggle:hover { background: var(--bg-card); color: var(--text); }
 
