@@ -6,6 +6,30 @@
 > to create projects, send prompts, build, and download APKs — no local SDK,
 > JDK, or Gradle install on the operator side.
 
+## Why this exists
+
+Built by and for a solo Android developer shipping a lot of small apps with
+Claude Code, who wanted to keep working without lugging the dev laptop around.
+Standard remote tools all fell short:
+
+- **SSH from a phone** drops constantly and is painful for long Claude turns.
+- **Debug APK install** over USB / `adb` is too many manual steps.
+- **RDP / VNC** make phone-side input miserable.
+
+So the server is Claude Code-dedicated — Docker on your home dev PC for a
+consistent, reproducible environment; an optional Android companion gives a
+touch-first UI for prompting, watching build output, and one-tap installing
+the debug APK on the same device. Run several projects in parallel, jump
+between them, save common prompts as templates, and pick up exactly where you
+left off after any disconnect.
+
+**The Android client is optional** — every feature works in the browser too,
+so the server alone is a complete solution.
+
+Built entirely by vibe-coding with Claude Code, updated continuously as the
+maintainer's own workflow evolves. Features rarely used by the maintainer may
+have stale bugs — please open a GitHub issue and they'll be fixed quickly.
+
 ## Quick reference
 
 - **Source**: <https://github.com/siamakerlab/vibe-coder-server>

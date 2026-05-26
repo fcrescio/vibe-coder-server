@@ -13,6 +13,32 @@ web UI. An Android companion app (`vibe-coder-android`, separate repo) is an
 optional client that points at the same server — every feature works in the
 browser alone.
 
+## Why this exists
+
+I'm a solo Android developer shipping a lot of small apps with Claude Code,
+and I wanted to keep working without lugging the dev laptop around — from the
+train, the café, the couch. Standard remote tools all fell short:
+
+- **SSH from a phone** drops constantly and is painful for long Claude turns.
+- **Debug APK install** over USB / `adb` is too many manual steps.
+- **RDP / VNC** make phone-side input miserable.
+
+So I built a Claude Code-dedicated server plus a thin Android client. The
+server runs in Docker on my home dev PC for a consistent, reproducible
+environment; the Android app gives me a real touch-first UI for prompting,
+watching build output, and one-tap installing the debug APK on the same
+device. I can run several projects in parallel, jump between them, save
+common prompts as templates, and pick up exactly where I left off after any
+disconnect.
+
+**The Android client is optional** — every feature works in the browser too,
+so the server alone is a complete solution. If you're another solo Android
+developer in a similar workflow, you'll probably find it just as useful.
+
+Built entirely by vibe-coding with Claude Code, and updated continuously as
+my own workflow needs change. Features I rarely use may have stale bugs —
+please open an issue and I'll fix them quickly.
+
 ## Repository layout
 
 ```
