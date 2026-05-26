@@ -60,6 +60,17 @@ object AdminTemplates {
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#0b0d12">
   <link rel="stylesheet" href="/static/admin.css">
+  <script>
+    // v1.6.2 — 사이드바 접힘 상태를 first paint 전에 :root data-attribute 로 적용 (FOUC 회피).
+    // CSS 의 :root[data-sidebar-collapsed="1"] .layout 가 grid-template-columns 축소.
+    (function(){
+      try {
+        if (localStorage.getItem('vibe.sidebar.collapsed') === '1') {
+          document.documentElement.dataset.sidebarCollapsed = '1';
+        }
+      } catch(e) {}
+    })();
+  </script>
   <script src="/static/keyboard.js" defer></script>
   <script>
     // v0.39.0 — PWA service worker. Same-origin install only.
@@ -97,10 +108,14 @@ object AdminTemplates {
         val csrfInput = CsrfTokens.hiddenInput(csrf)
         return """
 <nav class="sidebar">
+  <!-- v1.6.2 — brand 옆 상단 접기 toggle. 클릭 시 localStorage + body class 토글. -->
   <div class="brand" style="display:flex;align-items:center;gap:10px">
     <img src="/static/icon.png" alt=""
          style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0">
-    <span>Vibe Coder</span>
+    <span style="flex:1">Vibe Coder</span>
+    <button type="button" class="sidebar-toggle" id="sidebar-toggle"
+            title="${esc(t("nav.collapseToggle"))}"
+            aria-label="${esc(t("nav.collapseToggle"))}">⇆</button>
   </div>
   <div class="nav-links">
     ${link("/", t("nav.home"), "dashboard")}
@@ -109,8 +124,7 @@ object AdminTemplates {
     ${link("/tools", t("nav.tools"), "tools")}
     ${link("/settings", t("nav.settings"), "settings")}
   </div>
-  <!-- v1.3.2 — 전역 Claude 쿼타 pill (계정 단위, 모든 페이지 공통). 빈 placeholder
-       → JS 가 60s 마다 /api/server/quota fetch 후 채움. 첫 로딩 차단 X. -->
+  <!-- v1.3.2 — 전역 Claude 쿼타 pill. v1.6.2 — header 에 refresh 버튼 + 타임존 제거. -->
   <div id="quota-pill" class="quota-pill" hidden></div>
   <div class="user-box">
     $userBoxHtml
@@ -122,34 +136,63 @@ object AdminTemplates {
 </nav>
 <script>
 (function(){
+  // 1) Sidebar collapse toggle.
+  var sbBtn = document.getElementById('sidebar-toggle');
+  if (sbBtn) {
+    sbBtn.addEventListener('click', function(){
+      var collapsed = document.documentElement.dataset.sidebarCollapsed === '1';
+      var next = !collapsed;
+      document.documentElement.dataset.sidebarCollapsed = next ? '1' : '0';
+      try { localStorage.setItem('vibe.sidebar.collapsed', next ? '1' : '0'); } catch(e){}
+    });
+  }
+  // 2) Quota pill — refresh 버튼 + 타임존 (괄호) strip.
   var el = document.getElementById('quota-pill');
   if (!el) return;
   var sessLabel = '${esc(t("quota.session"))}';
   var weekLabel = '${esc(t("quota.weekly"))}';
   var resetLabel = '${esc(t("quota.resetPrefix"))}';
+  var refreshTitle = '${esc(t("quota.refresh"))}';
+  function stripTz(reset) {
+    if (!reset) return '';
+    // v1.6.2 — "Resets 10:20pm (Asia/Seoul)" → "10:20pm". 괄호 영역 제거 + Resets 접두 제거.
+    return reset
+      .replace(/^Resets\\s+/i, '')
+      .replace(/\\s*\\([^)]*\\)\\s*/g, '')
+      .trim();
+  }
   function bar(label, pct, reset) {
     var safePct = Math.max(0, Math.min(100, pct|0));
     var color = safePct >= 95 ? '#dc2626' : (safePct >= 80 ? '#e08300' : 'var(--accent, #3b82f6)');
-    var resetHtml = reset ? '<div class="qp-reset">' + resetLabel + ' ' + reset.replace(/^Resets\\s+/i, '') + '</div>' : '';
+    var cleanReset = stripTz(reset);
+    var resetHtml = cleanReset ? '<div class="qp-reset">' + resetLabel + ' ' + cleanReset + '</div>' : '';
     return '<div class="qp-row"><div class="qp-row-head"><span class="qp-label">' + label + '</span><span class="qp-pct" style="color:' + color + '">' + safePct + '%</span></div>'
       + '<div class="qp-track"><div class="qp-fill" style="width:' + safePct + '%;background:' + color + '"></div></div>'
       + resetHtml + '</div>';
   }
   function render(dto) {
-    var html = '';
+    var rows = '';
     if (dto && (dto.sessionUsagePercent != null || dto.weeklyUsagePercent != null)) {
       if (dto.sessionUsagePercent != null)
-        html += bar(sessLabel, dto.sessionUsagePercent, dto.sessionResetAt);
+        rows += bar(sessLabel, dto.sessionUsagePercent, dto.sessionResetAt);
       if (dto.weeklyUsagePercent != null)
-        html += bar(weekLabel, dto.weeklyUsagePercent, dto.weeklyResetAt);
+        rows += bar(weekLabel, dto.weeklyUsagePercent, dto.weeklyResetAt);
     } else if (dto && dto.usagePercent != null) {
-      // legacy fallback (server < v1.0.1)
-      html += bar(sessLabel, dto.usagePercent, dto.resetAt);
+      rows += bar(sessLabel, dto.usagePercent, dto.resetAt);
     }
-    if (html) { el.innerHTML = html; el.hidden = false; } else { el.hidden = true; }
+    if (!rows) { el.hidden = true; return; }
+    el.innerHTML = '<div class="qp-header"><span class="qp-h-title">Claude</span>'
+      + '<button type="button" class="qp-refresh" title="' + refreshTitle + '" aria-label="' + refreshTitle + '">↻</button>'
+      + '</div>' + rows;
+    el.hidden = false;
+    var btn = el.querySelector('.qp-refresh');
+    if (btn) btn.addEventListener('click', function(){
+      btn.disabled = true; btn.textContent = '…';
+      tick().then(function(){ btn.disabled = false; });
+    });
   }
   function tick() {
-    fetch('/api/server/quota', { credentials: 'same-origin' })
+    return fetch('/api/server/quota', { credentials: 'same-origin' })
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(render)
       .catch(function(){ el.hidden = true; });

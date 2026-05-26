@@ -1141,6 +1141,8 @@ internal object MessagesKo {
         "quota.session" to "세션 (5h)",
         "quota.weekly" to "주간 (7d)",
         "quota.resetPrefix" to "초기화",
+        "quota.refresh" to "새로고침",
+        "nav.collapseToggle" to "사이드바 접기/펴기",
 
         // ─────────────────────────────────────────────── keystores (v1.5.0)
         "ks.title" to "Android 키스토어",

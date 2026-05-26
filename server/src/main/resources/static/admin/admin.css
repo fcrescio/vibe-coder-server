@@ -35,17 +35,22 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
     display: grid;
     grid-template-columns: 220px 1fr;
     min-height: 100vh;
+    transition: grid-template-columns 0.18s ease;
 }
-/* 사이드바 없는 화면(로그인/셋업/에러)은 단일 컬럼 + 콘텐츠 가운데 정렬. */
 .layout.no-nav { grid-template-columns: 1fr; }
+/* v1.6.2 — 사이드바 접힘. :root data-attribute (first paint 전 inline script 가
+   localStorage 보고 set) + body class 둘 다 지원. JS toggle 은 두 곳 다 갱신. */
+:root[data-sidebar-collapsed="1"] .layout,
+.layout.sidebar-collapsed { grid-template-columns: 56px 1fr; }
 
 .sidebar {
     background: var(--bg-elev);
     border-right: 1px solid var(--border);
-    padding: 24px 16px;
+    padding: 16px 14px 24px;
     display: flex;
     flex-direction: column;
     gap: 24px;
+    transition: padding 0.18s ease;
 }
 
 .brand {
@@ -54,6 +59,43 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
     letter-spacing: -0.5px;
     color: var(--text);
 }
+
+/* v1.6.2 — 사이드바 상단 접기 버튼. brand row 우측에 배치. */
+.sidebar-toggle {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-dim);
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    line-height: 22px;
+    text-align: center;
+    flex-shrink: 0;
+}
+.sidebar-toggle:hover { background: var(--bg-card); color: var(--text); }
+
+/* v1.6.2 — 접힘 상태에서 브랜드 텍스트 / nav label / quota pill / username 모두 숨김.
+   nav 의 first-letter / icon 같은 미니 라벨 보존은 다음 사이클 — 일단 단순한 폭 축소. */
+:root[data-sidebar-collapsed="1"] .layout .brand span,
+:root[data-sidebar-collapsed="1"] .layout .nav-links a,
+:root[data-sidebar-collapsed="1"] .layout .quota-pill,
+:root[data-sidebar-collapsed="1"] .layout .user-box .user,
+:root[data-sidebar-collapsed="1"] .layout .logout,
+.layout.sidebar-collapsed .brand span,
+.layout.sidebar-collapsed .nav-links a,
+.layout.sidebar-collapsed .quota-pill,
+.layout.sidebar-collapsed .user-box .user,
+.layout.sidebar-collapsed .logout { display: none; }
+
+:root[data-sidebar-collapsed="1"] .layout .sidebar,
+.layout.sidebar-collapsed .sidebar { padding: 16px 8px; gap: 12px; align-items: center; }
+:root[data-sidebar-collapsed="1"] .layout .user-box,
+.layout.sidebar-collapsed .user-box { padding-top: 0; border-top: none; }
+:root[data-sidebar-collapsed="1"] .layout .sidebar-toggle,
+.layout.sidebar-collapsed .sidebar-toggle { width: 32px; height: 32px; }
 
 .nav-links {
     display: flex;
@@ -84,6 +126,19 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
     flex-direction: column;
     gap: 8px;
 }
+/* v1.6.2 — 쿼타 헤더: "Claude" 라벨 + refresh 아이콘 버튼. */
+.quota-pill .qp-header {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; color: var(--text-dim); font-weight: 600;
+    letter-spacing: 0.4px; text-transform: uppercase;
+}
+.quota-pill .qp-h-title { /* same as qp-header text */ }
+.quota-pill .qp-refresh {
+    background: transparent; border: none; color: var(--text-dim);
+    cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1;
+}
+.quota-pill .qp-refresh:hover { color: var(--text); }
+.quota-pill .qp-refresh:disabled { opacity: 0.5; cursor: wait; }
 .quota-pill .qp-row { display: flex; flex-direction: column; gap: 3px; }
 .quota-pill .qp-row-head {
     display: flex; justify-content: space-between; align-items: baseline;

@@ -1164,6 +1164,8 @@ internal object MessagesEn {
         "quota.session" to "Session (5h)",
         "quota.weekly" to "Weekly (7d)",
         "quota.resetPrefix" to "resets",
+        "quota.refresh" to "Refresh",
+        "nav.collapseToggle" to "Collapse / expand sidebar",
 
         // ─────────────────────────────────────────────── keystores (v1.5.0)
         "ks.title" to "Android Keystores",
