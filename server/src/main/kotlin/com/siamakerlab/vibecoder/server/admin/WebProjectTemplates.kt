@@ -865,21 +865,14 @@ $authBannerHtml
 
 <div id="console-log" class="console-log" aria-live="polite"></div>
 
-<div style="display:flex;justify-content:flex-end;margin-bottom:6px;gap:4px;flex-wrap:wrap">
-  <select id="agent-picker" style="font-size:12px;padding:4px 8px;background:#1a1a1a;color:var(--text);border:1px solid #333" title="v0.41.0+ — Dispatch a registered sub-agent into the prompt">
-    <option value="">${esc(t("console.agent.placeholder"))}</option>
-  </select>
-  <a href="/agents" class="chip chip-link" style="font-size:11px;margin-left:0">${esc(t("console.agent.manage"))}</a>
-  <select id="template-picker" style="font-size:12px;padding:4px 8px;background:#1a1a1a;color:var(--text);border:1px solid #333">
-    <option value="">${esc(t("console.template.placeholder"))}</option>
-  </select>
-  <a href="/prompts" class="chip chip-link" style="font-size:11px;margin-left:0">${esc(t("console.template.manage"))}</a>
-</div>
-
 <!--
-  v1.3.0 — 입력창 바로 위에 Todo 요약 패널.
-  Claude 가 호출한 TaskCreate / TaskUpdate / TodoWrite 이벤트를 별도 store 로 누적해
-  진행 상황을 한눈에 보여준다. <details> 의 open 상태는 localStorage 영속.
+  v1.6.3 — 사용자 요구 순서 (콘솔 본문 → 아래로):
+    1) Todo 요약 패널
+    2) 입력창 + Send
+    3) 프롬프트 템플릿 + 관리 버튼 (한 줄)
+    4) Agent dispatch + 관리 버튼 (한 줄)
+
+  v1.3.0 — Todo 요약 패널. <details> 의 open 상태는 localStorage 영속.
   콘솔 카드 표시 여부는 필터의 'todo' 카테고리로 별도 토글 가능.
 -->
 <details id="todo-panel" style="margin-bottom:6px;font-size:12px">
@@ -904,6 +897,22 @@ $authBannerHtml
     <button type="submit" class="primary" id="send-btn" style="width:auto;padding:8px 16px" ${if (blocking) "disabled" else ""}>${esc(t("console.input.send"))}</button>
   </div>
 </form>
+
+<!-- v1.6.3 — 프롬프트 템플릿 + 관리 버튼 (한 줄). 입력창 바로 아래. -->
+<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px">
+  <select id="template-picker" style="flex:1;min-width:0;font-size:12px;padding:4px 8px;background:#1a1a1a;color:var(--text);border:1px solid #333">
+    <option value="">${esc(t("console.template.placeholder"))}</option>
+  </select>
+  <a href="/prompts" class="chip chip-link" style="font-size:11px;margin-left:0;flex-shrink:0">${esc(t("console.template.manage"))}</a>
+</div>
+
+<!-- v1.6.3 — Agent dispatch + 관리 버튼 (한 줄). 가장 하단. -->
+<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
+  <select id="agent-picker" style="flex:1;min-width:0;font-size:12px;padding:4px 8px;background:#1a1a1a;color:var(--text);border:1px solid #333" title="v0.41.0+ — Dispatch a registered sub-agent into the prompt">
+    <option value="">${esc(t("console.agent.placeholder"))}</option>
+  </select>
+  <a href="/agents" class="chip chip-link" style="font-size:11px;margin-left:0;flex-shrink:0">${esc(t("console.agent.manage"))}</a>
+</div>
 
 <script>
 (function() {
