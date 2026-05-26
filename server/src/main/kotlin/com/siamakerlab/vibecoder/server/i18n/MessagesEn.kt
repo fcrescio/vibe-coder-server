@@ -1159,5 +1159,10 @@ internal object MessagesEn {
         "ssh.usage.step1" to "Copy the public key above.",
         "ssh.usage.step2" to "Open your Git host (e.g., Gitea → User settings → SSH Keys → Add Key) and paste it.",
         "ssh.usage.step3" to "Test: vibe-coder will now be able to clone/push to ssh://git@host:port/owner/repo.git.",
+
+        // ─────────────────────────────────────────────── quota pill (v1.3.2)
+        "quota.session" to "Session (5h)",
+        "quota.weekly" to "Weekly (7d)",
+        "quota.resetPrefix" to "resets",
     )
 }

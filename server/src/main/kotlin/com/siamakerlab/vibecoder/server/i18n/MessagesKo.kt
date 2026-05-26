@@ -1136,5 +1136,10 @@ internal object MessagesKo {
         "ssh.usage.step1" to "공개키 복사 (위 Copy 버튼).",
         "ssh.usage.step2" to "Git 호스트 열기 (예: Gitea → User settings → SSH Keys → Add Key) 후 paste.",
         "ssh.usage.step3" to "테스트: vibe-coder 가 ssh://git@host:port/owner/repo.git 형식으로 clone/push 가능.",
+
+        // ─────────────────────────────────────────────── quota pill (v1.3.2)
+        "quota.session" to "세션 (5h)",
+        "quota.weekly" to "주간 (7d)",
+        "quota.resetPrefix" to "초기화",
     )
 }

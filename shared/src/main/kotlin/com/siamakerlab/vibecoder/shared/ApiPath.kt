@@ -30,6 +30,10 @@ object ApiPath {
     // v1.2.0 — SSH 키 (vibe 사용자 ~/.ssh/id_ed25519).
     const val SERVER_SSH_KEY = "/api/server/ssh-key"
     const val SERVER_SSH_KEY_REGENERATE = "/api/server/ssh-key/regenerate"
+    // v1.3.2 — 전역 (계정 단위) Claude 쿼타. 어느 프로젝트 콘솔이든 같은 계정 quota
+    // 라 SSR 사이드바 / Android 탭 어디서나 동일 값 노출. ClaudeStatusService.snapshot
+    // 의 scratch 프로젝트 결과 그대로 반환.
+    const val SERVER_QUOTA = "/api/server/quota"
 
     // Projects
     const val PROJECTS = "/api/projects"

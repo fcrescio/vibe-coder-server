@@ -1,5 +1,7 @@
 # bkit (local tool state — never commit, per global CLAUDE.md §11)
 .bkit/
+# Claude Code 자체 도구 상태 (ScheduleWakeup lock 등) — never commit.
+.claude/
 
 # Gradle
 .gradle/

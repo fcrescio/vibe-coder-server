@@ -109,6 +109,9 @@ object AdminTemplates {
     ${link("/tools", t("nav.tools"), "tools")}
     ${link("/settings", t("nav.settings"), "settings")}
   </div>
+  <!-- v1.3.2 — 전역 Claude 쿼타 pill (계정 단위, 모든 페이지 공통). 빈 placeholder
+       → JS 가 60s 마다 /api/server/quota fetch 후 채움. 첫 로딩 차단 X. -->
+  <div id="quota-pill" class="quota-pill" hidden></div>
   <div class="user-box">
     $userBoxHtml
     <form method="post" action="/logout">
@@ -117,6 +120,44 @@ object AdminTemplates {
     </form>
   </div>
 </nav>
+<script>
+(function(){
+  var el = document.getElementById('quota-pill');
+  if (!el) return;
+  var sessLabel = '${esc(t("quota.session"))}';
+  var weekLabel = '${esc(t("quota.weekly"))}';
+  var resetLabel = '${esc(t("quota.resetPrefix"))}';
+  function bar(label, pct, reset) {
+    var safePct = Math.max(0, Math.min(100, pct|0));
+    var color = safePct >= 95 ? '#dc2626' : (safePct >= 80 ? '#e08300' : 'var(--accent, #3b82f6)');
+    var resetHtml = reset ? '<div class="qp-reset">' + resetLabel + ' ' + reset.replace(/^Resets\\s+/i, '') + '</div>' : '';
+    return '<div class="qp-row"><div class="qp-row-head"><span class="qp-label">' + label + '</span><span class="qp-pct" style="color:' + color + '">' + safePct + '%</span></div>'
+      + '<div class="qp-track"><div class="qp-fill" style="width:' + safePct + '%;background:' + color + '"></div></div>'
+      + resetHtml + '</div>';
+  }
+  function render(dto) {
+    var html = '';
+    if (dto && (dto.sessionUsagePercent != null || dto.weeklyUsagePercent != null)) {
+      if (dto.sessionUsagePercent != null)
+        html += bar(sessLabel, dto.sessionUsagePercent, dto.sessionResetAt);
+      if (dto.weeklyUsagePercent != null)
+        html += bar(weekLabel, dto.weeklyUsagePercent, dto.weeklyResetAt);
+    } else if (dto && dto.usagePercent != null) {
+      // legacy fallback (server < v1.0.1)
+      html += bar(sessLabel, dto.usagePercent, dto.resetAt);
+    }
+    if (html) { el.innerHTML = html; el.hidden = false; } else { el.hidden = true; }
+  }
+  function tick() {
+    fetch('/api/server/quota', { credentials: 'same-origin' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(render)
+      .catch(function(){ el.hidden = true; });
+  }
+  tick();
+  setInterval(tick, 60000);
+})();
+</script>
 """
     }
 
