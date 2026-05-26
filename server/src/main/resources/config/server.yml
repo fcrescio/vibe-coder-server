@@ -2,7 +2,7 @@ server:
   name: Vibe Coder Server
   host: 0.0.0.0
   port: 17880
-  version: 1.4.2
+  version: 1.5.0
 
 workspace:
   # Each project lives at <root>/<projectId>/.
@@ -102,3 +102,22 @@ webhook:
 #   허용 값: en, ko
 i18n:
   defaultLanguage: en
+
+# v1.5.0 — Android 앱 키스토어 관리. /settings/keystores 페이지에서 패키지명별로
+# release/debug/properties/admob 파일 자동 생성. 파일은
+# /home/vibe/keystores/ (볼륨 영속) 에 저장. 본 섹션의 default 값들이 폼에
+# 미리 채워짐 — 운영자가 패키지명만 입력하면 즉시 생성 가능.
+#
+# 보안: defaultPassword 는 평문이라 server.yml 에 직접 쓰지 말고 환경변수
+# VIBECODER_KEYSTORE_DEFAULT_PASSWORD 또는 secret 파일로 주입 권장. 비어있으면
+# 폼에서 매번 사용자가 입력 필수.
+keystore:
+  defaults:
+    name: "Jangwook Lee"
+    organization: "Sia Makerlab"
+    unit: "Mobile"
+    country: "KR"
+    state: "Chungbuk"
+    city: "Jecheon"
+    defaultPassword: ""
+    validityYears: 25

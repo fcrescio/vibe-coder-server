@@ -129,6 +129,10 @@ services:
       # entrypoint 가 ED25519 키쌍 자동 생성. 이미 있으면 절대 덮어쓰지 않음 →
       # 서버 업데이트 시 동일 키 유지. 설정 → SSH Key 에서 공개키 복사.
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/ssh:/home/vibe/.ssh
+      # v1.5.0 — Android 앱 키스토어 보관. 설정 → Keystores 에서 패키지명 별로
+      # release / debug / properties / admob 파일 생성. 영속 유지 — 키스토어
+      # 분실은 Play Store 업로드 영구 차단.
+      - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/keystores:/home/vibe/keystores
 
       # ── Claude 인증 ─────────────────────────────────────────────
       # 기본: 통합 디렉토리 안의 vibe-coder-data/claude/.

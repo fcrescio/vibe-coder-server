@@ -20,6 +20,8 @@ import com.siamakerlab.vibecoder.server.admin.corsSettingsRoutes
 import com.siamakerlab.vibecoder.server.admin.SshKeyService
 import com.siamakerlab.vibecoder.server.admin.sshKeyRoutes
 import com.siamakerlab.vibecoder.server.admin.quotaRoutes
+import com.siamakerlab.vibecoder.server.admin.keystoreRoutes
+import com.siamakerlab.vibecoder.server.admin.KeystoreService
 import com.siamakerlab.vibecoder.server.admin.envSetupRoutes
 import com.siamakerlab.vibecoder.server.admin.gitIntegrationsRoutes
 import com.siamakerlab.vibecoder.server.admin.mcpRoutes
@@ -333,6 +335,8 @@ fun Application.module(ctx: ServerContext) {
         sshKeyRoutes(adminDeps, SshKeyService())
         // v1.3.2 — 전역 (계정 단위) Claude 쿼타 — 사이드바 / Android 헤더용.
         quotaRoutes(ctx.claudeStatusService)
+        // v1.5.0 — Android 키스토어 관리 (설정 → Keystores).
+        keystoreRoutes(adminDeps, KeystoreService(defaults = adminDeps.config.keystore.defaults))
         // v0.10.0 — admin SSR 라우트들의 JSON API 이중 노출 (vibe-coder-android wire)
         envSetupApiRoutes(
             envSetup = ctx.envSetup,

@@ -54,6 +54,7 @@ for dir in \
     /home/vibe/.cache/ms-playwright \
     /home/vibe/.local \
     /home/vibe/.ssh \
+    /home/vibe/keystores \
 ; do
     if [[ -d "$dir" ]]; then
         chown vibe:vibe "$dir" 2>/dev/null || true

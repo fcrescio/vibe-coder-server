@@ -18,6 +18,33 @@ data class ServerConfig(
     val backup: BackupSection = BackupSection(),
     /** v0.77.0 — Phase 64 i18n. SSR 기본 언어 (사용자 별 설정이 없을 때 fallback). */
     val i18n: I18nSection = I18nSection(),
+    /** v1.5.0 — Android 키스토어 관리. defaults 가 UI form prefill 값. */
+    val keystore: KeystoreSection = KeystoreSection(),
+)
+
+/**
+ * v1.5.0 — Android 앱 키스토어 관리 설정.
+ *
+ * [defaults] 는 `/settings/keystores` 의 "Create keystore" form 에 미리 채워질
+ * distinguished-name 값들. 운영자가 본인 정보 한 번 입력해두면 매 키스토어 생성 시
+ * 패키지명만 새로 입력하면 됨.
+ */
+@Serializable
+data class KeystoreSection(
+    val defaults: KeystoreDefaults = KeystoreDefaults(),
+)
+
+@Serializable
+data class KeystoreDefaults(
+    val name: String = "",
+    val organization: String = "",
+    val unit: String = "",
+    val country: String = "",
+    val state: String = "",
+    val city: String = "",
+    /** 평문 password — 운영자 본인이 server.yml 에서만 설정 (또는 env override). 비어있으면 form 필수. */
+    val defaultPassword: String = "",
+    val validityYears: Int = 25,
 )
 
 /**
