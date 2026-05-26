@@ -1093,14 +1093,60 @@ $authBannerHtml
     }
   });
 
-  function append(cls, label, body, cat) {
+  // v1.7.7 — 시각 포맷 HH:mm:ss. ISO string 받으면 parse, 없으면 now.
+  function fmtTime(input) {
+    var d;
+    if (input instanceof Date) { d = input; }
+    else if (typeof input === 'string' && input) {
+      d = new Date(input);
+      if (isNaN(d.getTime())) d = new Date();
+    } else { d = new Date(); }
+    var pad = function(n){ return n < 10 ? '0' + n : '' + n; };
+    return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+
+  // v1.7.7 — Lucide "copy" inline SVG. stroke currentColor → 테마 적응.
+  var COPY_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15 H4 a2 2 0 0 1-2-2 V4 a2 2 0 0 1 2-2 h9 a2 2 0 0 1 2 2 v1"/></svg>';
+
+  function append(cls, label, body, cat, opts) {
     cat = cat || 'ws';
+    opts = opts || {};
     var atBottom = isAtBottom();
     var row = document.createElement('div');
     row.className = 'log-line ' + cls;
     row.dataset.filterCat = cat;
     if (!isVisible(cat)) row.style.display = 'none';
-    row.innerHTML = '<span class="log-label">' + escHtml(label) + '</span><span class="log-body">' + escHtml(body) + '</span>';
+    var timeStr = fmtTime(opts.ts);
+    // v1.7.7 — body 는 별도 dataset 으로 보관 (copy 버튼이 escape 안 된 raw 사용).
+    row.innerHTML =
+      '<span class="log-label">' + escHtml(label) + '</span>' +
+      '<span class="log-body">' + escHtml(body) + '</span>' +
+      '<span class="log-time" title="' + escHtml(timeStr) + '">' + escHtml(timeStr) + '</span>' +
+      '<button type="button" class="log-copy" title="Copy" aria-label="Copy">' + COPY_SVG + '</button>';
+    var btn = row.querySelector('.log-copy');
+    if (btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var txt = body == null ? '' : String(body);
+        var doneOk = function() {
+          btn.classList.add('copied');
+          setTimeout(function(){ btn.classList.remove('copied'); }, 1200);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(doneOk).catch(function(){
+            // fallback: select + execCommand.
+            try {
+              var ta = document.createElement('textarea');
+              ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+              document.body.appendChild(ta); ta.select();
+              document.execCommand('copy'); document.body.removeChild(ta);
+              doneOk();
+            } catch (err) {}
+          });
+        }
+      });
+    }
     logEl.appendChild(row);
     if (atBottom && row.style.display !== 'none') {
       logEl.scrollTop = logEl.scrollHeight;
@@ -1401,25 +1447,26 @@ $authBannerHtml
       var r = arr[i] || {};
       var role = r.role || '';
       var text = r.text || '';
+      var opts = r.ts ? { ts: r.ts } : null;
       if (role === 'user') {
-        append('user', 'user', text, 'assistant');
+        append('user', 'user', text, 'assistant', opts);
       } else if (role === 'assistant') {
-        append('assistant', 'assistant', text, 'assistant');
+        append('assistant', 'assistant', text, 'assistant', opts);
       } else if (role === 'tool_use') {
         // ConversationTurn 의 content 는 input JSON. renderToolUse 와 동일 형식 best-effort.
         var label = (r.tool || 'tool');
         var body = text.length > 500 ? text.slice(0, 500) + ' …(+' + (text.length - 500) + ')' : text;
         var isTodoTool = (label === 'TaskCreate' || label === 'TaskUpdate' || label === 'TodoWrite');
-        append('tool', label, body, isTodoTool ? 'todo' : 'tool_use');
+        append('tool', label, body, isTodoTool ? 'todo' : 'tool_use', opts);
       } else if (role === 'tool_result') {
         var out = text.length > 500 ? text.slice(0, 500) + ' …(+' + (text.length - 500) + ')' : text;
-        append('tool-out', '✓ result', out, 'tool_result');
+        append('tool-out', '✓ result', out, 'tool_result', opts);
       } else if (role === 'system') {
-        append('sys', r.tool || 'system', text, 'system');
+        append('sys', r.tool || 'system', text, 'system', opts);
       } else if (role === 'done') {
-        append('sys', 'done', text || 'end_turn', 'done');
+        append('sys', 'done', text || 'end_turn', 'done', opts);
       } else if (role === 'session') {
-        append('sys', 'session', text, 'session');
+        append('sys', 'session', text, 'session', opts);
       }
     }
     append('sys', 'history', '— end of history, live frames follow —', 'replay');
