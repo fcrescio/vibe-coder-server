@@ -977,6 +977,11 @@ internal object MessagesKo {
         // ─────────────────────────────────────────────── console busy badge (v0.98.0)
         "console.busy.responding" to "● 응답중",
         "console.busy.idle" to "○ 대기중",
+        "console.busy.responding.queued" to "● 응답중 (대기 %d)",
+        "console.queue.added" to "대기열 추가 (#%d): %s",
+        "console.queue.draining" to "다음 prompt 자동 발사",
+        "console.queue.cleared" to "대기열 초기화 (%d개 제거)",
+        "console.queue.clear" to "대기열 비우기",
 
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude 인증",

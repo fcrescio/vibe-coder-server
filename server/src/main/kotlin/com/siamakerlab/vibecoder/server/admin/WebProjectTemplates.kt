@@ -1145,17 +1145,40 @@ $authBannerHtml
 
   // v0.13.0 — 진행 중 turn cancel 버튼
   // v0.98.0 — busy badge 추가 — 응답중/대기중 시각화.
+  // v0.99.0 — pendingPrompts 큐. busy 중에도 submit 허용, console_done 후 자동 발사.
   var stopBtn = document.getElementById('stop-btn');
   var busyBadge = document.getElementById('busy-badge');
   var BUSY_RESPONDING = ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.busy.responding"))};
   var BUSY_IDLE = ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.busy.idle"))};
+  var BUSY_QUEUED_TPL = ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.busy.responding.queued", "___N___"))};
+  var QUEUE_ADDED_TPL = ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.queue.added", "___N___", "___PREVIEW___"))};
+  var QUEUE_DRAINING = ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.queue.draining"))};
+  var QUEUE_CLEARED_TPL = ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.queue.cleared", "___N___"))};
   var inFlight = false;
+  var pendingPrompts = [];  // 큐: busy 중 submit 된 prompt 들.
+  function updateBusyBadge() {
+    if (!busyBadge) return;
+    if (inFlight) {
+      busyBadge.dataset.state = 'responding';
+      busyBadge.textContent = pendingPrompts.length > 0
+        ? BUSY_QUEUED_TPL.replace('___N___', pendingPrompts.length)
+        : BUSY_RESPONDING;
+    } else {
+      busyBadge.dataset.state = 'idle';
+      busyBadge.textContent = BUSY_IDLE;
+    }
+  }
   function setInFlight(on) {
+    var wasOn = inFlight;
     inFlight = on;
     if (stopBtn) stopBtn.style.display = on ? 'inline-block' : 'none';
-    if (busyBadge) {
-      busyBadge.dataset.state = on ? 'responding' : 'idle';
-      busyBadge.textContent = on ? BUSY_RESPONDING : BUSY_IDLE;
+    updateBusyBadge();
+    // busy → idle 전이 시 큐에서 하나 꺼내 자동 발사. 작은 delay 로 UI/server 안정.
+    if (wasOn && !on && pendingPrompts.length > 0) {
+      var next = pendingPrompts.shift();
+      append('sys', 'queue', QUEUE_DRAINING, 'system');
+      updateBusyBadge();  // 카운트 즉시 갱신
+      setTimeout(function() { sendPrompt(next); }, 150);
     }
   }
   async function cancelTurn() {
@@ -1203,8 +1226,32 @@ $authBannerHtml
   form.addEventListener('submit', function(ev) {
     ev.preventDefault();
     var text = input.value.trim();
-    if (text) sendPrompt(text);
+    if (!text) return;
+    // v0.99.0 — busy 면 큐로 push. console_done 후 setInFlight(false) 가 자동 발사.
+    if (inFlight) {
+      pendingPrompts.push(text);
+      var preview = text.length > 60 ? text.slice(0, 60) + '…' : text;
+      append('sys', 'queue',
+             QUEUE_ADDED_TPL.replace('___N___', pendingPrompts.length).replace('___PREVIEW___', preview),
+             'system');
+      input.value = '';
+      input.focus();
+      updateBusyBadge();
+      return;
+    }
+    sendPrompt(text);
   });
+
+  // v0.99.0 — 사용자가 큐 명시적으로 비우고 싶을 때. window 에 노출 — 콘솔에서
+  // `window.vibeClearQueue()` 로 호출 가능. UI 버튼은 차후 옵션.
+  window.vibeClearQueue = function() {
+    if (pendingPrompts.length === 0) return 0;
+    var n = pendingPrompts.length;
+    pendingPrompts.length = 0;
+    append('sys', 'queue', QUEUE_CLEARED_TPL.replace('___N___', n), 'system');
+    updateBusyBadge();
+    return n;
+  };
 
   input.addEventListener('keydown', function(ev) {
     if ((ev.ctrlKey || ev.metaKey) && ev.key === 'Enter') {

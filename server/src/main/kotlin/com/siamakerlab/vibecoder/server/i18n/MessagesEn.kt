@@ -1000,6 +1000,11 @@ internal object MessagesEn {
         // ─────────────────────────────────────────────── console busy badge (v0.98.0)
         "console.busy.responding" to "● Responding",
         "console.busy.idle" to "○ Idle",
+        "console.busy.responding.queued" to "● Responding (%d queued)",
+        "console.queue.added" to "Queued (#%d): %s",
+        "console.queue.draining" to "Sending next queued prompt",
+        "console.queue.cleared" to "Queue cleared (%d removed)",
+        "console.queue.clear" to "Clear queue",
 
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude authentication",
