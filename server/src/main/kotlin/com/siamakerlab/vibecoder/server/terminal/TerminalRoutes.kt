@@ -178,16 +178,15 @@ internal object TerminalTemplates {
 </header>
 
 <!-- xterm.js (BSD) — v1.7.19 로컬 번들. CLAUDE.md §3 의 "외부 CDN 미사용"
-     정책 일관. 이전엔 jsdelivr CDN 이라 사용자 환경 (방화벽/CSP/오프라인)
-     에서 로드 실패 → "연결 끊김" + 검은 화면. 정적 파일은
-     resources/static/admin/vendor/xterm/ 에 commit. -->
-<link rel="stylesheet" href="/static/vendor/xterm/xterm.min.css">
+     정책 일관. v1.7.20 — ?v=xterm-5.5.0-fit-0.10.0 cache-bust 로 브라우저
+     이전 CDN 응답 캐시 무력화 (사용자 보고: force-reload 안 해도 새 번들 로드). -->
+<link rel="stylesheet" href="/static/vendor/xterm/xterm.min.css?v=5.5.0">
 
 <div id="term-host" style="background:#000;padding:10px;border-radius:8px;height:70vh;min-height:400px"></div>
 <div id="term-status" class="dim" style="font-size:12px;margin-top:6px">${esc(t("term.status.connecting"))}</div>
 
-<script src="/static/vendor/xterm/xterm.min.js"></script>
-<script src="/static/vendor/xterm/addon-fit.min.js"></script>
+<script src="/static/vendor/xterm/xterm.min.js?v=5.5.0"></script>
+<script src="/static/vendor/xterm/addon-fit.min.js?v=0.10.0"></script>
 <script>
 (function(){
   var status = document.getElementById('term-status');
