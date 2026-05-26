@@ -112,6 +112,22 @@ data class EnvironmentCheckDto(
 
 // region Projects
 
+/**
+ * v1.2.0 — 서버 SSH 공개 키 스냅샷.
+ *  - `publicKey`: `ssh-ed25519 AAAA... comment` 형식 그대로 (Git host 에 paste).
+ *  - `algorithm`: 보통 `ssh-ed25519`.
+ *  - `fingerprint`: `SHA256:xxxxxxxx==` 형태 (Git host UI 와 매칭).
+ *  - `createdAt`: 키 파일의 mtime (ISO-8601).
+ */
+@Serializable
+data class SshKeyDto(
+    val publicKey: String,
+    val algorithm: String,
+    val comment: String? = null,
+    val fingerprint: String? = null,
+    val createdAt: String? = null,
+)
+
 @Serializable
 data class ProjectDto(
     val id: String,

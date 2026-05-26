@@ -53,11 +53,34 @@ for dir in \
     /home/vibe/.cache \
     /home/vibe/.cache/ms-playwright \
     /home/vibe/.local \
+    /home/vibe/.ssh \
 ; do
     if [[ -d "$dir" ]]; then
         chown vibe:vibe "$dir" 2>/dev/null || true
     fi
 done
+
+# ─── 2b. SSH 키 자동 발급 (v1.2.0) ─────────────────────────────────────────
+# 컨테이너 첫 부팅 시 vibe 사용자의 ED25519 SSH 키쌍을 자동 생성.
+# 이미 있으면 절대 덮어쓰지 않음 (서버 업데이트 / 이미지 교체 시 동일 키 유지).
+# 볼륨 마운트로 영속. 재생성은 운영자가 설정 UI 의 "Regenerate" 버튼으로 명시 트리거.
+SSH_DIR=/home/vibe/.ssh
+SSH_KEY=$SSH_DIR/id_ed25519
+if [[ ! -f "$SSH_KEY" ]]; then
+    mkdir -p "$SSH_DIR"
+    chown vibe:vibe "$SSH_DIR"
+    chmod 700 "$SSH_DIR"
+    log "SSH 키 (ED25519) 자동 생성 — $SSH_KEY"
+    gosu vibe:vibe ssh-keygen -t ed25519 -f "$SSH_KEY" -N "" \
+        -C "vibe-coder-server@$(hostname)-$(date +%Y%m%d)" >/dev/null
+    chmod 600 "$SSH_KEY"
+    chmod 644 "${SSH_KEY}.pub"
+    ok "SSH 공개 키 생성 완료. 설정 → SSH Key 에서 복사하여 Gitea/GitHub 등록 가능."
+fi
+# 권한 정리 — 매 부팅마다 idempotent (chmod 가 mounted volume 의 잘못된 mode 정정).
+[[ -d "$SSH_DIR" ]] && chmod 700 "$SSH_DIR" 2>/dev/null || true
+[[ -f "$SSH_KEY" ]] && chmod 600 "$SSH_KEY" 2>/dev/null || true
+[[ -f "${SSH_KEY}.pub" ]] && chmod 644 "${SSH_KEY}.pub" 2>/dev/null || true
 
 # v0.7.0 — 빈 .local 볼륨이 마운트된 케이스 대비: .npmrc 가 home 에 있고 .local
 # 이 비어 있으면 prefix 가 무효화될 수 있어, idempotent 재생성.

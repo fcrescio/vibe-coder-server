@@ -17,6 +17,8 @@ import com.siamakerlab.vibecoder.server.projects.codeAnalysisRoutes
 import com.siamakerlab.vibecoder.server.projects.envFilesRoutes
 import com.siamakerlab.vibecoder.server.admin.twoFactorRoutes
 import com.siamakerlab.vibecoder.server.admin.corsSettingsRoutes
+import com.siamakerlab.vibecoder.server.admin.SshKeyService
+import com.siamakerlab.vibecoder.server.admin.sshKeyRoutes
 import com.siamakerlab.vibecoder.server.admin.envSetupRoutes
 import com.siamakerlab.vibecoder.server.admin.gitIntegrationsRoutes
 import com.siamakerlab.vibecoder.server.admin.mcpRoutes
@@ -326,6 +328,8 @@ fun Application.module(ctx: ServerContext) {
         mcpRoutes(adminDeps, ctx.mcp)
         gitIntegrationsRoutes(adminDeps, ctx.gitCredentials, ctx.gitClone, ctx.clock)
         corsSettingsRoutes(adminDeps)
+        // v1.2.0 — SSH key 관리 (자동 발급은 entrypoint, 본 routes 는 열람 + 재생성).
+        sshKeyRoutes(adminDeps, SshKeyService())
         // v0.10.0 — admin SSR 라우트들의 JSON API 이중 노출 (vibe-coder-android wire)
         envSetupApiRoutes(
             envSetup = ctx.envSetup,

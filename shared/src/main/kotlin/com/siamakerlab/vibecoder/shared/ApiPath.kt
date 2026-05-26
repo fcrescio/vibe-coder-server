@@ -27,6 +27,9 @@ object ApiPath {
     const val SERVER_ENVIRONMENT_CHECK = "/api/server/environment/check"
     const val SERVER_SETTINGS = "/api/server/settings"
     const val SERVER_SETTINGS_BASIC = "/api/server/settings/basic"
+    // v1.2.0 — SSH 키 (vibe 사용자 ~/.ssh/id_ed25519).
+    const val SERVER_SSH_KEY = "/api/server/ssh-key"
+    const val SERVER_SSH_KEY_REGENERATE = "/api/server/ssh-key/regenerate"
 
     // Projects
     const val PROJECTS = "/api/projects"
