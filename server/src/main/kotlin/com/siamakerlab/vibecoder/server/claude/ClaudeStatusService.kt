@@ -51,7 +51,15 @@ class ClaudeStatusService(
 
     suspend fun snapshot(projectId: String): ClaudeStatusDto {
         val cached = cache[projectId]
-        if (cached != null && cached.expiresAt.isAfter(Instant.now())) return cached.dto
+        if (cached != null && cached.expiresAt.isAfter(Instant.now())) {
+            // v0.98.0 — busy/processAlive/sessionId 는 자주 바뀌므로 cache hit 시에도 fresh.
+            // 60s cached 항목은 /status CLI 호출 결과 (model/plan/quota/resetAt) 만.
+            return cached.dto.copy(
+                busy = sessionManager.isBusy(projectId),
+                processAlive = sessionManager.isAlive(projectId),
+                sessionId = sessionManager.currentSessionId(projectId),
+            )
+        }
 
         val sessionId = sessionManager.currentSessionId(projectId)
         val alive = sessionManager.isAlive(projectId)
@@ -69,7 +77,10 @@ class ClaudeStatusService(
             usagePercent = parsed.usagePercent,
             resetAt = parsed.resetAt,
             updatedAt = Instant.now().toString(),
+            // v0.98.0 — Android / REST 폴링 클라이언트가 응답중/대기중 즉시 확인.
+            busy = sessionManager.isBusy(projectId),
         )
+        // v0.98.0 — busy 는 자주 바뀌므로 cache hit 시 busy 만 fresh 로 덮어쓰기 (sessionId/processAlive 도).
         cache[projectId] = Cached(dto, Instant.now().plus(ttl))
         return dto
     }

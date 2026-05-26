@@ -997,6 +997,10 @@ internal object MessagesEn {
         "console.filter.cat.ws" to "WebSocket connection",
         "console.filter.reset" to "Show all",
 
+        // ─────────────────────────────────────────────── console busy badge (v0.98.0)
+        "console.busy.responding" to "● Responding",
+        "console.busy.idle" to "○ Idle",
+
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude authentication",
         "claude.option.oauth" to "OAuth (recommended)",

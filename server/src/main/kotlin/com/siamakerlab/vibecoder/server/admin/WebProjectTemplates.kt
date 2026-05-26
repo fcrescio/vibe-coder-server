@@ -794,7 +794,24 @@ $authBannerHtml
       <strong>${esc(t("console.session"))}</strong> $statusBadge
       ${if (sessionId != null) """ <span class="dim">${esc(sessionId.take(12))}…</span>""" else ""}
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <!-- v0.98.0 — busy badge: 사용자가 prompt 보낸 후 Claude 가 응답 중인지 한눈에 -->
+      <style>
+        @keyframes vibe-busy-pulse {
+          0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(105,219,124,0.55); }
+          50% { opacity: 0.85; box-shadow: 0 0 0 6px rgba(105,219,124,0); }
+        }
+        #busy-badge { transition: background 0.2s, color 0.2s; }
+        #busy-badge[data-state="responding"] {
+          background: rgba(105,219,124,0.18); color: #69db7c;
+          animation: vibe-busy-pulse 1.4s ease-in-out infinite;
+        }
+        #busy-badge[data-state="idle"] {
+          background: rgba(255,255,255,0.06); color: var(--text-dim, #888);
+        }
+      </style>
+      <span id="busy-badge" data-state="idle"
+            style="font-size:12px;padding:3px 10px;border-radius:12px;font-weight:500;white-space:nowrap">${esc(t("console.busy.idle"))}</span>
       $sideLinks
       <button type="button" id="stop-btn" class="chip chip-danger" style="display:none"
               title="${esc(t("console.stop.title"))}">${esc(t("console.stop"))}</button>
@@ -1080,6 +1097,10 @@ $authBannerHtml
       detectAuthFailure(f.message);
     } else if (t === 'console_replay_begin') {
       append('sys', 'replay', 'history begin (' + f.fromSeq + ' → ' + f.toSeq + ')', 'replay');
+    } else if (t === 'console_busy_state') {
+      // v0.98.0 — 서버 측 busy 전이 알림. 다중 탭/디바이스 + 다른 클라이언트의 prompt
+      // 발송 시점 sync. 로컬 inFlight 와 항상 같은 값으로 수렴.
+      setInFlight(!!f.busy);
     } else if (t === 'console_replay_end') {
       append('sys', 'replay', 'history end — live frames follow', 'replay');
     }
@@ -1123,11 +1144,19 @@ $authBannerHtml
   connect();
 
   // v0.13.0 — 진행 중 turn cancel 버튼
+  // v0.98.0 — busy badge 추가 — 응답중/대기중 시각화.
   var stopBtn = document.getElementById('stop-btn');
+  var busyBadge = document.getElementById('busy-badge');
+  var BUSY_RESPONDING = ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.busy.responding"))};
+  var BUSY_IDLE = ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.busy.idle"))};
   var inFlight = false;
   function setInFlight(on) {
     inFlight = on;
     if (stopBtn) stopBtn.style.display = on ? 'inline-block' : 'none';
+    if (busyBadge) {
+      busyBadge.dataset.state = on ? 'responding' : 'idle';
+      busyBadge.textContent = on ? BUSY_RESPONDING : BUSY_IDLE;
+    }
   }
   async function cancelTurn() {
     if (!inFlight) return;

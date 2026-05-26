@@ -132,6 +132,21 @@ sealed class WsFrame {
         val seq: Long,
     ) : WsFrame()
 
+    /**
+     * v0.98.0 — Busy/idle 전환 알림. busy=true 면 사용자 prompt 처리 중
+     * (Claude 가 응답을 stream 중), busy=false 면 다음 prompt 대기.
+     *
+     * 서버가 [ClaudeSessionManager] 에서 sendPrompt 직후 / Done/cancel/crash/idle
+     * 시점에 emit. Web 클라이언트는 기존 inFlight 로직과 병행 동작 (둘 다 같은 결과).
+     * Android 클라이언트는 본 frame 으로 응답중/대기중 배지 동기.
+     */
+    @Serializable
+    @SerialName("console_busy_state")
+    data class ConsoleBusyState(
+        val busy: Boolean,
+        val seq: Long,
+    ) : WsFrame()
+
     /** Sent right before replay frames so the client can show a "loading history" affordance. */
     @Serializable
     @SerialName("console_replay_begin")

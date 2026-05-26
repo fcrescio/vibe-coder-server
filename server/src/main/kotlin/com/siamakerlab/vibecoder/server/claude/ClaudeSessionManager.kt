@@ -67,6 +67,14 @@ class ClaudeSessionManager(
     /** Synchronizes spawn — prevents two simultaneous "first prompt" arrivals racing to start a process. */
     private val spawnLocks = ConcurrentHashMap<String, Mutex>()
 
+    /**
+     * v0.98.0 — projectId → busy flag (사용자 prompt 보낸 후 Done/cancel/crash/idle 까지 true).
+     * Web 클라이언트는 자체 inFlight 로 동기화하지만, Android / REST 폴링 / 첫 진입
+     * 클라이언트가 server-side 상태를 즉시 알 수 있도록 노출.
+     * setBusy() 가 변경 시점에 ConsoleBusyState WS frame 도 emit (live 클라이언트 sync).
+     */
+    private val busy = ConcurrentHashMap<String, Boolean>()
+
     init {
         // Idle reaper
         scope.launch {
@@ -112,6 +120,8 @@ class ClaudeSessionManager(
                     session.stdin.flush()
                 }
                 session.lastActivity = Instant.now()
+                // v0.98.0 — prompt 전송 성공 → busy=true. ConsoleEvent.Done 시 false 로 전이.
+                setBusy(projectId, true)
             } catch (e: IOException) {
                 log.warn(e) { "[$projectId] stdin write failed; will respawn on next prompt" }
                 emitSystem(projectId, "process_crashed", "Claude process is no longer accepting input (${e.message}). Retrying on next prompt.")
@@ -155,6 +165,20 @@ class ClaudeSessionManager(
         sessions[projectId]?.process?.isAlive == true
 
     fun currentSessionId(projectId: String): String? = sessions[projectId]?.sessionId
+
+    /** v0.98.0 — 해당 프로젝트가 현재 응답 중인지. 프로젝트별 독립 상태. */
+    fun isBusy(projectId: String): Boolean = busy[projectId] == true
+
+    /**
+     * v0.98.0 — busy 상태 전이. 값이 실제 변경됐을 때만 ConsoleBusyState WS frame emit
+     * (idempotent 호출 시 노이즈 방지). projectId 별로 독립 — 여러 프로젝트 동시 작업
+     * 시 각 프로젝트 콘솔이 자기 상태만 받음 (hub.topic 이 프로젝트별 분리).
+     */
+    private suspend fun setBusy(projectId: String, value: Boolean) {
+        val prev = busy.put(projectId, value)
+        if (prev == value) return
+        hub.emitConsole(topic(projectId)) { seq -> WsFrame.ConsoleBusyState(busy = value, seq = seq) }
+    }
 
     suspend fun shutdown() {
         log.info { "shutting down ${sessions.size} Claude session(s)" }
@@ -306,6 +330,8 @@ class ClaudeSessionManager(
                 else -> sessions[projectId]?.sessionId
             }
             history?.event(projectId, sidForRow, event)
+            // v0.98.0 — Done 이벤트 시 busy=false. ConsoleBusyState 자동 emit.
+            if (event is ClaudeEvent.Done) setBusy(projectId, false)
         }
     }
 
@@ -342,6 +368,9 @@ class ClaudeSessionManager(
     private fun onProcessExit(projectId: String, proc: Process, session: ProjectSession) {
         val exit = runCatching { proc.exitValue() }.getOrNull()
         val crashed = exit != null && exit != 0
+        // v0.98.0 — process exit 시 항상 busy 해제. setBusy 가 suspend 라
+        // launch 안에서 호출 (onProcessExit 자체는 비-suspend).
+        scope.launch { setBusy(projectId, false) }
         if (crashed) {
             log.warn { "[$projectId] claude exited with code $exit" }
             val resumeFailed = looksLikeResumeFailure(session)
@@ -383,6 +412,8 @@ class ClaudeSessionManager(
         }
         session.readerJob?.cancel()
         session.stderrJob?.cancel()
+        // v0.98.0 — process 종료 (cancel / startNew / idle reap / crash) 시 busy 항상 false.
+        setBusy(projectId, false)
     }
 
     private suspend fun reapIdleSessions() {

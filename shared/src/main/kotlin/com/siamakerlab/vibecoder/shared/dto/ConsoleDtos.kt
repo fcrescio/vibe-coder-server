@@ -39,4 +39,12 @@ data class ClaudeStatusDto(
     val usagePercent: Int? = null,
     val resetAt: String? = null,
     val updatedAt: String,
+    /**
+     * v0.98.0 — true 면 현재 사용자 prompt 처리 중 (Claude 가 응답을 stream 중).
+     * false 면 다음 prompt 대기. Web client 는 동일 정보를 WS 의 sendPrompt
+     * 전송 + ConsoleDone / system(turn_cancelled|process_crashed|idle_terminated)
+     * 수신으로 도출하지만, Android client 가 status REST 폴링 또는 첫 진입 시
+     * 즉시 알 수 있도록 server-side 도 노출.
+     */
+    val busy: Boolean = false,
 )

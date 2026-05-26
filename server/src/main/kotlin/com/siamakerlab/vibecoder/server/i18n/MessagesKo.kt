@@ -974,6 +974,10 @@ internal object MessagesKo {
         "console.filter.cat.ws" to "WebSocket 연결",
         "console.filter.reset" to "모두 표시",
 
+        // ─────────────────────────────────────────────── console busy badge (v0.98.0)
+        "console.busy.responding" to "● 응답중",
+        "console.busy.idle" to "○ 대기중",
+
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude 인증",
         "claude.option.oauth" to "OAuth (권장)",
