@@ -79,6 +79,11 @@ class ClaudeStatusService(
             updatedAt = Instant.now().toString(),
             // v0.98.0 — Android / REST 폴링 클라이언트가 응답중/대기중 즉시 확인.
             busy = sessionManager.isBusy(projectId),
+            // v1.0.1 — Pro/Max plan 의 세션 (5h) vs 주간 (7d) quota 분리 노출.
+            sessionUsagePercent = parsed.sessionUsagePercent,
+            weeklyUsagePercent = parsed.weeklyUsagePercent,
+            sessionResetAt = parsed.sessionResetAt,
+            weeklyResetAt = parsed.weeklyResetAt,
         )
         // v0.98.0 — busy 는 자주 바뀌므로 cache hit 시 busy 만 fresh 로 덮어쓰기 (sessionId/processAlive 도).
         cache[projectId] = Cached(dto, Instant.now().plus(ttl))
@@ -114,6 +119,14 @@ class ClaudeStatusService(
         val usagePercent: Int?,
         /** v0.21.0 — quota line 의 reset 시각 (free-form). */
         val resetAt: String?,
+        /** v1.0.1 — 세션 (5시간) quota 사용량 %. */
+        val sessionUsagePercent: Int? = null,
+        /** v1.0.1 — weekly (7일) quota 사용량 %. */
+        val weeklyUsagePercent: Int? = null,
+        /** v1.0.1 — 세션 reset 시각 (free-form). */
+        val sessionResetAt: String? = null,
+        /** v1.0.1 — weekly reset 시각 (free-form). */
+        val weeklyResetAt: String? = null,
     )
 
     /**
@@ -125,6 +138,11 @@ class ClaudeStatusService(
      *   - "quota|remaining|usage" 포함 줄 전체를 quotaRemaining 으로 저장 (UI 표시용)
      *   - 같은 줄에 N% 패턴이 있으면 usagePercent 로 추출 (임계치 트리거용)
      *   - "reset" + "at|in" 포함 줄을 resetAt 으로 저장
+     *
+     * v1.0.1 — Pro/Max plan 의 세션 (5h) vs weekly (7d) quota 분리. 같은 줄에 또는
+     * 직후 줄에 "weekly|week" 가 있으면 weeklyUsagePercent / weeklyResetAt 으로 분류.
+     * 명시적으로 "session|5-hour" 가 있으면 sessionUsagePercent. 키워드 없으면 legacy
+     * usagePercent 만 채움 (기존 동작 유지).
      */
     private fun parseOutput(raw: String): ParsedStatus {
         val lines = raw.lines()
@@ -133,27 +151,54 @@ class ClaudeStatusService(
         var quota: String? = null
         var usagePercent: Int? = null
         var resetAt: String? = null
+        var sessionUsage: Int? = null
+        var weeklyUsage: Int? = null
+        var sessionReset: String? = null
+        var weeklyReset: String? = null
         val percentRegex = Regex("(\\d{1,3})%")
         for (line in lines) {
             val lower = line.lowercase()
             if (model == null && lower.contains("model")) model = line.substringAfter(":", "").trim().ifBlank { null }
             if (plan == null && lower.contains("plan")) plan = line.substringAfter(":", "").trim().ifBlank { null }
-            if (quota == null && (lower.contains("quota") || lower.contains("remaining") || lower.contains("usage"))) {
-                quota = line.trim().ifBlank { null }
-                // Same line: extract percent if any. Interpret as USAGE — if the line
-                // says "remaining" we flip the value (e.g. "20% remaining" → 80% used).
+
+            val hasQuotaKw = lower.contains("quota") || lower.contains("remaining") || lower.contains("usage")
+            val isWeekly = lower.contains("weekly") || lower.contains("week")
+            val isSession = lower.contains("session") || lower.contains("5-hour") || lower.contains("5 hour")
+
+            if (hasQuotaKw) {
+                if (quota == null) quota = line.trim().ifBlank { null }
                 percentRegex.find(line)?.let { match ->
                     val n = match.groupValues[1].toIntOrNull()?.coerceIn(0, 100)
                     if (n != null) {
-                        usagePercent = if (lower.contains("remaining")) 100 - n else n
+                        val used = if (lower.contains("remaining")) 100 - n else n
+                        when {
+                            isWeekly -> { if (weeklyUsage == null) weeklyUsage = used }
+                            isSession -> { if (sessionUsage == null) sessionUsage = used }
+                            else -> { if (usagePercent == null) usagePercent = used }
+                        }
                     }
                 }
             }
-            if (resetAt == null && lower.contains("reset") && (lower.contains(" at") || lower.contains(" in"))) {
-                resetAt = line.trim().ifBlank { null }
+            if (lower.contains("reset") && (lower.contains(" at") || lower.contains(" in"))) {
+                val trimmed = line.trim().ifBlank { null }
+                when {
+                    isWeekly && weeklyReset == null -> weeklyReset = trimmed
+                    isSession && sessionReset == null -> sessionReset = trimmed
+                    resetAt == null -> resetAt = trimmed
+                }
             }
         }
-        return ParsedStatus(model, plan, quota, usagePercent, resetAt)
+        // legacy usagePercent / resetAt 도 최대값 / fallback 으로 채워 backward compatible 유지.
+        val legacyUsage = usagePercent ?: maxOf(sessionUsage ?: -1, weeklyUsage ?: -1).takeIf { it >= 0 }
+        val legacyReset = resetAt ?: sessionReset ?: weeklyReset
+        return ParsedStatus(
+            model = model, plan = plan, quotaRemaining = quota,
+            usagePercent = legacyUsage, resetAt = legacyReset,
+            sessionUsagePercent = sessionUsage,
+            weeklyUsagePercent = weeklyUsage,
+            sessionResetAt = sessionReset,
+            weeklyResetAt = weeklyReset,
+        )
     }
 
     private fun resolveClaudeCmd(): String {

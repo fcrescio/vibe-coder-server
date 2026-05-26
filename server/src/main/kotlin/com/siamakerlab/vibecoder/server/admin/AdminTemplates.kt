@@ -427,8 +427,11 @@ object AdminTemplates {
     <p class="hint">${t("dashboard.claude.empty")}</p>
   </div>"""
         }
+        // v1.0.1 — Pro/Max plan 의 세션 (5h) + 주간 (7d) 분리 표시.
+        val sessionPct = snapshot.sessionUsagePercent
+        val weeklyPct = snapshot.weeklyUsagePercent
         val pct = snapshot.usagePercent
-        if (pct == null) {
+        if (pct == null && sessionPct == null && weeklyPct == null) {
             return """
   <div class="card">
     <h2>${esc(t("dashboard.claude.title"))}</h2>
@@ -439,32 +442,56 @@ object AdminTemplates {
     <p class="hint">${t("dashboard.claude.quotaParseFail")}</p>
   </div>"""
         }
-        val level = when {
-            pct >= 95 -> "warn"
-            pct >= 80 -> "warn"
-            else -> "ok"
-        }
-        val color = when {
-            pct >= 95 -> "#dc2626"
-            pct >= 80 -> "#d97706"
+
+        fun barColor(p: Int): String = when {
+            p >= 95 -> "#dc2626"
+            p >= 80 -> "#d97706"
             else -> "#059669"
         }
-        val resetLine = if (snapshot.resetAt != null) {
-            """<dt>${esc(t("dashboard.usageReset"))}</dt><dd>${esc(snapshot.resetAt)}</dd>"""
+        fun levelClass(p: Int): String = if (p >= 80) "warn" else "ok"
+        fun renderBar(p: Int, label: String, resetLabel: String?, resetVal: String?): String {
+            val w = p.coerceIn(0, 100)
+            val resetHtml = if (resetVal != null && resetLabel != null) {
+                """<div class="dim" style="font-size:11px;margin-top:2px">${esc(resetLabel)}: ${esc(resetVal)}</div>"""
+            } else ""
+            return """
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:12px">
+          <span>${esc(label)}</span>
+          <span class="${levelClass(p)}">${p}%</span>
+        </div>
+        <div style="background:#e5e7eb;border-radius:4px;height:8px;overflow:hidden;margin-top:3px">
+          <div style="width:${w}%;background:${barColor(p)};height:100%"></div>
+        </div>
+        $resetHtml
+      </div>"""
+        }
+
+        val sessionBar = if (sessionPct != null) {
+            renderBar(sessionPct, t("dashboard.usage.session"),
+                t("dashboard.usage.sessionReset"), snapshot.sessionResetAt)
         } else ""
-        val barWidth = pct.coerceIn(0, 100)
+        val weeklyBar = if (weeklyPct != null) {
+            renderBar(weeklyPct, t("dashboard.usage.weekly"),
+                t("dashboard.usage.weeklyReset"), snapshot.weeklyResetAt)
+        } else ""
+        // 둘 다 없고 legacy pct 만 있는 경우 — 한 줄 bar 만 (parsing 이 weekly/session
+        // 구분 못 한 경우 fallback).
+        val legacyBar = if (sessionPct == null && weeklyPct == null && pct != null) {
+            renderBar(pct, t("dashboard.disk.usage"),
+                t("dashboard.usageReset"), snapshot.resetAt)
+        } else ""
+
         return """
   <div class="card">
     <h2>${esc(t("dashboard.claude.title"))}</h2>
-    <dl>
-      <dt>${esc(t("dashboard.disk.usage"))}</dt><dd><span class="$level">${pct}%</span></dd>
-      $resetLine
+    $sessionBar
+    $weeklyBar
+    $legacyBar
+    <dl style="margin-top:6px;font-size:12px">
       <dt>${esc(t("dashboard.claude.plan"))}</dt><dd>${esc(snapshot.plan ?: "-")}</dd>
       <dt>${esc(t("dashboard.claude.model"))}</dt><dd>${esc(snapshot.model ?: "-")}</dd>
     </dl>
-    <div style="margin-top:8px; background:#e5e7eb; border-radius:4px; height:8px; overflow:hidden;">
-      <div style="width:${barWidth}%; background:${color}; height:100%;"></div>
-    </div>
     <p class="hint">${t("dashboard.usageEmailHint")} <a href="/settings/email">/settings/email</a></p>
   </div>"""
     }

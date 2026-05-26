@@ -36,7 +36,13 @@ data class ClaudeStatusDto(
     val model: String? = null,
     val plan: String? = null,
     val quotaRemaining: String? = null,
+    /**
+     * v0.21.0 legacy — usage % (단일). v1.0.1 부터는 sessionUsagePercent /
+     * weeklyUsagePercent 의 max 값 (둘 다 있으면 큰 쪽). backward compatible —
+     * 기존 클라이언트는 그대로 사용.
+     */
     val usagePercent: Int? = null,
+    /** v0.21.0 legacy — reset 시각 단일 free-form. v1.0.1 부터는 sessionResetAt 우선. */
     val resetAt: String? = null,
     val updatedAt: String,
     /**
@@ -47,4 +53,15 @@ data class ClaudeStatusDto(
      * 즉시 알 수 있도록 server-side 도 노출.
      */
     val busy: Boolean = false,
+    /**
+     * v1.0.1 — 5시간 세션 사용량 % (Pro/Max 의 rolling 세션 quota). null = 파싱 실패
+     * 또는 `claude /status` 출력에 해당 줄 없음.
+     */
+    val sessionUsagePercent: Int? = null,
+    /** v1.0.1 — 7일 weekly rolling 사용량 % (Pro/Max plan). null = 미감지. */
+    val weeklyUsagePercent: Int? = null,
+    /** v1.0.1 — 세션 quota reset 시각 (free-form 문자열, 예: "in 3h 24m"). */
+    val sessionResetAt: String? = null,
+    /** v1.0.1 — 주간 quota reset 시각 (free-form, 예: "in 3d 5h"). */
+    val weeklyResetAt: String? = null,
 )
