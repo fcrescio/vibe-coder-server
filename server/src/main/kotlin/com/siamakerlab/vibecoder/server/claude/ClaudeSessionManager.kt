@@ -164,7 +164,14 @@ class ClaudeSessionManager(
     fun isAlive(projectId: String): Boolean =
         sessions[projectId]?.process?.isAlive == true
 
-    fun currentSessionId(projectId: String): String? = sessions[projectId]?.sessionId
+    /**
+     * v1.7.3 — in-memory session 없으면 file (claude-session.id) 의 last id 로 fallback.
+     * 서버 재시작 후엔 sessions map 이 비어 있어 이전엔 null 반환 → 콘솔이 "no session"
+     * 표시 + status pill empty. 실제로는 file 에 last sessionId 가 영속되어 있고 다음
+     * prompt 시점에 `--resume` 으로 spawn 되므로, 라벨도 "idle (will resume)" 로 일관되게.
+     */
+    fun currentSessionId(projectId: String): String? =
+        sessions[projectId]?.sessionId ?: readSessionId(projectId)
 
     /** v0.98.0 — 해당 프로젝트가 현재 응답 중인지. 프로젝트별 독립 상태. */
     fun isBusy(projectId: String): Boolean = busy[projectId] == true

@@ -93,6 +93,42 @@ object WebProjectTemplates {
         </div>"""
     }
 
+    /**
+     * v1.7.3 — DB ConversationTurn 을 inline JSON 으로 emit. 페이지 load 직후 JS 가
+     * parse 해서 console-log 에 prepend — 서버 재시작 후에도 기존 대화 즉시 가시.
+     *
+     * 각 row → `{ role, text, tool?, ts }`. token usage report (`role=usage`) 는 UI 노이즈
+     * 라 skip. content 가 너무 길면 (예: tool_result Read 의 큰 파일) `MAX_CONTENT_PER_ROW`
+     * 로 클립. `<` / `&` / 따옴표 등은 `jsLit` 의 escape 규칙 (< 등) 으로 `</script>`
+     * 닫힘 + XSS 차단. ConversationTurnRow.content 는 raw — tool_use 의 input JSON 그대로
+     * 노출되지만 JS 측 renderToolUse 가 라이브 흐름에서 처리하는 것과 동일 의도.
+     */
+    private fun renderInitialHistoryJson(
+        rows: List<com.siamakerlab.vibecoder.server.repo.ConversationTurnRow>,
+    ): String {
+        if (rows.isEmpty()) return "[]"
+        val maxContent = 4000
+        val sb = StringBuilder("[")
+        var first = true
+        for (row in rows) {
+            if (row.role == "usage") continue
+            if (!first) sb.append(',')
+            first = false
+            val raw = row.content
+            val text = if (raw.length > maxContent)
+                raw.substring(0, maxContent) + " …(+${raw.length - maxContent})"
+            else raw
+            sb.append('{')
+            sb.append("\"role\":").append(jsLit(row.role))
+            sb.append(",\"text\":").append(jsLit(text))
+            if (row.toolName != null) sb.append(",\"tool\":").append(jsLit(row.toolName))
+            if (row.ts.isNotBlank()) sb.append(",\"ts\":").append(jsLit(row.ts))
+            sb.append('}')
+        }
+        sb.append(']')
+        return sb.toString()
+    }
+
     /** 로그 라인 1개의 CSS 클래스. WS 라이브 흐름과 동일한 색상 팔레트. */
     private fun classOfLevel(level: String): String = when (level.uppercase()) {
         "ERROR", "STDERR" -> "err"
@@ -756,6 +792,12 @@ $errHtml
         isChat: Boolean = false,
         /** v0.18.0 — 프로젝트 등록 직후 첫 console 진입 시 자동 입력될 starter prompt. */
         starterPrompt: String? = null,
+        /**
+         * v1.7.3 — 서버 재시작 후에도 기존 conversation history 가 콘솔에 즉시 보이도록
+         * 호출자가 DB 의 ConversationTurn 을 ASC 정렬해 전달. 빈 list 면 표시 안 함.
+         * inline JSON 으로 embed 되어 페이지 load 직후 JS 가 prepend.
+         */
+        initialHistory: List<com.siamakerlab.vibecoder.server.repo.ConversationTurnRow> = emptyList(),
         lang: String = "en",
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
@@ -896,6 +938,13 @@ $authBannerHtml
 <!-- v1.6.4 — 스크롤 + 우하단 jump-to-bottom 버튼 wrapper. -->
 <div class="console-log-wrap">
   <div id="console-log" class="console-log" aria-live="polite"></div>
+  <!--
+    v1.7.3 — 서버 재시작 후에도 기존 conversation 이 즉시 보이도록 DB 의 ConversationTurn
+    을 inline JSON 으로 embed. WS ring buffer 는 in-memory 이라 재시작 시 휘발 → 이전엔
+    빈 화면 + "no session" 만 보였음. 페이지 load 직후 inline JS 가 parse 후 append().
+    `<` / `&` 는 jsLit() 처럼 < / & escape 되어 </script> 닫힘 차단.
+  -->
+  <script id="initial-history" type="application/json">${renderInitialHistoryJson(initialHistory)}</script>
   <button type="button" id="console-jump-bottom" class="console-jump-bottom"
           title="${esc(t("console.jumpToLatest"))}" aria-label="${esc(t("console.jumpToLatest"))}">
     ↓<span class="badge" id="console-jump-badge" style="display:none">0</span>
@@ -1330,6 +1379,49 @@ $authBannerHtml
       append('sys', 'replay', 'history end — live frames follow', 'replay');
     }
   }
+
+  // v1.7.3 — 서버 재시작 후에도 기존 conversation 가시. inline JSON (DB 의 ConversationTurn)
+  // 을 parse 후 console-log 의 첫 메시지로 prepend. WS connect 보다 먼저 실행되어 ring
+  // buffer 의 replay (있다면) 가 그 위에 누적. 서버 재시작 직후 ring 빈 상태에선 history
+  // 만 보이고, ring 에 잔존 frame 있으면 약간 중복 — 정보 손실보단 노이즈 우선.
+  (function replayInitialHistory() {
+    var el = document.getElementById('initial-history');
+    if (!el) return;
+    var raw = el.textContent || '';
+    if (!raw.trim() || raw.trim() === '[]') return;
+    var arr;
+    try { arr = JSON.parse(raw); } catch (e) { return; }
+    if (!Array.isArray(arr) || arr.length === 0) return;
+    append('sys', 'history', '— ' + arr.length + ' previous turn(s) restored —', 'replay');
+    for (var i = 0; i < arr.length; i++) {
+      var r = arr[i] || {};
+      var role = r.role || '';
+      var text = r.text || '';
+      if (role === 'user') {
+        append('user', 'user', text, 'assistant');
+      } else if (role === 'assistant') {
+        append('assistant', 'assistant', text, 'assistant');
+      } else if (role === 'tool_use') {
+        // ConversationTurn 의 content 는 input JSON. renderToolUse 와 동일 형식 best-effort.
+        var label = (r.tool || 'tool');
+        var body = text.length > 500 ? text.slice(0, 500) + ' …(+' + (text.length - 500) + ')' : text;
+        var isTodoTool = (label === 'TaskCreate' || label === 'TaskUpdate' || label === 'TodoWrite');
+        append('tool', label, body, isTodoTool ? 'todo' : 'tool_use');
+      } else if (role === 'tool_result') {
+        var out = text.length > 500 ? text.slice(0, 500) + ' …(+' + (text.length - 500) + ')' : text;
+        append('tool-out', '✓ result', out, 'tool_result');
+      } else if (role === 'system') {
+        append('sys', r.tool || 'system', text, 'system');
+      } else if (role === 'done') {
+        append('sys', 'done', text || 'end_turn', 'done');
+      } else if (role === 'session') {
+        append('sys', 'session', text, 'session');
+      }
+    }
+    append('sys', 'history', '— end of history, live frames follow —', 'replay');
+    // 자동으로 최하단 정렬.
+    logEl.scrollTop = logEl.scrollHeight;
+  })();
 
   var ws = null;
   var wsAuthed = false;

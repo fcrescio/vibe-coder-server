@@ -368,6 +368,7 @@ fun Application.module(ctx: ServerContext) {
             testFlightPublishService = ctx.testFlightPublishService,
             apkSignerInspector = ctx.apkSignerInspector,
             projectArchiver = ctx.projectArchiver,
+            conversationRepo = ctx.conversationRepo,
         )
         // v0.28.0 — /settings/cache 라우트.
         buildCacheRoutes(adminDeps, ctx.buildCacheService)

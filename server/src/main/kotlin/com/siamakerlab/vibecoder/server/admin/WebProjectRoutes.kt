@@ -14,6 +14,7 @@ import com.siamakerlab.vibecoder.server.i18n.Messages
 import com.siamakerlab.vibecoder.server.projects.ProjectService
 import com.siamakerlab.vibecoder.server.repo.ArtifactRepository
 import com.siamakerlab.vibecoder.server.repo.BuildRepository
+import com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.dto.BuildDto
 import com.siamakerlab.vibecoder.shared.dto.RegisterProjectRequestDto
@@ -67,6 +68,11 @@ fun Routing.webProjectRoutes(
     apkSignerInspector: com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector,
     /** v0.29.0 — 프로젝트 source zip stream. */
     projectArchiver: com.siamakerlab.vibecoder.server.projects.ProjectArchiver,
+    /**
+     * v1.7.3 — 콘솔 진입 시 DB 의 conversation history 를 inline embed 해서 서버
+     * 재시작 후에도 기존 대화 가시. WS ring buffer 가 휘발성인 한계 보완.
+     */
+    conversationRepo: ConversationTurnRepository,
 ) {
 
     // ── 목록 + 등록 폼 ────────────────────────────────────────────────
@@ -206,6 +212,16 @@ fun Routing.webProjectRoutes(
         val starterPrompt = projects.consumeStarterPrompt(id)
         // Claude CLI 인증 상태 진단. CLI 자체와 자격증명 파일 둘 다 검사.
         val env = authDeps.envDiagnostics.run()
+        // v1.7.3 — DB conversation history (last 200 turn, ASC). sessionId 가 있을 때만
+        // 해당 세션 turn 만 조회. 없으면 — 새 프로젝트 또는 last id 없는 케이스 — 빈 list.
+        val history = if (sid != null) {
+            runCatching {
+                conversationRepo.list(
+                    ConversationTurnRepository.Filter(projectId = id, sessionId = sid),
+                    limit = 200,
+                )
+            }.getOrDefault(emptyList())
+        } else emptyList()
         call.respondText(
             WebProjectTemplates.consolePage(
                 sess.username, p, sid, alive,
@@ -213,6 +229,7 @@ fun Routing.webProjectRoutes(
                 claudeAuth = env.claudeAuth,
                 csrf = sess.csrf,
                 starterPrompt = starterPrompt,
+                initialHistory = history,
                 lang = sess.language,
             ),
             ContentType.Text.Html,
@@ -686,6 +703,15 @@ fun Routing.webProjectRoutes(
         val alive = sessionManager.isAlive(p.id)
         val sid = sessionManager.currentSessionId(p.id)
         val env = authDeps.envDiagnostics.run()
+        // v1.7.3 — General Chat 도 동일하게 history 영속 복원.
+        val history = if (sid != null) {
+            runCatching {
+                conversationRepo.list(
+                    ConversationTurnRepository.Filter(projectId = p.id, sessionId = sid),
+                    limit = 200,
+                )
+            }.getOrDefault(emptyList())
+        } else emptyList()
         call.respondText(
             WebProjectTemplates.consolePage(
                 sess.username, p, sid, alive,
@@ -693,6 +719,7 @@ fun Routing.webProjectRoutes(
                 claudeAuth = env.claudeAuth,
                 csrf = sess.csrf,
                 isChat = true,
+                initialHistory = history,
                 lang = sess.language,
             ),
             ContentType.Text.Html,
