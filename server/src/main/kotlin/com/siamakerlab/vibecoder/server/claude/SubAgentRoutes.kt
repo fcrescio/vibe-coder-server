@@ -103,7 +103,7 @@ fun Routing.subAgentRoutes(
 <div class="card">
   <table class="table" style="width:100%">
     <thead>
-      <tr><th>Agent</th><th>상태</th><th></th></tr>
+      <tr><th>${esc(com.siamakerlab.vibecoder.server.i18n.Messages.t(sess.language, "table.agent"))}</th><th>${esc(com.siamakerlab.vibecoder.server.i18n.Messages.t(sess.language, "table.status"))}</th><th></th></tr>
     </thead>
     <tbody>
 $rowsHtml

@@ -118,9 +118,9 @@ private fun renderPage(
 
 <table class="devices">
   <thead><tr>
-    <th style="width:280px">Project / Build</th>
+    <th style="width:280px">${esc(t("table.projectBuild"))}</th>
     <th style="width:50px">L#</th>
-    <th>Match</th>
+    <th>${esc(t("table.match"))}</th>
   </tr></thead>
   <tbody>$rowsHtml</tbody>
 </table>

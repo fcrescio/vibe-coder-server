@@ -82,7 +82,7 @@ object CorsSettingsTemplates {
   <table style="width:100%;border-collapse:collapse;margin-top:12px">
     <thead>
       <tr style="border-bottom:1px solid #333">
-        <th style="text-align:left;padding:8px">Allowed Host</th>
+        <th style="text-align:left;padding:8px">${esc(t("table.allowedHost"))}</th>
         <th style="text-align:left;padding:8px">${esc(t("cors.col.meaning"))}</th>
       </tr>
     </thead>

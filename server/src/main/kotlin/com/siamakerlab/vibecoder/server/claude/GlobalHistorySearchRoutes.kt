@@ -37,7 +37,7 @@ fun Routing.globalHistorySearchRoutes(authDeps: AdminRoutesDeps) {
         val role = call.request.queryParameters["role"]?.trim()?.ifBlank { null }
         val rows = if (q == null) emptyList() else searchAll(q, role, limit = 200)
         call.respondText(
-            renderPage(sess.username, sess.csrf, q, role, rows),
+            renderPage(sess.username, sess.csrf, q, role, rows, sess.language),
             ContentType.Text.Html,
         )
     }
@@ -95,7 +95,9 @@ private fun renderPage(
     q: String?,
     role: String?,
     rows: List<ConversationTurnRow>,
+    lang: String = "en",
 ): String {
+    val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
     val roleOpts = listOf("", "user", "assistant", "tool_use", "tool_result", "system", "error")
         .joinToString("") { v ->
             val label = if (v.isEmpty()) "(all roles)" else v
@@ -168,9 +170,9 @@ private fun renderPage(
 
 <table class="devices">
   <thead><tr>
-    <th style="width:160px">Time (UTC)</th>
-    <th style="width:180px">Project / Role</th>
-    <th>Match preview</th>
+    <th style="width:160px">${esc(t("table.timeUtc"))}</th>
+    <th style="width:180px">${esc(t("table.projectRole"))}</th>
+    <th>${esc(t("table.matchPreview"))}</th>
   </tr></thead>
   <tbody>$rowsHtml</tbody>
 </table>

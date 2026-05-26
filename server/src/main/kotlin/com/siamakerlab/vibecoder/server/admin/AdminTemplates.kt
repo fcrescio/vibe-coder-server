@@ -686,33 +686,33 @@ $errHtml
   ${CsrfTokens.hiddenInput(csrf)}
 
   <fieldset>
-    <legend>${esc(t("common.name"))} (Server)</legend>
+    <legend>${esc(t("settings.legend.server"))}</legend>
     <label>${esc(t("common.name"))} <input name="server.name" value="${esc(settings.serverName)}"></label>
-    <label>Port <input name="server.port" type="number" value="${settings.serverPort}" min="1" max="65535"></label>
-    <label>Host <input name="server.host" value="${esc(settings.serverHost)}"></label>
+    <label>${esc(t("settings.field.port"))} <input name="server.port" type="number" value="${settings.serverPort}" min="1" max="65535"></label>
+    <label>${esc(t("settings.field.host"))} <input name="server.host" value="${esc(settings.serverHost)}"></label>
   </fieldset>
 
   <fieldset>
-    <legend>Workspace</legend>
-    <label>Max upload (MB) <input name="workspace.maxUploadSizeMb" type="number" value="${settings.maxUploadMb}"></label>
-    <label>Artifact keep count <input name="workspace.artifactKeepCount" type="number" value="${settings.artifactKeep}"></label>
+    <legend>${esc(t("settings.legend.workspace"))}</legend>
+    <label>${esc(t("settings.field.maxUploadMb"))} <input name="workspace.maxUploadSizeMb" type="number" value="${settings.maxUploadMb}"></label>
+    <label>${esc(t("settings.field.artifactKeepCount"))} <input name="workspace.artifactKeepCount" type="number" value="${settings.artifactKeep}"></label>
   </fieldset>
 
   <fieldset>
-    <legend>Claude</legend>
+    <legend>${esc(t("settings.legend.claude"))}</legend>
     <label><input name="claude.enabled" type="checkbox" ${if (settings.claudeEnabled) "checked" else ""}> ${esc(t("common.enabled"))}</label>
-    <label>Path <input name="claude.path" value="${esc(settings.claudePath)}"></label>
-    <label>Timeout (min) <input name="claude.timeoutMinutes" type="number" value="${settings.claudeTimeoutMin}"></label>
+    <label>${esc(t("settings.field.path"))} <input name="claude.path" value="${esc(settings.claudePath)}"></label>
+    <label>${esc(t("settings.field.timeoutMin"))} <input name="claude.timeoutMinutes" type="number" value="${settings.claudeTimeoutMin}"></label>
   </fieldset>
 
   <fieldset>
-    <legend>Build</legend>
-    <label>Timeout (min) <input name="build.timeoutMinutes" type="number" value="${settings.buildTimeoutMin}"></label>
-    <label>Default debug task <input name="build.defaultDebugTask" value="${esc(settings.defaultDebugTask)}"></label>
+    <legend>${esc(t("settings.legend.build"))}</legend>
+    <label>${esc(t("settings.field.timeoutMin"))} <input name="build.timeoutMinutes" type="number" value="${settings.buildTimeoutMin}"></label>
+    <label>${esc(t("settings.field.defaultDebugTask"))} <input name="build.defaultDebugTask" value="${esc(settings.defaultDebugTask)}"></label>
   </fieldset>
 
   <button type="submit" class="primary">${esc(t("common.save"))}</button>
-  <p class="hint">Saves to external <code>server.yml</code> atomically (<code>.bak.&lt;ts&gt;</code> rotation, keeps 5). Path: <code>${'$'}VIBECODER_CONFIG_DIR/server.yml</code> or <code>./config/server.yml</code>. <strong>host / port / name require container restart.</strong></p>
+  <p class="hint">${t("settings.persist.hint")}</p>
 </form>
 """
         )

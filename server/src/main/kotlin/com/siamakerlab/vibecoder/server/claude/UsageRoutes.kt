@@ -37,7 +37,7 @@ fun Routing.usageRoutes(
         // v0.63.0 — 모든 프로젝트의 cache stats 합산.
         val cacheStatsByProject = allProjects.keys.associateWith { conversationRepo.usageSummary(it) }
             .filterValues { it.turns > 0 }
-        val body = renderUsagePage(snapshots, allProjects, cacheStatsByProject)
+        val body = renderUsagePage(snapshots, allProjects, cacheStatsByProject, sess.language)
         call.respondText(
             AdminTemplates.shell(
                 title = "Claude 사용량 / Cache 조회",
@@ -55,7 +55,9 @@ private fun renderUsagePage(
     snapshots: Map<String, com.siamakerlab.vibecoder.server.claude.ClaudeStatusService.RawSnapshot>,
     projects: Map<String, com.siamakerlab.vibecoder.shared.dto.ProjectDto>,
     cacheStats: Map<String, com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository.UsageSummary> = emptyMap(),
+    lang: String = "en",
 ): String {
+    val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
     fun fmt(n: Long): String = "%,d".format(n)
     val cacheCard = if (cacheStats.isEmpty()) {
         """<div class="card dim" style="text-align:center;padding:18px;margin-bottom:14px">
@@ -107,7 +109,7 @@ private fun renderUsagePage(
   </div>
   <table class="table" style="width:100%;font-size:12px">
     <thead><tr>
-      <th>Project</th>
+      <th>${esc(t("table.project"))}</th>
       <th style="text-align:right">turns</th>
       <th style="text-align:right">input</th>
       <th style="text-align:right">output</th>

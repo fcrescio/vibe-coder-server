@@ -50,13 +50,13 @@ fun Routing.historyRoutes(
             call.respondText("project not found", ContentType.Text.Plain, io.ktor.http.HttpStatusCode.NotFound)
             return@get
         }
-        renderHistory(call, sess.username, sess.csrf, id, p.name, isChat = false, repo = repo)
+        renderHistory(call, sess.username, sess.csrf, id, p.name, isChat = false, repo = repo, lang = sess.language)
     }
 
     get("/chat/history") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val p = projects.ensureScratchProject()
-        renderHistory(call, sess.username, sess.csrf, p.id, p.name, isChat = true, repo = repo)
+        renderHistory(call, sess.username, sess.csrf, p.id, p.name, isChat = true, repo = repo, lang = sess.language)
     }
 
     // v0.31.0 — JSON export. Application/json + Content-Disposition.
@@ -210,6 +210,7 @@ private suspend fun renderHistory(
     displayName: String,
     isChat: Boolean,
     repo: ConversationTurnRepository,
+    lang: String = "en",
 ) {
     val params = call.request.queryParameters
     // v0.52.0 — agent filter via ?agent=. UI semantics:
@@ -257,6 +258,7 @@ private suspend fun renderHistory(
             flashOk = ok,
             flashErr = err,
             csrf = csrf,
+            lang = lang,
         ),
         ContentType.Text.Html,
     )
@@ -285,15 +287,16 @@ object HistoryTemplates {
         flashOk: String? = null,
         flashErr: String? = null,
         csrf: String? = null,
+        lang: String = "en",
     ): String {
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val okHtml = flashOk?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = flashErr?.let { """<div class="error">${esc(it)}</div>""" } ?: ""
         val navPath = if (isChat) "/chat" else "/projects"
         val backLink = if (isChat)
             """<a href="/chat" class="chip chip-link">← Chat</a>"""
         else
-            """<a href="/projects/${esc(projectId)}" class="chip chip-link">← 프로젝트</a>
-               <a href="/projects/${esc(projectId)}/console" class="chip chip-link">콘솔로</a>"""
+            """<a href="/projects/${esc(projectId)}/console" class="chip chip-link">${esc(t("history.backToConsole"))}</a>"""
 
         val sessionOpts = ("""<option value="">(all sessions)</option>""" +
             sessions.joinToString("") { s ->
@@ -452,9 +455,9 @@ $errHtml
 
 <table class="devices">
   <thead><tr>
-    <th style="width:160px">Time (UTC)</th>
-    <th style="width:140px">Role / Tool</th>
-    <th>Content (clip 800)</th>
+    <th style="width:160px">${esc(t("table.timeUtc"))}</th>
+    <th style="width:140px">${esc(t("table.roleTool"))}</th>
+    <th>${esc(t("table.contentClip"))}</th>
   </tr></thead>
   <tbody>$rowsHtml</tbody>
 </table>

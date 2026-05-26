@@ -114,10 +114,10 @@ ${flashBlurb(flash, lang)}
   <table style="width:100%;border-collapse:collapse;margin-bottom:14px">
     <thead>
       <tr style="border-bottom:1px solid #333">
-        <th style="text-align:left;padding:8px">Provider</th>
-        <th style="text-align:left;padding:8px">Host</th>
-        <th style="text-align:left;padding:8px">Username</th>
-        <th style="text-align:left;padding:8px">Token (masked)</th>
+        <th style="text-align:left;padding:8px">${esc(t("table.provider"))}</th>
+        <th style="text-align:left;padding:8px">${esc(t("table.host"))}</th>
+        <th style="text-align:left;padding:8px">${esc(t("table.username"))}</th>
+        <th style="text-align:left;padding:8px">${esc(t("table.tokenMasked"))}</th>
         <th style="text-align:left;padding:8px">${esc(t("gitint.pat.col.createdAt"))}</th>
         <th style="padding:8px"></th>
       </tr>
