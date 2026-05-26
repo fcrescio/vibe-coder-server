@@ -106,15 +106,23 @@ class ClaudeStatusService(
         //
         // 두 결과를 합쳐 ClaudeStatusDto 채움.
         val initRaw = runInitFrame(projectId)
-        val usageRaw = runUsageCapture(projectId)
+        val initParsed = parseInitFrame(initRaw)
+        // v1.5.1 — 사용자 요구: TUI capture 는 Claude 로그인 상태에서만 실행.
+        // init frame 의 apiKeySource / model 이 null 이면 미인증 (또는 claude
+        // CLI 실패) — usage capture spawn 안 함 (1분+ 소요 + 의미없는 결과).
+        val authed = initParsed.plan != null || initParsed.model != null
+        val usageRaw = if (authed) runUsageCapture(projectId) else ""
         val combined = buildString {
             append("--- /status init frame ---\n")
             append(initRaw)
-            append("\n\n--- /usage TUI capture ---\n")
-            append(usageRaw)
+            if (authed) {
+                append("\n\n--- /usage TUI capture ---\n")
+                append(usageRaw)
+            } else {
+                append("\n\n--- usage capture skipped (Claude not logged in) ---\n")
+            }
         }
         rawSnapshots[projectId] = RawSnapshot(text = combined.take(64 * 1024), capturedAt = Instant.now())
-        val initParsed = parseInitFrame(initRaw)
         val usageParsed = parseUsageOutput(stripAnsiAndBoxChars(usageRaw))
         initParsed.merge(usageParsed)
     }
@@ -233,10 +241,14 @@ class ClaudeStatusService(
      */
     private fun stripAnsiAndBoxChars(s: String): String {
         if (s.isEmpty()) return s
+        // v1.5.1 — ANSI escape 를 공백으로 치환 (이전엔 "" → "Current session"
+        // 이 "Currentsession" 으로 합쳐져 parsing 실패). 연속 공백 통합으로 단어
+        // 사이 1칸 유지.
         // ANSI: ESC [ ... m / ESC ] ... BEL 등 일반 패턴.
         val ansi = Regex("\\[[0-?]*[ -/]*[@-~]|\\][^]*?")
         val boxChars = Regex("[─━│┃┄┅┆┇┈┉┊┋┌┍┎┏┐┑┒┓└┕┖┗┘┙┚┛├┝┞┟┠┡┢┣┤┥┦┧┨┩┪┫┬┭┮┯┰┱┲┳┴┵┶┷┸┹┺┻┼┽┾┿╀╁╂╃╄╅╆╇╈╉╊╋╌╍╎╏═║╒╓╔╕╖╗╘╙╚╛╜╝╞╟╠╡╢╣╤╥╦╧╨╩╪╫╬█▌▐░▒▓●▁▂▃▄▅▆▇]")
-        return s.replace(ansi, "").replace(boxChars, "")
+        return s.replace(ansi, " ").replace(boxChars, " ")
+            .replace(Regex("[ \\t]+"), " ")
     }
 
     private data class ParsedStatus(
@@ -365,18 +377,20 @@ class ClaudeStatusService(
         var sessionReset: String? = null
         var weeklyReset: String? = null
 
-        // 섹션 추적: "Current session" / "Current week (all models)" 헤더 발견 시 lookahead.
+        // v1.5.1 — substring contains 매칭. TUI 의 ANSI cursor positioning 으로
+        // 한 줄에 헤더 + 다음 콘텐츠가 합쳐지는 경우 있어 strict match 는 fail.
+        // sonnet-only 변종 (별도 fields 없음) 은 명시 skip.
         for ((i, line) in lines.withIndex()) {
             val lower = line.lowercase()
-            val isSessionHeader = lower == "current session" ||
-                lower.startsWith("current session ") || lower.startsWith("current session:")
-            // "Current week (all models)" 우선. "(sonnet only)" 등 변종은 무시.
-            val isWeeklyHeader = lower.startsWith("current week (all models)") ||
-                lower == "current week" || lower == "current week (all)"
+            val hasSession = lower.contains("current session") && !lower.contains("sonnet")
+            val hasWeekly = lower.contains("current week") && !lower.contains("sonnet")
+            val isSessionHeader = hasSession && !hasWeekly
+            val isWeeklyHeader = hasWeekly && !hasSession
             if (!isSessionHeader && !isWeeklyHeader) continue
 
-            // lookahead 3 lines for percent + reset
-            for (j in (i + 1)..minOf(i + 4, lines.lastIndex)) {
+            // v1.5.1 — 같은 라인부터 lookahead. ANSI strip 후 같은 라인에 헤더 +
+            // bar + percent + reset 가 모두 들어있는 경우 대응.
+            for (j in i..minOf(i + 4, lines.lastIndex)) {
                 val l = lines[j]
                 val pct = percentRegex.find(l)?.groupValues?.get(1)?.toIntOrNull()?.coerceIn(0, 100)
                 if (pct != null) {
