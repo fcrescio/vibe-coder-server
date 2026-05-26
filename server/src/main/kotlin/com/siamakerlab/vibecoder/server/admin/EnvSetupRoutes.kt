@@ -45,7 +45,7 @@ fun Routing.envSetupRoutes(
 ) {
     get("/env-setup") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
-        val states = setupService.detectAll()
+        val states = setupService.detectAll(sess.language)
         val claudeFlash = call.request.queryParameters["claude"]
         call.respondText(
             EnvSetupTemplates.envSetupPage(sess.username, states, claudeFlash, csrf = sess.csrf, lang = sess.language),

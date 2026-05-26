@@ -101,16 +101,20 @@ docker compose up -d --force-recreate</pre>
 
     private fun renderCard(s: ComponentState, csrf: String?, lang: String): String {
         val c = s.component
-        // CLAUDE_AUTH 만 "로그인됨/로그인 필요" 로 표기, 나머지는 설치됨/미설치.
+        // v1.7.16 — c.displayName / sizeHint / description 는 i18n 키 (String).
+        // Messages.t 로 lookup. 영어 사용자에 영어, 한국어 사용자에 한글 표시.
         val (badgeCls, badgeText) = badgeFor(c, s.status, lang)
         val actionHtml = renderAction(c, s.status, csrf, lang)
+        val name = Messages.t(lang, c.displayName)
+        val size = Messages.t(lang, c.sizeHint)
+        val desc = Messages.t(lang, c.description)
         return """<div class="card">
   <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
-    <h2 style="margin-bottom:8px">${esc(c.displayName)}</h2>
+    <h2 style="margin-bottom:8px">${esc(name)}</h2>
     <span class="$badgeCls" style="white-space:nowrap;font-size:12px">${esc(badgeText)}</span>
   </div>
-  <p class="dim" style="font-size:12px;margin:0 0 8px">${esc(c.sizeHint)}</p>
-  <p style="font-size:13px;line-height:1.5">${esc(c.description)}</p>
+  <p class="dim" style="font-size:12px;margin:0 0 8px">${esc(size)}</p>
+  <p style="font-size:13px;line-height:1.5">${esc(desc)}</p>
   <p style="font-size:12px;color:var(--text-dim);margin:8px 0 0">${esc(s.message)}</p>
   $actionHtml
 </div>"""
