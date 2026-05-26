@@ -7,6 +7,7 @@ import com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.contentOrNull
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -91,28 +92,109 @@ class ClaudeStatusService(
     }
 
     private suspend fun runStatusCommand(projectId: String): ParsedStatus = withContext(Dispatchers.IO) {
-        // v1.3.2 — Claude Code 2.1.x 의 `/status` 는 5탭 TUI 의 Settings 탭만 출력 →
-        // quota 정보가 raw output 에 들어오지 않음. quota 는 별도 `/usage` slash
-        // command 의 결과에 있음. 두 출력을 모두 캡처해서 합산 파싱.
+        // v1.4.0 — Claude Code 2.1.x 부터 모든 slash command 가 --print 모드에서
+        // 차단됨 ("/status isn't available in this environment."). quota 정보는
+        // interactive TUI 의 Usage 탭에서만 보임.
         //
-        //   /status  → model / login method (= plan) / cwd / version
-        //   /usage   → Current session N% + Resets <time>,
-        //              Current week (all models) N% + Resets <time>
+        // 두 가지 path 병행:
+        //   1) `--print --output-format=stream-json --verbose ""` (빈 prompt) →
+        //      init frame 에서 model / apiKeySource / mcp_servers 등 메타데이터.
+        //      cheap (0.1s), 항상 안정적.
+        //   2) `claude-usage-capture.exp` PTY script → TUI Usage 탭 화면 capture.
+        //      ANSI escape + box-drawing 섞여 들어옴. stripAnsi + parseUsageOutput
+        //      이 정리. fragile (Claude UI 변경 시 깨짐), ~5s 소요.
         //
-        // TUI escape sequences (`─`, `█`, ANSI color) 가 섞여 들어오므로
-        // [stripAnsiAndBoxChars] 로 정리 후 parsing.
-        val statusRaw = runOneSlashCommand(projectId, "/status")
-        val usageRaw = runOneSlashCommand(projectId, "/usage")
+        // 두 결과를 합쳐 ClaudeStatusDto 채움.
+        val initRaw = runInitFrame(projectId)
+        val usageRaw = runUsageCapture(projectId)
         val combined = buildString {
-            append(statusRaw)
-            append("\n\n--- /usage ---\n")
+            append("--- /status init frame ---\n")
+            append(initRaw)
+            append("\n\n--- /usage TUI capture ---\n")
             append(usageRaw)
         }
         rawSnapshots[projectId] = RawSnapshot(text = combined.take(64 * 1024), capturedAt = Instant.now())
-        // Two-pass parse — /status 결과로 model/plan, /usage 결과로 session/weekly.
-        val statusParsed = parseOutput(stripAnsiAndBoxChars(statusRaw))
+        val initParsed = parseInitFrame(initRaw)
         val usageParsed = parseUsageOutput(stripAnsiAndBoxChars(usageRaw))
-        statusParsed.merge(usageParsed)
+        initParsed.merge(usageParsed)
+    }
+
+    /**
+     * v1.4.0 — `claude --print --output-format=stream-json --verbose ""` 호출.
+     * 빈 prompt 라 Claude 가 즉시 init + result frame 만 보내고 종료 (~0.1s).
+     * init frame 에 model / apiKeySource / mcp_servers 메타데이터 포함.
+     */
+    private fun runInitFrame(projectId: String): String {
+        val cmd = resolveClaudeCmd()
+        val projectRoot = workspace.projectRoot(projectId).toFile()
+        val workDir = if (projectRoot.isDirectory) projectRoot else workspace.root.toFile()
+        val pb = ProcessBuilder(
+            cmd, "--print", "--output-format=stream-json", "--verbose",
+            "--dangerously-skip-permissions", "",
+        ).directory(workDir).redirectErrorStream(true)
+        com.siamakerlab.vibecoder.server.env.ClaudeProcessEnv.applyApiKey(pb.environment())
+        return runCatching {
+            val proc = pb.start()
+            val output = proc.inputStream.bufferedReader().readText()
+            proc.waitFor(10, TimeUnit.SECONDS)
+            if (proc.isAlive) proc.destroyForcibly()
+            output
+        }.getOrDefault("")
+    }
+
+    /**
+     * v1.4.0 — expect script 로 Claude TUI 의 Usage 탭 화면 capture.
+     * 스크립트 미설치 (dev 환경 등) 시 빈 문자열. timeout 25s.
+     */
+    private fun runUsageCapture(projectId: String): String {
+        val scriptPath = "/usr/local/bin/claude-usage-capture.exp"
+        if (!java.nio.file.Files.exists(java.nio.file.Path.of(scriptPath))) {
+            return ""
+        }
+        val projectRoot = workspace.projectRoot(projectId).toFile()
+        val workDir = if (projectRoot.isDirectory) projectRoot.toString() else workspace.root.toString()
+        val pb = ProcessBuilder(scriptPath, workDir).redirectErrorStream(false)
+        com.siamakerlab.vibecoder.server.env.ClaudeProcessEnv.applyApiKey(pb.environment())
+        return runCatching {
+            val proc = pb.start()
+            val output = proc.inputStream.bufferedReader().readText()
+            proc.waitFor(25, TimeUnit.SECONDS)
+            if (proc.isAlive) proc.destroyForcibly()
+            output
+        }.onFailure { log.debug(it) { "[$projectId] usage capture script failed" } }
+            .getOrDefault("")
+    }
+
+    /**
+     * v1.4.0 — `--print --output-format=stream-json --verbose ""` 결과의
+     * 첫 줄 (system/init frame) 에서 model / apiKeySource 추출.
+     *
+     * frame 예:
+     *   {"type":"system","subtype":"init","model":"claude-opus-4-7[1m]",
+     *    "apiKeySource":"none","slash_commands":[...], "mcp_servers":[...]}
+     */
+    private fun parseInitFrame(raw: String): ParsedStatus {
+        if (raw.isBlank()) return ParsedStatus(null, null, null, null, null)
+        val initLine = raw.lineSequence().firstOrNull { it.contains("\"type\":\"system\"") && it.contains("\"subtype\":\"init\"") }
+            ?: return ParsedStatus(null, null, null, null, null)
+        val json = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(initLine) }.getOrNull()
+            ?: return ParsedStatus(null, null, null, null, null)
+        val obj = (json as? kotlinx.serialization.json.JsonObject) ?: return ParsedStatus(null, null, null, null, null)
+        val model = (obj["model"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+        val keySrc = (obj["apiKeySource"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+        // apiKeySource: "none" → subscription, "ANTHROPIC_API_KEY" / "user" → API key, etc.
+        val plan = when (keySrc) {
+            null, "" -> null
+            "none" -> "Subscription (Pro/Max)"
+            else -> "API key ($keySrc)"
+        }
+        return ParsedStatus(
+            model = model,
+            plan = plan,
+            quotaRemaining = null,
+            usagePercent = null,
+            resetAt = null,
+        )
     }
 
     /** v1.3.2 — single `claude --print /<slash-command>` 호출 helper. 실패 시 빈 문자열. */

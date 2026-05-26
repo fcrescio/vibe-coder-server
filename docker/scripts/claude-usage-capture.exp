@@ -1,0 +1,80 @@
+#!/usr/bin/env expect -f
+# v1.4.0 — Claude Code 2.1.x TUI 의 Usage 탭 PTY capture.
+#
+# 배경: Claude Code 2.1.x 부터 모든 slash command 가 --print 모드에서 차단됨
+# ("/status isn't available in this environment."). quota 정보는 interactive
+# TUI 의 Usage 탭에서만 확인 가능. 본 expect 스크립트는 PTY 안에서 Claude 를
+# spawn → /status 입력 → 5탭 TUI 의 Settings 탭 첫 화면 → → → → → 3번 화살표로
+# Usage 탭 이동 → 화면 capture → Esc + Ctrl-D 로 종료.
+#
+# 매우 fragile — Claude CLI UI 가 변경되면 즉시 깨짐. server v1.4.0 의 trade-off.
+#
+# 사용법: claude-usage-capture.exp <cwd>
+#   cwd: claude 가 spawn 될 디렉토리 (보통 SCRATCH_PROJECT 의 /workspace/__scratch__)
+# 출력: stdout 으로 Usage 탭의 raw screen content. ANSI escape + box-drawing 포함.
+#       server-side stripAnsiAndBoxChars + parseUsageOutput 이 정리.
+# 종료 코드: 성공 0, timeout/spawn 실패 1.
+
+set timeout 20
+set cwd [lindex $argv 0]
+if {$cwd eq ""} { set cwd "/workspace/__scratch__" }
+
+# stdin/stdout 분리: TUI screen 데이터는 stdout 으로만, expect 자체 로그는 stderr.
+log_user 0
+log_file -a /dev/stderr
+
+# 디렉토리 이동 (subprocess 환경 변수 cd) — claude 가 cwd 영향 받음 (.claude/settings.json 검색 등).
+if {[catch {cd $cwd} err]} {
+    puts stderr "expect: cd $cwd failed: $err"
+    exit 1
+}
+
+# Claude TUI spawn. --dangerously-skip-permissions 는 첫 부팅 trust 다이얼로그 회피.
+spawn -noecho claude --dangerously-skip-permissions
+
+# init 완료 대기 — TUI 가 prompt-ready 가 되면 보통 다음 패턴 중 하나가 나옴.
+expect {
+    -re "for shortcuts" {}
+    -re "Bypassing Permissions" {}
+    -re "What is the relative path" {}
+    -re "Try one of these" {}
+    timeout {
+        puts stderr "expect: init timeout"
+        send "\x03"
+        catch {close}
+        exit 1
+    }
+}
+sleep 0.8
+
+# /status dialog 열기 — /usage 도 같은 dialog 첫 화면 (Settings 탭) 으로 시작.
+# 화살표 3번 우측 이동 → Settings → Status → Config → Usage.
+send "/status\r"
+sleep 1.5
+
+# → 화살표 3 번 (Settings 가 0번째라 3 번이면 Usage)
+send "\x1b\[C"; sleep 0.35
+send "\x1b\[C"; sleep 0.35
+send "\x1b\[C"; sleep 0.8
+
+# 이제 Usage 탭 화면 render 완료. stdout 으로 log 시작 — 다음 incoming bytes 부터 캡처.
+log_user 1
+
+# 작은 nudge 로 화면 redraw 유도 (이미 화면이 그려져있어도 expect 가 늦게 본 buffer 를 다시 flush).
+# 'd' / 'w' 가 Usage 탭의 'day' / 'week' 토글 — 한 번 누르면 화면이 다시 그려지면서
+# 우리 stdout 에 정확한 frame 이 흘러들어옴.
+send "w"
+sleep 1.2
+send "w"
+sleep 1.0
+
+# capture 충분. log 중단 후 정리.
+log_user 0
+send "\x1b"      ;# Esc — dialog 닫기
+sleep 0.4
+send "\x04"      ;# Ctrl-D — Claude TUI 종료
+expect {
+    eof {}
+    timeout { catch {close} }
+}
+exit 0
