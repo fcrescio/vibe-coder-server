@@ -177,14 +177,17 @@ internal object TerminalTemplates {
   <p class="dim" style="margin:6px 0 0;font-size:13px">${esc(t("term.intro"))}</p>
 </header>
 
-<!-- xterm.js: BSD-licensed terminal emulator. CDN 사용 (jsdelivr). -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+<!-- xterm.js (BSD) — v1.7.19 로컬 번들. CLAUDE.md §3 의 "외부 CDN 미사용"
+     정책 일관. 이전엔 jsdelivr CDN 이라 사용자 환경 (방화벽/CSP/오프라인)
+     에서 로드 실패 → "연결 끊김" + 검은 화면. 정적 파일은
+     resources/static/admin/vendor/xterm/ 에 commit. -->
+<link rel="stylesheet" href="/static/vendor/xterm/xterm.min.css">
 
 <div id="term-host" style="background:#000;padding:10px;border-radius:8px;height:70vh;min-height:400px"></div>
 <div id="term-status" class="dim" style="font-size:12px;margin-top:6px">${esc(t("term.status.connecting"))}</div>
 
-<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+<script src="/static/vendor/xterm/xterm.min.js"></script>
+<script src="/static/vendor/xterm/addon-fit.min.js"></script>
 <script>
 (function(){
   var status = document.getElementById('term-status');
