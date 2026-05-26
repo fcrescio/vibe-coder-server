@@ -632,6 +632,12 @@ $errHtml
           <input name="cloneBranch" type="text" placeholder="${esc(t("projects.new.branchPlaceholder"))}">
         </label>
         <p class="hint" style="font-size:12px;margin:6px 0 0">${esc(t("projects.new.cloneAutoHint"))}</p>
+        <!-- v1.7.18 — 기존 폴더 (orphan, DB row 없음) 있을 때 강제 덮어쓰기. -->
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer">
+          <input type="checkbox" name="overwrite" value="true">
+          <span>${esc(t("projects.new.overwrite"))}</span>
+        </label>
+        <p class="hint" style="font-size:11px;margin:2px 0 0">${esc(t("projects.new.overwriteHint"))}</p>
       </div>
 
       <!-- empty path: 모든 필드 명시 입력. -->

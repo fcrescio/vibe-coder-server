@@ -101,6 +101,8 @@ fun Routing.webProjectRoutes(
         val cloneUrl = params["cloneUrl"]?.trim()?.ifBlank { null }
         val cloneBranch = params["cloneBranch"]?.trim()?.ifBlank { null }
         val templateId = params["templateId"]?.trim()?.ifBlank { null }
+        // v1.7.18 — clone path 의 "기존 폴더 덮어쓰기" 체크박스.
+        val overwrite = params["overwrite"]?.let { it == "true" || it == "on" || it == "1" } == true
 
         // v1.7.0 — clone path 에선 cloneUrl 만 필수. projectId/appName/packageName
         // 은 ProjectService.register 가 cloneUrl + clone 후 build.gradle.kts 에서 자동 도출.
@@ -136,6 +138,7 @@ fun Routing.webProjectRoutes(
                     cloneUrl = cloneUrl,
                     cloneBranch = cloneBranch,
                     templateId = templateId,
+                    overwrite = overwrite,
                 )
             )
         }

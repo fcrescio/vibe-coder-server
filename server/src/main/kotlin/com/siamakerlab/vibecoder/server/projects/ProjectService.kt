@@ -111,9 +111,24 @@ class ProjectService(
             val svc = gitClone ?: throw ApiException.localized(500, "clone_unavailable",
                 messageKey = "api.project.cloneUnavailable")
             // clone 은 빈 디렉토리에만 — 이미 존재하면 거부.
+            // v1.7.18 — body.overwrite=true 면 기존 폴더 내용 모두 삭제 후 clone.
+            // 사용자가 이전 clone 실패 후 orphan 폴더 정리 없이 재시도하는 흔한 케이스.
             if (srcRoot.exists() && Files.list(srcRoot).use { it.findFirst().isPresent }) {
-                throw ApiException.localized(409, "target_not_empty",
-                    messageKey = "api.project.targetNotEmpty")
+                if (body.overwrite) {
+                    log.info { "[clone:${body.projectId}] overwrite=true — wiping existing $srcRoot" }
+                    runCatching {
+                        Files.walk(srcRoot)
+                            .sorted(Comparator.reverseOrder())
+                            .forEach { Files.deleteIfExists(it) }
+                        if (!srcRoot.exists()) Files.createDirectories(srcRoot)
+                    }.onFailure { e ->
+                        throw ApiException.localized(500, "overwrite_failed",
+                            messageKey = "api.project.overwriteFailed", args = listOf(e.message ?: ""))
+                    }
+                } else {
+                    throw ApiException.localized(409, "target_not_empty",
+                        messageKey = "api.project.targetNotEmpty")
+                }
             }
             log.info { "cloning $url → $srcRoot (branch=${body.cloneBranch ?: "(default)"})" }
             svc.clone(url, srcRoot, body.cloneBranch) { line ->
