@@ -56,6 +56,22 @@ object EnvSetupTemplates {
 </header>
 $flashHtml
 
+<!-- v1.7.13 — build-env 관련 sub-settings quick links. 이전엔 URL 직접 입력해야
+     키스토어/ssh-key/cache/terminal 페이지에 닿을 수 있었음. 사용자 보고
+     ("설정/키스토어관련 메뉴가 안보임") 해소. -->
+<div class="card" style="margin-bottom:16px">
+  <h2 style="margin-bottom:8px">${esc(t("env.subsettings.title"))}</h2>
+  <p class="dim" style="font-size:12px;margin-bottom:10px">${esc(t("env.subsettings.body"))}</p>
+  <div style="display:flex;flex-wrap:wrap;gap:8px">
+    <a href="/settings/keystores" class="chip chip-link">${esc(t("env.subsettings.keystores"))}</a>
+    <a href="/settings/ssh-key" class="chip chip-link">${esc(t("env.subsettings.sshKey"))}</a>
+    <a href="/settings/cache" class="chip chip-link">${esc(t("env.subsettings.cache"))}</a>
+    <a href="/settings/terminal" class="chip chip-link">${esc(t("env.subsettings.terminal"))}</a>
+    <a href="/settings/git-integrations" class="chip chip-link">${esc(t("env.subsettings.gitIntegrations"))}</a>
+    <a href="/env-setup/mcp" class="chip chip-link">${esc(t("env.subsettings.mcp"))}</a>
+  </div>
+</div>
+
 <div class="card" style="margin-bottom:16px">
   <h2>${esc(t("env.welcome.title"))}</h2>
   <p>${esc(t("env.welcome.intro"))}</p>
