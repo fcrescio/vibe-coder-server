@@ -200,16 +200,35 @@ class EnvSetupService(
             }
         }
         val expiresAt = readOauthExpiresAt(credentials)
+        val hasRefresh = readOauthRefreshToken(credentials) != null
         if (expiresAt == null) {
-            return ComponentState(c, ComponentStatus.PARTIAL, "credentials 파일 존재 — 만료 시각 확인 실패")
+            // refresh 토큰만 있어도 CLI 가 자동 재발급 가능.
+            return if (hasRefresh) {
+                ComponentState(c, ComponentStatus.INSTALLED, "credentials 존재 (refresh 가능 · 만료 시각 미확인)")
+            } else {
+                ComponentState(c, ComponentStatus.PARTIAL, "credentials 파일 존재 — 만료 시각 확인 실패")
+            }
         }
         val nowMs = System.currentTimeMillis()
+        // v1.7.8 — 6h → 30m 로 축소 + refresh 토큰 가산점. Claude CLI 가 refresh 로
+        // 자동 재발급 가능하므로 만료 임박이라도 실제론 OK. 6시간 보수치는 false positive
+        // ("부분 인증" / "(비활성)") 의 주된 원인이었음. 사용자 보고 (v1.7.8): 5.34h 남은
+        // 토큰이 두 페이지 모두에서 부정적 라벨로 표시되던 회귀 fix.
+        val IMMINENT_MS = 30 * 60 * 1000L
         return when {
-            expiresAt <= nowMs -> ComponentState(c, ComponentStatus.MISSING, "토큰 만료 — 재로그인 필요")
-            expiresAt - nowMs < 6 * 3600 * 1000L -> ComponentState(c, ComponentStatus.PARTIAL, "곧 만료 — 재로그인 권장")
+            expiresAt <= nowMs && !hasRefresh -> ComponentState(c, ComponentStatus.MISSING, "토큰 만료 — 재로그인 필요")
+            expiresAt <= nowMs -> ComponentState(c, ComponentStatus.INSTALLED, "토큰 만료 (refresh 사용)")
+            expiresAt - nowMs < IMMINENT_MS && !hasRefresh -> ComponentState(c, ComponentStatus.PARTIAL, "30분 이내 만료 — 재로그인 권장")
             else -> ComponentState(c, ComponentStatus.INSTALLED, "로그인됨 (${credentials.fileName})")
         }
     }
+
+    private fun readOauthRefreshToken(file: Path): String? = try {
+        val text = Files.readString(file, Charsets.UTF_8)
+        val root = kotlinx.serialization.json.Json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonObject ?: return null
+        val oauth = root["claudeAiOauth"] as? kotlinx.serialization.json.JsonObject ?: return null
+        (oauth["refreshToken"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+    } catch (_: Throwable) { null }
 
     private fun readOauthExpiresAt(file: Path): Long? = try {
         val text = Files.readString(file, Charsets.UTF_8)

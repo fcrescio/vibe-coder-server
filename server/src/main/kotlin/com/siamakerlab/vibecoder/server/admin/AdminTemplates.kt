@@ -430,10 +430,13 @@ object AdminTemplates {
         val tArgs = { key: String, args: Array<Any?> -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key, *args) }
         val claudeBadge = if (status.claudeAvailable) "<span class=\"ok\">${esc(t("dashboard.claudeOk"))}</span>" else "<span class=\"warn\">${esc(t("dashboard.claudeMissing"))}</span>"
         val sdkBadge = if (status.androidSdkAvailable) "<span class=\"ok\">${esc(t("dashboard.sdkOk"))}</span>" else "<span class=\"warn\">${esc(t("dashboard.sdkMissing"))}</span>"
+        // v1.7.8 — WARNING 의 본 의미가 "Claude 비활성" 이 아니라 "만료 임박 / 형식 확인 불가"
+        // 인데 dashboard.disabled "(비활성)" 라벨이 false positive 였음 — 사용자 보고. 의미
+        // 명확한 dashboard.signinExpiring 으로 대체.
         val authBadge = when (claudeAuth?.status) {
             com.siamakerlab.vibecoder.shared.dto.CheckStatus.OK -> "<span class=\"ok\">${esc(t("dashboard.signedIn"))}</span>"
             com.siamakerlab.vibecoder.shared.dto.CheckStatus.ERROR -> "<span class=\"warn\">${esc(t("dashboard.signinRequired"))}</span>"
-            com.siamakerlab.vibecoder.shared.dto.CheckStatus.WARNING -> "<span class=\"dim\">${esc(t("dashboard.disabled"))}</span>"
+            com.siamakerlab.vibecoder.shared.dto.CheckStatus.WARNING -> "<span class=\"warn\">${esc(t("dashboard.signinExpiring"))}</span>"
             null -> "<span class=\"dim\">-</span>"
         }
         val authHint = if (claudeAuth?.status == com.siamakerlab.vibecoder.shared.dto.CheckStatus.ERROR) {

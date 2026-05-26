@@ -146,26 +146,43 @@ class EnvDiagnostics(private val config: ServerConfig) {
         }
 
         val expiresAt = readOauthExpiresAt(credentials)
+        val hasRefresh = readOauthRefreshToken(credentials) != null
         if (expiresAt == null) {
-            // 파일은 있는데 형식 변경 등으로 파싱 실패 → 신중하게 WARNING.
-            return CheckItemDto(
-                CheckStatus.WARNING, "Claude Auth",
-                "자격증명 파일이 있으나 만료 시각을 확인할 수 없습니다.",
-                detail = "$credentials\n콘솔에서 'Not logged in' 이 뜨면 'docker exec -it --user vibe vibe-coder-server claude login' 으로 재로그인하세요.",
-            )
+            // 파일은 있는데 형식 변경 등으로 파싱 실패. refresh 토큰만 있어도 CLI 자동 재발급 가능.
+            return if (hasRefresh) {
+                CheckItemDto(
+                    CheckStatus.OK, "Claude Auth",
+                    "로그인됨 (refresh 토큰 보유 · 만료 시각 미확인)",
+                    detail = credentials.toString(),
+                )
+            } else {
+                CheckItemDto(
+                    CheckStatus.WARNING, "Claude Auth",
+                    "자격증명 파일이 있으나 만료 시각을 확인할 수 없습니다.",
+                    detail = "$credentials\n콘솔에서 'Not logged in' 이 뜨면 'docker exec -it --user vibe vibe-coder-server claude login' 으로 재로그인하세요.",
+                )
+            }
         }
 
         val nowMs = System.currentTimeMillis()
         val expiryStr = formatInstant(expiresAt)
+        // v1.7.8 — 6h → 30m + refresh 가산점. Claude CLI 가 refreshToken 으로 자동
+        // 재발급 가능하므로 만료 임박이라도 OK. 6시간 보수치가 false positive 의 주된 원인.
+        val IMMINENT_MS = 30 * 60 * 1000L
         return when {
-            expiresAt <= nowMs -> CheckItemDto(
+            expiresAt <= nowMs && !hasRefresh -> CheckItemDto(
                 CheckStatus.ERROR, "Claude Auth",
                 "토큰이 만료되었습니다 (${expiryStr}). 재로그인이 필요합니다.",
                 detail = buildClaudeAuthHelp(cfg) + "\n\n만료된 파일: $credentials",
             )
-            expiresAt - nowMs < 6 * 3600 * 1000L -> CheckItemDto(
+            expiresAt <= nowMs -> CheckItemDto(
+                CheckStatus.OK, "Claude Auth",
+                "로그인됨 (refresh 사용 — 다음 호출 시 자동 재발급)",
+                detail = credentials.toString(),
+            )
+            expiresAt - nowMs < IMMINENT_MS && !hasRefresh -> CheckItemDto(
                 CheckStatus.WARNING, "Claude Auth",
-                "토큰이 곧 만료됩니다 (만료: $expiryStr)",
+                "30분 이내 만료 — 재로그인 권장 (만료: $expiryStr)",
                 detail = "필요하면 'docker exec -it --user vibe vibe-coder-server claude login' 으로 재발급하세요.",
             )
             else -> CheckItemDto(
@@ -175,6 +192,13 @@ class EnvDiagnostics(private val config: ServerConfig) {
             )
         }
     }
+
+    private fun readOauthRefreshToken(file: Path): String? = try {
+        val text = Files.readString(file, Charsets.UTF_8)
+        val root = kotlinx.serialization.json.Json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonObject ?: return null
+        val oauth = root["claudeAiOauth"] as? kotlinx.serialization.json.JsonObject ?: return null
+        (oauth["refreshToken"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+    } catch (_: Throwable) { null }
 
     /**
      * `.credentials.json` 안의 `claudeAiOauth.expiresAt` (epoch ms) 추출.

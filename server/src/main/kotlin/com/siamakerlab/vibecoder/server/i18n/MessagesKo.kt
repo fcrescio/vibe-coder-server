@@ -1061,6 +1061,7 @@ internal object MessagesKo {
         "dashboard.sdkMissing" to "✗ doctor 실행 필요",
         "dashboard.signedIn" to "✓ 로그인됨",
         "dashboard.signinRequired" to "✗ 로그인 필요",
+        "dashboard.signinExpiring" to "△ 만료 임박",
         "dashboard.disabled" to "(비활성)",
         "dashboard.claudeLoginHint" to "로그인: <code>docker exec -it --user vibe vibe-coder-server claude login</code>",
         "dashboard.diskHint" to "임계치 도달 시 등록된 이메일 / webhook 으로 알림. 캐시 정리:",

@@ -1084,6 +1084,7 @@ internal object MessagesEn {
         "dashboard.sdkMissing" to "✗ Run doctor required",
         "dashboard.signedIn" to "✓ Signed in",
         "dashboard.signinRequired" to "✗ Sign-in required",
+        "dashboard.signinExpiring" to "△ Expires soon",
         "dashboard.disabled" to "(disabled)",
         "dashboard.claudeLoginHint" to "Sign in: <code>docker exec -it --user vibe vibe-coder-server claude login</code>",
         "dashboard.diskHint" to "Threshold alerts go to email / webhook. Cache cleanup:",
