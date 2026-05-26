@@ -749,6 +749,32 @@ table.devices small.dim { font-size: 11px; }
 .console-log .log-copy.copied { color: #5ed3a1; }
 .console-log .log-copy svg { display: block; width: 14px; height: 14px; }
 
+/* v1.7.12 — 응답중 spinner. console-log 직후 위치, busy 일 때만 visible. */
+.console-spinner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    color: var(--text-dim);
+    font-size: 12px;
+    user-select: none;
+}
+.console-spinner[hidden] { display: none; }
+.console-spinner .spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid rgba(105,219,124,0.25);
+    border-top-color: #69db7c;
+    animation: vibe-spinner-rotate 0.85s linear infinite;
+    flex-shrink: 0;
+}
+.console-spinner .spinner-label { color: #69db7c; font-weight: 500; }
+@keyframes vibe-spinner-rotate {
+    to { transform: rotate(360deg); }
+}
+
 .console-log .sys .log-label   { color: #6c7a93; }
 .console-log .user .log-label  { color: var(--primary); }
 .console-log .user .log-body   { color: var(--text); }

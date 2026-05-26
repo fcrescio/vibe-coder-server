@@ -937,6 +937,11 @@ $authBannerHtml
 <!-- v1.6.4 — 스크롤 + 우하단 jump-to-bottom 버튼 wrapper. -->
 <div class="console-log-wrap">
   <div id="console-log" class="console-log" aria-live="polite"></div>
+  <!-- v1.7.12 — 응답중 indicator. setInFlight 가 hidden 속성 토글. -->
+  <div id="console-spinner" class="console-spinner" hidden aria-hidden="true">
+    <span class="spinner"></span>
+    <span class="spinner-label">${esc(t("console.busy.responding"))}</span>
+  </div>
   <!--
     v1.7.3 — 서버 재시작 후에도 기존 conversation 이 즉시 보이도록 DB 의 ConversationTurn
     을 inline JSON 으로 embed. WS ring buffer 는 in-memory 이라 재시작 시 휘발 → 이전엔
@@ -1541,10 +1546,13 @@ $authBannerHtml
       busyBadge.textContent = BUSY_IDLE;
     }
   }
+  // v1.7.12 — 응답중 spinner element. console-log 하단에 표시.
+  var spinnerEl = document.getElementById('console-spinner');
   function setInFlight(on) {
     var wasOn = inFlight;
     inFlight = on;
     if (stopBtn) stopBtn.style.display = on ? 'inline-block' : 'none';
+    if (spinnerEl) spinnerEl.hidden = !on;
     updateBusyBadge();
     // busy → idle 전이 시 큐에서 하나 꺼내 자동 발사. 작은 delay 로 UI/server 안정.
     if (wasOn && !on && pendingPrompts.length > 0) {
