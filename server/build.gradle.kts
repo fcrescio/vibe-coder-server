@@ -72,6 +72,12 @@ dependencies {
     // 모두 처리. BouncyCastle / Jackson-CBOR 추이.
     implementation("com.webauthn4j:webauthn4j-core:0.29.1.RELEASE")
 
+    // v1.6.0 — PTY 라이브러리 (workspace terminal). /settings/terminal 에서
+    // 컨테이너 내부 bash 를 spawn — vim/tmux/less 같은 interactive 명령 정상
+    // 동작. native binary 자동 포함 (Linux x86_64 / arm64). 컨테이너 sandbox
+    // 안에서만 작동, 호스트 shell 영향 없음.
+    implementation("org.jetbrains.pty4j:pty4j:0.13.4")
+
     // Test
     testImplementation(libs.junit)
     testImplementation(libs.kotest.assertions.core)

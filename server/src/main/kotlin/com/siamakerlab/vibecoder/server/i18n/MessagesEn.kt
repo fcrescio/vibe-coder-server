@@ -1201,5 +1201,15 @@ internal object MessagesEn {
         "ks.usage.step1" to "Mount the keystore volume into your Android build container or copy files to ../keystores/ on the host before building.",
         "ks.usage.step2" to "In build.gradle.kts, load /home/vibe/keystores/<pkg>-keystore.properties via Properties().load(FileInputStream(...)) inside signingConfigs.release.",
         "ks.usage.step3" to "Optionally read <pkg>-admob.properties for AdMob app/unit IDs — use manifestPlaceholders and buildConfigField.",
+
+        // ─────────────────────────────────────────────── terminal (v1.6.0)
+        "term.title" to "Workspace Terminal",
+        "term.backToSettings" to "← Settings",
+        "term.intro" to "Interactive bash PTY running inside the vibe-coder-server container. Full xterm-256color — vim, tmux, less, htop all work. Working directory: /workspace.",
+        "term.status.connecting" to "Creating session…",
+        "term.status.connectingWs" to "Connecting WS to session",
+        "term.status.connected" to "✓ Connected to session",
+        "term.status.exited" to "Process exited",
+        "term.status.disconnected" to "Disconnected",
     )
 }

@@ -176,6 +176,34 @@ sealed class WsFrame {
     @SerialName("console_replay_end")
     data object ConsoleReplayEnd : WsFrame()
 
+    // endregion
+
+    // region Terminal (v1.6.0 — workspace bash PTY)
+
+    /**
+     * v1.6.0 — Server → client: PTY 의 raw output (ANSI escape 포함).
+     * xterm.js 가 그대로 처리. seq 없음 — terminal 은 history replay 불필요
+     * (재진입 시 server-side history 미보관).
+     */
+    @Serializable
+    @SerialName("terminal_output")
+    data class TerminalOutput(val data: String) : WsFrame()
+
+    /** v1.6.0 — Client → server: 사용자 키 입력 (raw bytes 그대로 PTY stdin). */
+    @Serializable
+    @SerialName("terminal_input")
+    data class TerminalInput(val data: String) : WsFrame()
+
+    /** v1.6.0 — Client → server: terminal resize (rows × cols). xterm.js 의 resize event. */
+    @Serializable
+    @SerialName("terminal_resize")
+    data class TerminalResize(val cols: Int, val rows: Int) : WsFrame()
+
+    /** v1.6.0 — Server → client: PTY 종료. exitCode 와 함께. */
+    @Serializable
+    @SerialName("terminal_exit")
+    data class TerminalExit(val exitCode: Int) : WsFrame()
+
     /** Client → server: send a user prompt over the same WS connection. */
     @Serializable
     @SerialName("user_prompt")

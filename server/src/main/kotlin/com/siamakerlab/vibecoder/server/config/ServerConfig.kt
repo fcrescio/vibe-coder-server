@@ -119,6 +119,11 @@ data class SecuritySection(
     val pairingCodeExpireMinutes: Int = 10,
     val allowRawShell: Boolean = false,
     /**
+     * v1.6.0 — Workspace terminal (PTY bash) 활성. /settings/terminal SSR +
+     * /ws/terminal/{id} WS 라우트가 본 flag 미설정 시 404 반환. opt-in.
+     */
+    val allowTerminal: Boolean = false,
+    /**
      * v0.26.0 — 토큰 idle timeout (분). 0 = 무제한.
      * device.lastSeenAt 가 N 분 이상 갱신되지 않으면 자동 로그아웃 (토큰 거절).
      *

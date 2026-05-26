@@ -1178,5 +1178,15 @@ internal object MessagesKo {
         "ks.usage.step1" to "키스토어 볼륨을 Android 빌드 컨테이너에 마운트하거나, 빌드 전 호스트의 ../keystores/ 로 파일 복사.",
         "ks.usage.step2" to "build.gradle.kts: Properties().load(FileInputStream(\"/home/vibe/keystores/<pkg>-keystore.properties\")) → signingConfigs.release 에 storeFile/storePassword/keyAlias/keyPassword 주입.",
         "ks.usage.step3" to "선택: <pkg>-admob.properties 의 광고 ID 들을 manifestPlaceholders + buildConfigField 로 주입.",
+
+        // ─────────────────────────────────────────────── terminal (v1.6.0)
+        "term.title" to "Workspace 터미널",
+        "term.backToSettings" to "← 설정",
+        "term.intro" to "vibe-coder-server 컨테이너 안에서 작동하는 인터랙티브 bash PTY. 완전한 xterm-256color — vim/tmux/less/htop 모두 사용 가능. 작업 디렉토리: /workspace.",
+        "term.status.connecting" to "세션 생성 중…",
+        "term.status.connectingWs" to "WS 연결 중 — session",
+        "term.status.connected" to "✓ 연결됨 — session",
+        "term.status.exited" to "프로세스 종료됨",
+        "term.status.disconnected" to "연결 끊김",
     )
 }

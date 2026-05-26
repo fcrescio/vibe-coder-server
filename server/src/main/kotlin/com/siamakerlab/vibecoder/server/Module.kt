@@ -22,6 +22,8 @@ import com.siamakerlab.vibecoder.server.admin.sshKeyRoutes
 import com.siamakerlab.vibecoder.server.admin.quotaRoutes
 import com.siamakerlab.vibecoder.server.admin.keystoreRoutes
 import com.siamakerlab.vibecoder.server.admin.KeystoreService
+import com.siamakerlab.vibecoder.server.terminal.terminalRoutes
+import com.siamakerlab.vibecoder.server.terminal.TerminalSessionManager
 import com.siamakerlab.vibecoder.server.admin.envSetupRoutes
 import com.siamakerlab.vibecoder.server.admin.gitIntegrationsRoutes
 import com.siamakerlab.vibecoder.server.admin.mcpRoutes
@@ -337,6 +339,8 @@ fun Application.module(ctx: ServerContext) {
         quotaRoutes(ctx.claudeStatusService)
         // v1.5.0 — Android 키스토어 관리 (설정 → Keystores).
         keystoreRoutes(adminDeps, KeystoreService(defaults = adminDeps.config.keystore.defaults))
+        // v1.6.0 — Workspace terminal (security.allowTerminal=true 일 때만 등록).
+        terminalRoutes(adminDeps, TerminalSessionManager(), ctx.deviceRepo, ctx.tokens)
         // v0.10.0 — admin SSR 라우트들의 JSON API 이중 노출 (vibe-coder-android wire)
         envSetupApiRoutes(
             envSetup = ctx.envSetup,
