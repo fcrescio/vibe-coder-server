@@ -2,7 +2,7 @@ server:
   name: Vibe Coder Server
   host: 0.0.0.0
   port: 17880
-  version: 1.6.0
+  version: 1.6.1
 
 workspace:
   # Each project lives at <root>/<projectId>/.
@@ -24,9 +24,10 @@ security:
   allowRawShell: false
   # v1.6.0 — Workspace terminal (/settings/terminal). 컨테이너 안 bash PTY 를
   # WebSocket 으로 노출 — vim/tmux/less 등 interactive 명령 사용 가능.
-  # 컨테이너 자체 sandbox 안에서만 작동하므로 호스트 영향 없음 (raw shell UI 의
-  # 호스트-level danger 와는 다름). 그래도 기본 비활성 (opt-in).
-  allowTerminal: false
+  # v1.6.1 — 기본 true. 컨테이너 자체 sandbox + admin 인증 가드 두 단계로 충분
+  # 안전. raw shell (호스트-level) 과 달리 컨테이너 안 vibe 사용자 권한 안에서만
+  # 작동. 외부 노출 환경에서 비활성화하려면 false 로 설정.
+  allowTerminal: true
   # v0.26.0 — Bearer 토큰 / 웹 세션 idle timeout (분). 0 = 무제한 (default).
   # 마지막 요청 후 N 분 idle 이면 토큰 자동 폐기 + 401.
   # v0.96.0 — Android client (Bearer 토큰) 가 백그라운드에서 idle 후 재진입 시
