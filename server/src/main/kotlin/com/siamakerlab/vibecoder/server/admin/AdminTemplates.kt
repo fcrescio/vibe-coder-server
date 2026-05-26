@@ -155,10 +155,12 @@ object AdminTemplates {
   var refreshTitle = '${esc(t("quota.refresh"))}';
   function stripTz(reset) {
     if (!reset) return '';
-    // v1.6.2 — "Resets 10:20pm (Asia/Seoul)" → "10:20pm". 괄호 영역 제거 + Resets 접두 제거.
+    // v1.6.2 — "Resets 10:20pm (Asia/Seoul)" → "10:20pm".
+    // v1.7.1 — Kotlin raw string 안에서 \\s 가 JS 로 그대로 새서 매칭 실패하던
+    // 회귀 fix. raw string 은 escape 안 하므로 \s 한 backslash 로 작성.
     return reset
-      .replace(/^Resets\\s+/i, '')
-      .replace(/\\s*\\([^)]*\\)\\s*/g, '')
+      .replace(/^Resets\s+/i, '')
+      .replace(/\s*\([^)]*\)\s*/g, '')
       .trim();
   }
   function bar(label, pct, reset) {
