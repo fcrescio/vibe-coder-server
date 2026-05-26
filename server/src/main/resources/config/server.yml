@@ -2,7 +2,7 @@ server:
   name: Vibe Coder Server
   host: 0.0.0.0
   port: 17880
-  version: 0.95.0
+  version: 0.96.0
 
 workspace:
   # Each project lives at <root>/<projectId>/.
@@ -22,9 +22,12 @@ security:
   pairingEnabled: true
   pairingCodeExpireMinutes: 10
   allowRawShell: false
-  # v0.26.0 — Bearer 토큰 / 웹 세션 idle timeout (분). 0 = 무제한 (legacy).
+  # v0.26.0 — Bearer 토큰 / 웹 세션 idle timeout (분). 0 = 무제한 (default).
   # 마지막 요청 후 N 분 idle 이면 토큰 자동 폐기 + 401.
-  sessionIdleTimeoutMinutes: 30
+  # v0.96.0 — Android client (Bearer 토큰) 가 백그라운드에서 idle 후 재진입 시
+  # 자동 로그아웃되던 UX 문제 회수. 0 = 무제한이 default (LAN 단일 사용자
+  # 도구 특성상 안전). 외부 노출 시 30~60 분 권장.
+  sessionIdleTimeoutMinutes: 0
 
 claude:
   enabled: true

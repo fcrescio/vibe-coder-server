@@ -17,6 +17,8 @@ private val log = KotlinLogging.logger {}
 fun Application.installStatusPages(
     /** v0.92.0 — server default language for ApiException localization fallback. */
     serverDefaultLanguage: String = "en",
+    /** v0.96.0 — Phase 67 closure: optional metrics for ApiException counter. */
+    metrics: com.siamakerlab.vibecoder.server.metrics.MetricsRegistry? = null,
 ) {
     install(StatusPages) {
         exception<ApiException> { call, cause ->
@@ -32,6 +34,14 @@ fun Application.installStatusPages(
                     lang, cause.messageKey, *cause.messageArgs.toTypedArray(),
                 )
             } else cause.message ?: cause.code
+            // v0.96.0 — Phase 67 closure: vibe_api_errors_total{code} 증가.
+            // /metrics 에서 ApiException 분포를 본다 (어떤 code 가 가장 자주 발생하는지).
+            // cardinality 안전: code 는 enum-like 짧은 식별자 (`unauthorized`, `bad_request` 등).
+            metrics?.inc(
+                name = "vibe_api_errors_total",
+                help = "Total ApiException by code (v0.96.0 — Phase 67 closure)",
+                labels = mapOf("code" to cause.code),
+            )
             call.respond(
                 HttpStatusCode.fromValue(cause.statusCode),
                 ApiErrorDto(code = cause.code, message = msg, detail = cause.detail),

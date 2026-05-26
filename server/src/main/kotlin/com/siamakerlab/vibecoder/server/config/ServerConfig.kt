@@ -92,11 +92,15 @@ data class SecuritySection(
     val pairingCodeExpireMinutes: Int = 10,
     val allowRawShell: Boolean = false,
     /**
-     * v0.26.0 — 토큰 idle timeout (분). 0 = 무제한 (legacy behavior).
+     * v0.26.0 — 토큰 idle timeout (분). 0 = 무제한.
      * device.lastSeenAt 가 N 분 이상 갱신되지 않으면 자동 로그아웃 (토큰 거절).
-     * 기본 30분.
+     *
+     * v0.96.0 — default 30 → 0 (무제한). LAN 단일 사용자 도구 특성상 idle 로그아웃은
+     * UX 비용만 크고 보안 이득은 낮다. 특히 android client 가 백그라운드에 들어갔다
+     * 돌아올 때 매번 재로그인을 요구하는 회귀가 있었다.
+     * 외부 노출 환경에서는 server.yml 에서 30~60 같은 양수로 override 권장.
      */
-    val sessionIdleTimeoutMinutes: Int = 30,
+    val sessionIdleTimeoutMinutes: Int = 0,
     /** v0.56.0 — Phase 35 per-IP rate limit. */
     val rateLimit: RateLimitSection = RateLimitSection(),
 )

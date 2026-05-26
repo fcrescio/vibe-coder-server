@@ -260,7 +260,10 @@ fun Application.module(ctx: ServerContext) {
         masking = false
         contentConverter = KotlinxWebsocketSerializationConverter(jsonCfg)
     }
-    installStatusPages(serverDefaultLanguage = ctx.config.i18n.defaultLanguage)
+    installStatusPages(
+        serverDefaultLanguage = ctx.config.i18n.defaultLanguage,
+        metrics = ctx.metrics,
+    )
     // v0.56.0 — Phase 35 per-IP rate limit. Runs BEFORE auth so credential-stuffing
     // attempts get throttled even when they fail. Disabled if config flag off.
     if (ctx.config.security.rateLimit.enabled) {
