@@ -94,12 +94,34 @@ object AdminTemplates {
 """
     }
 
+    /**
+     * v1.7.6 — Lucide-styled inline SVG (MIT). 외부 CDN 미사용 정책 일관.
+     * 24x24 viewBox + stroke currentColor → 다크/라이트 테마 자동 적응. width/height
+     * 20px 는 sidebar nav 의 적정 시각 크기.
+     */
+    private fun navIcon(name: String): String {
+        val inner = when (name) {
+            // Lucide "home"
+            "home" -> """<path d="M3 12 L12 3 L21 12"/><path d="M5 10 V20 H10 V14 H14 V20 H19 V10"/>"""
+            // Lucide "folder"
+            "folder" -> """<path d="M3 7 a2 2 0 0 1 2-2 h4 l2 2 h8 a2 2 0 0 1 2 2 v8 a2 2 0 0 1-2 2 H5 a2 2 0 0 1-2-2 z"/>"""
+            // Lucide "message-square"
+            "chat" -> """<path d="M21 15 a2 2 0 0 1-2 2 H7 l-4 4 V5 a2 2 0 0 1 2-2 h14 a2 2 0 0 1 2 2 z"/>"""
+            // Lucide "wrench" (단순화)
+            "tools" -> """<path d="M14.7 6.3 a4 4 0 0 0-5.4 5.4 L3 18 l3 3 L12.3 14.7 a4 4 0 0 0 5.4-5.4 l-2 2 l-2-2 l2-2 z"/>"""
+            // Lucide "settings"
+            "settings" -> """<circle cx="12" cy="12" r="3"/><path d="M19.4 15 a1.65 1.65 0 0 0 .33 1.82 l.06.06 a2 2 0 1 1-2.83 2.83 l-.06-.06 a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51 V21 a2 2 0 0 1-4 0 v-.09 A1.65 1.65 0 0 0 9 19.4 a1.65 1.65 0 0 0-1.82.33 l-.06.06 a2 2 0 1 1-2.83-2.83 l.06-.06 a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1 H3 a2 2 0 0 1 0-4 h.09 A1.65 1.65 0 0 0 4.6 9 a1.65 1.65 0 0 0-.33-1.82 l-.06-.06 a2 2 0 1 1 2.83-2.83 l.06.06 a1.65 1.65 0 0 0 1.82.33 H9 a1.65 1.65 0 0 0 1-1.51 V3 a2 2 0 0 1 4 0 v.09 a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33 l.06-.06 a2 2 0 1 1 2.83 2.83 l-.06.06 a1.65 1.65 0 0 0-.33 1.82 V9 a1.65 1.65 0 0 0 1.51 1 H21 a2 2 0 0 1 0 4 h-.09 a1.65 1.65 0 0 0-1.51 1 z"/>"""
+            else -> ""
+        }
+        return """<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">$inner</svg>"""
+    }
+
     private fun navHtml(currentPath: String, username: String?, csrf: String?, lang: String = "en"): String {
         val activeTop = SettingsNav.topLevelOf(currentPath)
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
-        fun link(href: String, label: String, key: String): String {
+        fun link(href: String, label: String, key: String, icon: String): String {
             val cls = if (activeTop == key) "active" else ""
-            return """<a href="${esc(href)}" class="${esc(cls)}" data-key="${esc(key)}">${esc(label)}</a>"""
+            return """<a href="${esc(href)}" class="${esc(cls)}" data-key="${esc(key)}" title="${esc(label)}">${navIcon(icon)}<span class="nav-label">${esc(label)}</span></a>"""
         }
         val userBoxHtml: String = if (username != null) {
             val u = esc(username)
@@ -108,21 +130,21 @@ object AdminTemplates {
         val csrfInput = CsrfTokens.hiddenInput(csrf)
         return """
 <nav class="sidebar">
-  <!-- v1.6.2 — brand 옆 상단 접기 toggle. 클릭 시 localStorage + body class 토글. -->
-  <div class="brand" style="display:flex;align-items:center;gap:10px">
-    <img src="/static/icon.png" alt=""
-         style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0">
-    <span style="flex:1">Vibe Coder</span>
-    <button type="button" class="sidebar-toggle" id="sidebar-toggle"
-            title="${esc(t("nav.collapseToggle"))}"
-            aria-label="${esc(t("nav.collapseToggle"))}">⇆</button>
-  </div>
+  <!-- v1.7.6 — 브랜드: 아이콘 위 + 타이틀 아래 (column flex). 전체가 홈으로 가는 link.
+       접힘 상태에선 .brand-title 숨김 + 아이콘만 노출. -->
+  <a href="/" class="brand" title="Vibe Coder">
+    <img src="/static/icon.png" alt="Vibe Coder" class="brand-icon">
+    <span class="brand-title">Vibe Coder</span>
+  </a>
+  <button type="button" class="sidebar-toggle" id="sidebar-toggle"
+          title="${esc(t("nav.collapseToggle"))}"
+          aria-label="${esc(t("nav.collapseToggle"))}">⇆</button>
   <div class="nav-links">
-    ${link("/", t("nav.home"), "dashboard")}
-    ${link("/projects", t("nav.projects"), "projects")}
-    ${link("/chat", "Chat", "chat")}
-    ${link("/tools", t("nav.tools"), "tools")}
-    ${link("/settings", t("nav.settings"), "settings")}
+    ${link("/", t("nav.home"), "dashboard", "home")}
+    ${link("/projects", t("nav.projects"), "projects", "folder")}
+    ${link("/chat", "Chat", "chat", "chat")}
+    ${link("/tools", t("nav.tools"), "tools", "tools")}
+    ${link("/settings", t("nav.settings"), "settings", "settings")}
   </div>
   <!-- v1.3.2 — 전역 Claude 쿼타 pill. v1.6.2 — header 에 refresh 버튼 + 타임존 제거. -->
   <div id="quota-pill" class="quota-pill" hidden></div>

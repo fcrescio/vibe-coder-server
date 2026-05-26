@@ -46,56 +46,90 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
 .sidebar {
     background: var(--bg-elev);
     border-right: 1px solid var(--border);
-    padding: 16px 14px 24px;
+    padding: 20px 14px 24px;
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 16px;
     transition: padding 0.18s ease;
+    align-items: stretch;
 }
 
+/* v1.7.6 — 브랜드: 아이콘 위 + 타이틀 아래 (column). 전체가 홈 link <a>.
+   접힘 시 .brand-title 숨김 → 아이콘만 보임. */
 .brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    color: var(--text);
+    padding: 4px 0;
+    transition: opacity 0.15s ease;
+}
+.brand:hover { opacity: 0.85; text-decoration: none; }
+.brand-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.brand-title {
     font-size: 18px;
     font-weight: 700;
     letter-spacing: -0.5px;
-    color: var(--text);
+    line-height: 1;
 }
 
-/* v1.6.2 — 사이드바 상단 접기 버튼. brand row 우측에 배치. */
+/* v1.6.2 — 사이드바 상단 접기 버튼. v1.7.6 — brand 아래 가운데 배치. */
 .sidebar-toggle {
     background: transparent;
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text-dim);
-    width: 26px;
-    height: 26px;
+    width: 36px;
+    height: 28px;
     padding: 0;
     cursor: pointer;
     font: inherit;
-    line-height: 22px;
+    line-height: 24px;
     text-align: center;
     flex-shrink: 0;
+    align-self: center;
 }
 .sidebar-toggle:hover { background: var(--bg-card); color: var(--text); }
 
-/* v1.6.2 — 접힘 상태에서 브랜드 텍스트 / nav label / quota pill / username 모두 숨김.
-   nav 의 first-letter / icon 같은 미니 라벨 보존은 다음 사이클 — 일단 단순한 폭 축소. */
-:root[data-sidebar-collapsed="1"] .layout .brand span,
-:root[data-sidebar-collapsed="1"] .layout .nav-links a,
+/* v1.7.6 — 접힘 상태:
+   - 브랜드 타이틀, nav 라벨, quota pill, username, logout 모두 숨김.
+   - nav 아이콘은 보존 + 가운데 정렬.
+   - brand-icon 도 살짝 축소 (40px) — 사이드바 폭 56px 안에 자연스럽게.
+   - sidebar padding 좁힘 + center align. */
+:root[data-sidebar-collapsed="1"] .layout .brand-title,
+.layout.sidebar-collapsed .brand-title,
+:root[data-sidebar-collapsed="1"] .layout .nav-links a .nav-label,
+.layout.sidebar-collapsed .nav-links a .nav-label,
 :root[data-sidebar-collapsed="1"] .layout .quota-pill,
-:root[data-sidebar-collapsed="1"] .layout .user-box .user,
-:root[data-sidebar-collapsed="1"] .layout .logout,
-.layout.sidebar-collapsed .brand span,
-.layout.sidebar-collapsed .nav-links a,
 .layout.sidebar-collapsed .quota-pill,
+:root[data-sidebar-collapsed="1"] .layout .user-box .user,
 .layout.sidebar-collapsed .user-box .user,
+:root[data-sidebar-collapsed="1"] .layout .logout,
 .layout.sidebar-collapsed .logout { display: none; }
 
 :root[data-sidebar-collapsed="1"] .layout .sidebar,
-.layout.sidebar-collapsed .sidebar { padding: 16px 8px; gap: 12px; align-items: center; }
+.layout.sidebar-collapsed .sidebar { padding: 12px 8px; gap: 10px; align-items: center; }
+:root[data-sidebar-collapsed="1"] .layout .brand-icon,
+.layout.sidebar-collapsed .brand-icon { width: 40px; height: 40px; }
 :root[data-sidebar-collapsed="1"] .layout .user-box,
 .layout.sidebar-collapsed .user-box { padding-top: 0; border-top: none; }
 :root[data-sidebar-collapsed="1"] .layout .sidebar-toggle,
 .layout.sidebar-collapsed .sidebar-toggle { width: 32px; height: 32px; }
+:root[data-sidebar-collapsed="1"] .layout .nav-links a,
+.layout.sidebar-collapsed .nav-links a {
+    justify-content: center;
+    padding: 8px 0;
+    gap: 0;
+}
 
 .nav-links {
     display: flex;
@@ -107,9 +141,28 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
     padding: 8px 12px;
     border-radius: var(--radius);
     color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+}
+.nav-links a .nav-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    opacity: 0.85;
+}
+.nav-links a .nav-label {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .nav-links a:hover { background: var(--bg-card); color: var(--text); text-decoration: none; }
+.nav-links a:hover .nav-icon { opacity: 1; }
 .nav-links a.active { background: var(--bg-card); color: var(--text); font-weight: 600; }
+.nav-links a.active .nav-icon { opacity: 1; }
 
 .user-box {
     padding-top: 16px;
@@ -796,8 +849,12 @@ pre.diff-block {
         border-right: none;
         border-bottom: 1px solid var(--border);
     }
+    /* v1.7.6 — mobile: brand 는 horizontal (icon + title 한 줄). */
+    .brand { flex-direction: row; gap: 8px; padding: 0; }
+    .brand-icon { width: 32px; height: 32px; }
     .nav-links { flex-direction: row; flex-wrap: wrap; gap: 6px; }
-    .nav-links a { padding: 6px 10px; font-size: 13px; }
+    .nav-links a { padding: 6px 10px; font-size: 13px; gap: 6px; }
+    .nav-links a .nav-icon { width: 16px; height: 16px; }
     .user-box { padding: 0; border: none; margin-left: auto; }
     .user-box .user { display: inline-block; margin-right: 8px; margin-bottom: 0; }
     .logout { width: auto; padding: 6px 14px; }
