@@ -71,6 +71,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gosu \
         gnupg \
         jq \
+        openssh-client \
         openssl \
         sudo \
         tini \

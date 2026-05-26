@@ -60,22 +60,34 @@ for dir in \
     fi
 done
 
-# ─── 2b. SSH 키 자동 발급 (v1.2.0) ─────────────────────────────────────────
+# ─── 2b. SSH 키 자동 발급 (v1.2.0, v1.2.1 graceful degrade) ────────────────
 # 컨테이너 첫 부팅 시 vibe 사용자의 ED25519 SSH 키쌍을 자동 생성.
 # 이미 있으면 절대 덮어쓰지 않음 (서버 업데이트 / 이미지 교체 시 동일 키 유지).
 # 볼륨 마운트로 영속. 재생성은 운영자가 설정 UI 의 "Regenerate" 버튼으로 명시 트리거.
+#
+# v1.2.1 — SSH 키 자동 발급은 *보조* 기능. ssh-keygen 누락 / 생성 실패가 서버
+# 부팅 자체를 막지 않도록 graceful degrade. set -e 환경에서도 안전하게 통과.
 SSH_DIR=/home/vibe/.ssh
 SSH_KEY=$SSH_DIR/id_ed25519
 if [[ ! -f "$SSH_KEY" ]]; then
-    mkdir -p "$SSH_DIR"
-    chown vibe:vibe "$SSH_DIR"
-    chmod 700 "$SSH_DIR"
-    log "SSH 키 (ED25519) 자동 생성 — $SSH_KEY"
-    gosu vibe:vibe ssh-keygen -t ed25519 -f "$SSH_KEY" -N "" \
-        -C "vibe-coder-server@$(hostname)-$(date +%Y%m%d)" >/dev/null
-    chmod 600 "$SSH_KEY"
-    chmod 644 "${SSH_KEY}.pub"
-    ok "SSH 공개 키 생성 완료. 설정 → SSH Key 에서 복사하여 Gitea/GitHub 등록 가능."
+    if ! command -v ssh-keygen >/dev/null 2>&1; then
+        warn "openssh-client 미설치 — SSH 키 자동 생성을 건너뜁니다."
+        warn "git clone/push (SSH) 가 필요하면 이미지에 openssh-client 추가 후 재기동하세요."
+    else
+        mkdir -p "$SSH_DIR"
+        chown vibe:vibe "$SSH_DIR"
+        chmod 700 "$SSH_DIR"
+        log "SSH 키 (ED25519) 자동 생성 — $SSH_KEY"
+        if gosu vibe:vibe ssh-keygen -t ed25519 -f "$SSH_KEY" -N "" \
+            -C "vibe-coder-server@$(hostname)-$(date +%Y%m%d)" >/dev/null
+        then
+            chmod 600 "$SSH_KEY"
+            chmod 644 "${SSH_KEY}.pub"
+            ok "SSH 공개 키 생성 완료. 설정 → SSH Key 에서 복사하여 Gitea/GitHub 등록 가능."
+        else
+            warn "ssh-keygen 실행 실패 — SSH 키 자동 생성을 건너뜁니다 (서버 부팅은 계속)."
+        fi
+    fi
 fi
 # 권한 정리 — 매 부팅마다 idempotent (chmod 가 mounted volume 의 잘못된 mode 정정).
 [[ -d "$SSH_DIR" ]] && chmod 700 "$SSH_DIR" 2>/dev/null || true
