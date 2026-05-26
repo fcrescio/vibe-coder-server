@@ -867,7 +867,9 @@ $authBannerHtml
       ${if (sessionId != null) """ <span class="dim">${esc(sessionId.take(12))}…</span>""" else ""}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <!-- v0.98.0 — busy badge: 사용자가 prompt 보낸 후 Claude 가 응답 중인지 한눈에 -->
+      <!-- v0.98.0 — busy badge: 사용자가 prompt 보낸 후 Claude 가 응답 중인지 한눈에.
+           v1.7.4 — 사용자 요구로 전송 버튼 라인 (hint 라벨 좌측) 으로 이동.
+           id="busy-badge" 는 동일 — JS selector + CSS 모두 변경 없이 그대로 동작. -->
       <style>
         @keyframes vibe-busy-pulse {
           0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(105,219,124,0.55); }
@@ -882,8 +884,6 @@ $authBannerHtml
           background: rgba(255,255,255,0.06); color: var(--text-dim, #888);
         }
       </style>
-      <span id="busy-badge" data-state="idle"
-            style="font-size:12px;padding:3px 10px;border-radius:12px;font-weight:500;white-space:nowrap">${esc(t("console.busy.idle"))}</span>
       $sideLinks
       <button type="button" id="stop-btn" class="chip chip-danger" style="display:none"
               title="${esc(t("console.stop.title"))}">${esc(t("console.stop"))}</button>
@@ -978,9 +978,14 @@ $authBannerHtml
   <textarea id="prompt-input" rows="${if (starterPrompt != null) 8 else 3}" maxlength="32768"
             placeholder="${esc(if (blocking) t("console.input.disabled") else t("console.input.placeholder")).replace("\n", "&#10;")}"
             ${if (blocking) "disabled" else "required"}>${esc(starterPrompt)}</textarea>
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
-    <small class="dim">${esc(if (blocking) t("console.input.blockedHint") else t("console.input.hint"))}</small>
-    <button type="submit" class="primary" id="send-btn" style="width:auto;padding:8px 16px" ${if (blocking) "disabled" else ""}>${esc(t("console.input.send"))}</button>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px">
+    <!-- v1.7.4 — busy 뱃지 + hint 라벨 한 줄. busy 뱃지가 좌측 끝, 그 다음 hint. -->
+    <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+      <span id="busy-badge" data-state="idle"
+            style="font-size:12px;padding:3px 10px;border-radius:12px;font-weight:500;white-space:nowrap;flex-shrink:0">${esc(t("console.busy.idle"))}</span>
+      <small class="dim" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(if (blocking) t("console.input.blockedHint") else t("console.input.hint"))}</small>
+    </div>
+    <button type="submit" class="primary" id="send-btn" style="width:auto;padding:8px 16px;flex-shrink:0" ${if (blocking) "disabled" else ""}>${esc(t("console.input.send"))}</button>
   </div>
 </form>
 
