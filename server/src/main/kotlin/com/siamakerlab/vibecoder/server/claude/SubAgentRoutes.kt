@@ -64,13 +64,14 @@ fun Routing.subAgentRoutes(
         val active = manager.activeAgentsFor(id).toSet()
         val agents = agentRegistry.list()
 
+        val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(sess.language, key) }
         val rowsHtml = if (agents.isEmpty()) {
             """<tr><td colspan="3" class="dim" style="padding:14px;text-align:center">
-              등록된 custom agent 가 없습니다. <a href="/agents" class="chip chip-link">/agents</a> 에서 먼저 추가하세요.
+              ${t("agents.index.empty")}
             </td></tr>"""
         } else agents.joinToString("\n") { a ->
             val live = a.name in active
-            val badge = if (live) """<span class="ok">running</span>""" else """<span class="dim">idle</span>"""
+            val badge = if (live) """<span class="ok">${esc(t("agents.badge.running"))}</span>""" else """<span class="dim">${esc(t("agents.badge.idle"))}</span>"""
             val openHref = "/projects/${esc(p.id)}/agents/${esc(a.name)}/console"
             """
             <tr>
@@ -80,30 +81,28 @@ fun Routing.subAgentRoutes(
                 </div>
               </td>
               <td>$badge</td>
-              <td><a href="$openHref" class="chip chip-link">콘솔 열기 →</a></td>
+              <td><a href="$openHref" class="chip chip-link">${esc(t("agents.openConsole"))}</a></td>
             </tr>"""
         }
 
         val body = """
 <header>
-  <h1>Sub-agent consoles
+  <h1>${esc(t("agents.index.heading"))}
     <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
   </h1>
 </header>
 
 <div class="card" style="margin-bottom:16px">
-  <p style="margin:0 0 8px"><strong>Real multi-agent (v0.44.0+).</strong>
-    각 sub-agent 마다 별도 Claude child process 가 spawn 되어 메인 콘솔과 병렬로 동작합니다.
-    같은 프로젝트 워크스페이스를 공유하므로 reviewer / frontend / backend 같은 역할 분담에 적합합니다.</p>
+  <p style="margin:0 0 8px"><strong>${esc(t("agents.index.intro.title"))}</strong>
+    ${esc(t("agents.index.intro.body"))}</p>
   <p class="dim" style="margin:0;font-size:12px">
-    Idle 30 분 후 자동 SIGTERM (다음 prompt 시 같은 sessionId 로 resume).
-    Agent 별 session-id 는 <code>.vibecoder/agent-sessions/&lt;agent&gt;.id</code> 에 영속.</p>
+    ${t("agents.index.lifecycle")}</p>
 </div>
 
 <div class="card">
   <table class="table" style="width:100%">
     <thead>
-      <tr><th>${esc(com.siamakerlab.vibecoder.server.i18n.Messages.t(sess.language, "table.agent"))}</th><th>${esc(com.siamakerlab.vibecoder.server.i18n.Messages.t(sess.language, "table.status"))}</th><th></th></tr>
+      <tr><th>${esc(t("table.agent"))}</th><th>${esc(t("table.status"))}</th><th></th></tr>
     </thead>
     <tbody>
 $rowsHtml
@@ -112,8 +111,8 @@ $rowsHtml
 </div>
 
 <div style="margin-top:18px">
-  <a href="/projects/${esc(p.id)}/console" class="chip chip-link">← 메인 콘솔</a>
-  <a href="/agents" class="chip chip-link">Agent 정의 관리</a>
+  <a href="/projects/${esc(p.id)}/console" class="chip chip-link">${esc(t("agents.backToMainConsole"))}</a>
+  <a href="/agents" class="chip chip-link">${esc(t("agents.manage"))}</a>
 </div>
 """
         call.respondText(

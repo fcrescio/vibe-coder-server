@@ -19,63 +19,70 @@ import kotlin.io.path.exists
 
 class EnvDiagnostics(private val config: ServerConfig) {
 
-    fun run(): EnvironmentCheckDto {
-        val cli = checkClaude()
+    /**
+     * v1.7.15 — lang 받아 message / detail 을 i18n 키 기반으로 emit. 호출자가
+     * sess.language 전달. API endpoint 등 lang 없는 호출자는 default "en".
+     */
+    fun run(lang: String = "en"): EnvironmentCheckDto {
+        val cli = checkClaude(lang)
         return EnvironmentCheckDto(
-            java = checkJava(),
-            androidSdk = checkAndroidSdk(),
-            git = checkGit(),
+            java = checkJava(lang),
+            androidSdk = checkAndroidSdk(lang),
+            git = checkGit(lang),
             claude = cli,
             workspace = checkWorkspace(),
-            claudeAuth = checkClaudeAuth(cli),
+            claudeAuth = checkClaudeAuth(cli, lang),
         )
     }
 
-    private fun checkJava(): CheckItemDto {
+    private fun t(lang: String, key: String, vararg args: Any?): String =
+        com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key, *args)
+
+    private fun checkJava(lang: String): CheckItemDto {
         val version = runtimeCommand(listOf("java", "-version"))
         return if (version.exitCode == 0) {
-            CheckItemDto(CheckStatus.OK, "JDK", "java is installed", detail = version.combined.take(200))
+            CheckItemDto(CheckStatus.OK, "JDK", t(lang, "diag.jdk.ok"), detail = version.combined.take(200))
         } else {
-            CheckItemDto(CheckStatus.ERROR, "JDK", "java not found", detail = version.combined.take(200))
+            CheckItemDto(CheckStatus.ERROR, "JDK", t(lang, "diag.jdk.notFound"), detail = version.combined.take(200))
         }
     }
 
-    private fun checkAndroidSdk(): CheckItemDto {
+    private fun checkAndroidSdk(lang: String): CheckItemDto {
         val sdkRoot = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
         return when {
             sdkRoot.isNullOrBlank() ->
                 CheckItemDto(
                     CheckStatus.WARNING, "Android SDK",
-                    "ANDROID_HOME and ANDROID_SDK_ROOT are both unset",
+                    t(lang, "diag.sdk.warnMissing"),
                     detail = "Gradle builds will fail unless local.properties sdk.dir is set per project."
                 )
             !Path.of(sdkRoot).exists() ->
                 CheckItemDto(
                     CheckStatus.ERROR, "Android SDK",
-                    "$sdkRoot does not exist", detail = null
+                    t(lang, "diag.sdk.errInvalid") + ": $sdkRoot", detail = null
                 )
             else ->
-                CheckItemDto(CheckStatus.OK, "Android SDK", "ANDROID_HOME=$sdkRoot", detail = null)
+                CheckItemDto(CheckStatus.OK, "Android SDK", t(lang, "diag.sdk.ok", sdkRoot), detail = null)
         }
     }
 
-    private fun checkGit(): CheckItemDto {
+    private fun checkGit(lang: String): CheckItemDto {
         val v = runtimeCommand(listOf("git", "--version"))
         return if (v.exitCode == 0)
-            CheckItemDto(CheckStatus.OK, "Git", v.combined.trim().ifBlank { "git installed" }, detail = null)
+            CheckItemDto(CheckStatus.OK, "Git", v.combined.trim().ifBlank { t(lang, "diag.git.ok") }, detail = null)
         else
-            CheckItemDto(CheckStatus.ERROR, "Git", "git CLI not found", detail = v.combined.take(200))
+            CheckItemDto(CheckStatus.ERROR, "Git", t(lang, "diag.git.notFound"), detail = v.combined.take(200))
     }
 
-    private fun checkClaude(): CheckItemDto {
+    private fun checkClaude(lang: String): CheckItemDto {
         if (!config.claude.enabled)
-            return CheckItemDto(CheckStatus.WARNING, "Claude Code", "claude.enabled is false")
+            return CheckItemDto(CheckStatus.WARNING, "Claude Code", t(lang, "diag.claudeCli.disabled"))
         val cmd = resolveClaudeCmd()
         val v = runtimeCommand(listOf(cmd, "--version"))
         return if (v.exitCode == 0)
-            CheckItemDto(CheckStatus.OK, "Claude Code", v.combined.trim().ifBlank { "claude installed" }, detail = "cmd=$cmd")
+            CheckItemDto(CheckStatus.OK, "Claude Code", v.combined.trim().ifBlank { t(lang, "diag.claudeCli.ok") }, detail = "cmd=$cmd")
         else
-            CheckItemDto(CheckStatus.ERROR, "Claude Code", "claude CLI not found", detail = "tried `$cmd --version` (set CLAUDE_CMD env)")
+            CheckItemDto(CheckStatus.ERROR, "Claude Code", t(lang, "diag.claudeCli.notFound"), detail = t(lang, "diag.claudeCli.tried", cmd))
     }
 
     /**
@@ -95,51 +102,41 @@ class EnvDiagnostics(private val config: ServerConfig) {
      * 만료된 자격증명을 들고 콘솔에서 "Not logged in" 을 받는데도 빌드환경
      * 페이지에서 "로그인됨" 으로 표시되던 false positive 해결.
      */
-    private fun checkClaudeAuth(cli: CheckItemDto): CheckItemDto {
+    private fun checkClaudeAuth(cli: CheckItemDto, lang: String): CheckItemDto {
         if (!config.claude.enabled) {
-            return CheckItemDto(CheckStatus.WARNING, "Claude Auth", "claude.enabled is false")
+            return CheckItemDto(CheckStatus.WARNING, "Claude Auth", t(lang, "diag.claudeAuth.disabled"))
         }
         if (cli.status != CheckStatus.OK) {
             return CheckItemDto(
                 CheckStatus.ERROR, "Claude Auth",
-                "Claude CLI 가 먼저 설치되어야 인증을 확인할 수 있습니다.",
-                detail = "vibe-doctor 또는 'npm i -g @anthropic-ai/claude-code' 로 CLI 설치 후 다시 시도하세요.",
+                t(lang, "diag.claudeAuth.cliMissing"),
+                detail = t(lang, "diag.claudeAuth.cliMissingDetail"),
             )
         }
 
         val cfg = claudeConfigDir()
         // v0.7.0 — API 키 모드 (.env.api-key 등록) 가 OAuth 자격증명 검사보다 우선.
-        // 등록되어 있으면 OAuth 자격증명 유무와 무관하게 OK.
         val apiKey = ClaudeProcessEnv.readApiKey(cfg.resolve(".env.api-key"))
         if (apiKey != null) {
             return CheckItemDto(
                 CheckStatus.OK, "Claude Auth",
-                "API 키 모드 (ANTHROPIC_API_KEY)",
-                detail = "${cfg.resolve(".env.api-key")} — 길이 ${apiKey.length}자, 'sk-' 접두 확인됨.",
+                t(lang, "diag.claudeAuth.apiKey"),
+                detail = t(lang, "diag.claudeAuth.apiKeyDetail", cfg.resolve(".env.api-key").toString(), apiKey.length),
             )
         }
         val credentials = cfg.resolve(".credentials.json")
         if (!credentials.exists()) {
-            // 잘못된 위치 (/root/.claude) 에 토큰이 떨어진 흔적이 있는지 별도 안내.
-            // `docker exec` 의 기본 사용자가 root 라서 vibe 가 아닌 root home 에 저장되는
-            // 흔한 실수. 사용자에게 명확한 정정 명령을 안내한다.
             val stray = findStrayCredentials(cfg)
             return if (stray != null) {
                 CheckItemDto(
                     CheckStatus.ERROR, "Claude Auth",
-                    "토큰이 잘못된 사용자(root) 의 홈에 저장되었습니다 — 재로그인 필요.",
-                    detail = """발견 위치: $stray
-실제 서버가 보는 위치: $credentials
-
-해결: `docker exec` 의 기본 사용자가 root 라 vibe 사용자의 ~/.claude 가 아닌
-/root/.claude 에 저장됐습니다. 다음 명령으로 vibe 사용자로 실행해 다시 로그인하세요:
-
-  docker exec -it --user vibe vibe-coder-server claude login""",
+                    t(lang, "diag.claudeAuth.strayRoot"),
+                    detail = t(lang, "diag.claudeAuth.strayRootDetail", stray.toString(), credentials.toString()),
                 )
             } else {
                 CheckItemDto(
                     CheckStatus.ERROR, "Claude Auth",
-                    "Claude CLI 로그인이 필요합니다.",
+                    t(lang, "diag.claudeAuth.loginRequired"),
                     detail = buildClaudeAuthHelp(cfg),
                 )
             }
@@ -148,46 +145,43 @@ class EnvDiagnostics(private val config: ServerConfig) {
         val expiresAt = readOauthExpiresAt(credentials)
         val hasRefresh = readOauthRefreshToken(credentials) != null
         if (expiresAt == null) {
-            // 파일은 있는데 형식 변경 등으로 파싱 실패. refresh 토큰만 있어도 CLI 자동 재발급 가능.
             return if (hasRefresh) {
                 CheckItemDto(
                     CheckStatus.OK, "Claude Auth",
-                    "로그인됨 (refresh 토큰 보유 · 만료 시각 미확인)",
+                    t(lang, "diag.claudeAuth.refreshOnlyOk"),
                     detail = credentials.toString(),
                 )
             } else {
                 CheckItemDto(
                     CheckStatus.WARNING, "Claude Auth",
-                    "자격증명 파일이 있으나 만료 시각을 확인할 수 없습니다.",
-                    detail = "$credentials\n콘솔에서 'Not logged in' 이 뜨면 'docker exec -it --user vibe vibe-coder-server claude login' 으로 재로그인하세요.",
+                    t(lang, "diag.claudeAuth.parseWarn"),
+                    detail = t(lang, "diag.claudeAuth.parseWarnDetail", credentials.toString()),
                 )
             }
         }
 
         val nowMs = System.currentTimeMillis()
         val expiryStr = formatInstant(expiresAt)
-        // v1.7.8 — 6h → 30m + refresh 가산점. Claude CLI 가 refreshToken 으로 자동
-        // 재발급 가능하므로 만료 임박이라도 OK. 6시간 보수치가 false positive 의 주된 원인.
         val IMMINENT_MS = 30 * 60 * 1000L
         return when {
             expiresAt <= nowMs && !hasRefresh -> CheckItemDto(
                 CheckStatus.ERROR, "Claude Auth",
-                "토큰이 만료되었습니다 (${expiryStr}). 재로그인이 필요합니다.",
-                detail = buildClaudeAuthHelp(cfg) + "\n\n만료된 파일: $credentials",
+                t(lang, "diag.claudeAuth.expiredHard", expiryStr),
+                detail = t(lang, "diag.claudeAuth.expiredHardDetail", buildClaudeAuthHelp(cfg), credentials.toString()),
             )
             expiresAt <= nowMs -> CheckItemDto(
                 CheckStatus.OK, "Claude Auth",
-                "로그인됨 (refresh 사용 — 다음 호출 시 자동 재발급)",
+                t(lang, "diag.claudeAuth.expiredRefresh"),
                 detail = credentials.toString(),
             )
             expiresAt - nowMs < IMMINENT_MS && !hasRefresh -> CheckItemDto(
                 CheckStatus.WARNING, "Claude Auth",
-                "30분 이내 만료 — 재로그인 권장 (만료: $expiryStr)",
-                detail = "필요하면 'docker exec -it --user vibe vibe-coder-server claude login' 으로 재발급하세요.",
+                t(lang, "diag.claudeAuth.imminent", expiryStr),
+                detail = t(lang, "diag.claudeAuth.imminentDetail"),
             )
             else -> CheckItemDto(
                 CheckStatus.OK, "Claude Auth",
-                "로그인됨 (만료: $expiryStr)",
+                t(lang, "diag.claudeAuth.okExpiry", expiryStr),
                 detail = credentials.toString(),
             )
         }

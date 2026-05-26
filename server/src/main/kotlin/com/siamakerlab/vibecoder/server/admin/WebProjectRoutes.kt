@@ -211,7 +211,7 @@ fun Routing.webProjectRoutes(
         // v0.18.0 — 등록 직후 첫 console 진입이면 starter prompt 를 자동 입력 (소비).
         val starterPrompt = projects.consumeStarterPrompt(id)
         // Claude CLI 인증 상태 진단. CLI 자체와 자격증명 파일 둘 다 검사.
-        val env = authDeps.envDiagnostics.run()
+        val env = authDeps.envDiagnostics.run(sess.language)
         // v1.7.3 — DB conversation history (last 200 turn, ASC). sessionId 가 있을 때만
         // 해당 세션 turn 만 조회. 없으면 — 새 프로젝트 또는 last id 없는 케이스 — 빈 list.
         val history = if (sid != null) {
@@ -702,7 +702,7 @@ fun Routing.webProjectRoutes(
         val p = projects.ensureScratchProject()
         val alive = sessionManager.isAlive(p.id)
         val sid = sessionManager.currentSessionId(p.id)
-        val env = authDeps.envDiagnostics.run()
+        val env = authDeps.envDiagnostics.run(sess.language)
         // v1.7.3 — General Chat 도 동일하게 history 영속 복원.
         val history = if (sid != null) {
             runCatching {
