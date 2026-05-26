@@ -368,42 +368,53 @@ class ClaudeStatusService(
      */
     private fun parseUsageOutput(raw: String): ParsedStatus {
         if (raw.isBlank()) return ParsedStatus(null, null, null, null, null)
-        val lines = raw.lines().map { it.trim() }
+        // v1.5.2 — 라인 단위 매칭 폐기. ANSI cursor positioning 이 strip 후 단어
+        // 일부를 소실시키는 케이스 (예: "Current session" → "Curret session", n
+        // 글자 사라짐) 가 흔해서 line.contains("current session") 매칭 fail.
+        //
+        // 대신 % 매치 좌측 context window (60 chars) 에서 키워드 검사:
+        //   - "sess" 가 있고 "week" 가 없으면 → session
+        //   - "week" 가 있고 "sess" 가 없으면 → weekly
+        //   - "sonnet" 가 있으면 skip (변종)
+        // % 매치 직후 같은 줄 또는 다음 100 chars 안의 "Resets <text>" 와 짝지음.
         val percentRegex = Regex("(\\d{1,3})\\s*%\\s*used", RegexOption.IGNORE_CASE)
-        val resetRegex = Regex("^Resets\\s+(.+)$", RegexOption.IGNORE_CASE)
+        val resetRegex = Regex("Resets\\s+([^\\n\\r]+?)(?=\\s{2,}|[\\n\\r]|$)", RegexOption.IGNORE_CASE)
 
         var sessionUsage: Int? = null
         var weeklyUsage: Int? = null
         var sessionReset: String? = null
         var weeklyReset: String? = null
 
-        // v1.5.1 — substring contains 매칭. TUI 의 ANSI cursor positioning 으로
-        // 한 줄에 헤더 + 다음 콘텐츠가 합쳐지는 경우 있어 strict match 는 fail.
-        // sonnet-only 변종 (별도 fields 없음) 은 명시 skip.
-        for ((i, line) in lines.withIndex()) {
-            val lower = line.lowercase()
-            val hasSession = lower.contains("current session") && !lower.contains("sonnet")
-            val hasWeekly = lower.contains("current week") && !lower.contains("sonnet")
-            val isSessionHeader = hasSession && !hasWeekly
-            val isWeeklyHeader = hasWeekly && !hasSession
-            if (!isSessionHeader && !isWeeklyHeader) continue
+        for (m in percentRegex.findAll(raw)) {
+            val pct = m.groupValues[1].toIntOrNull()?.coerceIn(0, 100) ?: continue
+            // 좌측 60 chars context window
+            val ctxStart = (m.range.first - 60).coerceAtLeast(0)
+            val ctxLower = raw.substring(ctxStart, m.range.first).lowercase()
+            // 한 줄 안에 헤더 다음 % 가 같이 나오는 경우 흔하므로, 가장 가까운
+            // 키워드 우선 — context 의 마지막 (= % 직전) 에서 검색.
+            val sessIdx = ctxLower.lastIndexOf("sess")
+            val weekIdx = ctxLower.lastIndexOf("week")
+            val sonnet = ctxLower.contains("sonnet")
+            if (sonnet) continue
+            val isSession = sessIdx >= 0 && sessIdx > weekIdx
+            val isWeek = weekIdx >= 0 && weekIdx > sessIdx
+            if (!isSession && !isWeek) continue
 
-            // v1.5.1 — 같은 라인부터 lookahead. ANSI strip 후 같은 라인에 헤더 +
-            // bar + percent + reset 가 모두 들어있는 경우 대응.
-            for (j in i..minOf(i + 4, lines.lastIndex)) {
-                val l = lines[j]
-                val pct = percentRegex.find(l)?.groupValues?.get(1)?.toIntOrNull()?.coerceIn(0, 100)
-                if (pct != null) {
-                    if (isSessionHeader && sessionUsage == null) sessionUsage = pct
-                    if (isWeeklyHeader && weeklyUsage == null) weeklyUsage = pct
-                }
-                val reset = resetRegex.find(l)?.groupValues?.get(1)?.trim()
-                if (reset != null) {
-                    if (isSessionHeader && sessionReset == null) sessionReset = "Resets $reset"
-                    if (isWeeklyHeader && weeklyReset == null) weeklyReset = "Resets $reset"
-                }
+            // % 매치 직후 100 chars 안에서 첫 Resets 찾기.
+            val resetCtxEnd = (m.range.last + 100).coerceAtMost(raw.length - 1)
+            val resetCtx = raw.substring(m.range.last + 1, resetCtxEnd + 1)
+            val resetMatch = resetRegex.find(resetCtx)?.groupValues?.get(1)?.trim()
+            val resetText = resetMatch?.let { "Resets $it" }
+
+            if (isSession) {
+                if (sessionUsage == null) sessionUsage = pct
+                if (sessionReset == null && resetText != null) sessionReset = resetText
+            } else if (isWeek) {
+                if (weeklyUsage == null) weeklyUsage = pct
+                if (weeklyReset == null && resetText != null) weeklyReset = resetText
             }
         }
+
         val legacyUsage = maxOf(sessionUsage ?: -1, weeklyUsage ?: -1).takeIf { it >= 0 }
         val legacyReset = sessionReset ?: weeklyReset
         return ParsedStatus(

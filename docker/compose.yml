@@ -67,8 +67,11 @@ services:
       PGID: ${PGID:-1000}
       TZ: ${TZ:-Asia/Seoul}
 
-      # JVM 힙 (호스트 RAM 보고 조정)
-      JAVA_OPTS: ${JAVA_OPTS:--Xmx2g -XX:+UseG1GC -Dfile.encoding=UTF-8}
+      # JVM 힙 (호스트 RAM 보고 조정).
+      # v1.5.2 — -Duser.timezone 명시로 Java/Kotlin DateTime 클래스가 컨테이너
+      # TZ 와 일관 동작. Claude `/usage` 의 reset 시각 (예: "Resets 10:20pm
+      # (Asia/Seoul)") 과 server-side timestamp / DB UTC 변환 일관성 유지.
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx2g -XX:+UseG1GC -Dfile.encoding=UTF-8 -Duser.timezone=${TZ:-Asia/Seoul}}
 
       # 첫 실행 시 admin 자동 생성 (선택). 미지정 시 /admin/setup 화면.
       VIBECODER_ADMIN_USERNAME: ${VIBECODER_ADMIN_USERNAME:-}
