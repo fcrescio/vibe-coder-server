@@ -1166,6 +1166,7 @@ internal object MessagesEn {
         "quota.resetPrefix" to "resets",
         "quota.refresh" to "Refresh",
         "nav.collapseToggle" to "Collapse / expand sidebar",
+        "console.jumpToLatest" to "Jump to latest",
 
         // ─────────────────────────────────────────────── keystores (v1.5.0)
         "ks.title" to "Android Keystores",

@@ -1143,6 +1143,7 @@ internal object MessagesKo {
         "quota.resetPrefix" to "초기화",
         "quota.refresh" to "새로고침",
         "nav.collapseToggle" to "사이드바 접기/펴기",
+        "console.jumpToLatest" to "최하단으로",
 
         // ─────────────────────────────────────────────── keystores (v1.5.0)
         "ks.title" to "Android 키스토어",

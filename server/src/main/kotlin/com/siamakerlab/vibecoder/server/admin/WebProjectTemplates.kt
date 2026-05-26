@@ -863,7 +863,14 @@ $authBannerHtml
   </div>
 </details>
 
-<div id="console-log" class="console-log" aria-live="polite"></div>
+<!-- v1.6.4 — 스크롤 + 우하단 jump-to-bottom 버튼 wrapper. -->
+<div class="console-log-wrap">
+  <div id="console-log" class="console-log" aria-live="polite"></div>
+  <button type="button" id="console-jump-bottom" class="console-jump-bottom"
+          title="${esc(t("console.jumpToLatest"))}" aria-label="${esc(t("console.jumpToLatest"))}">
+    ↓<span class="badge" id="console-jump-badge" style="display:none">0</span>
+  </button>
+</div>
 
 <!--
   v1.6.3 — 사용자 요구 순서 (콘솔 본문 → 아래로):
@@ -965,16 +972,60 @@ $authBannerHtml
     sumEl.textContent = hidden.length === 0 ? '' : '— ' + hidden.length + ' hidden';
   }
 
+  // v1.6.4 — 우하단 jump-to-bottom 버튼 + unread badge.
+  var jumpBtn = document.getElementById('console-jump-bottom');
+  var jumpBadge = document.getElementById('console-jump-badge');
+  var unreadCount = 0;
+
+  function isAtBottom() {
+    return logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 12;
+  }
+  function setJumpVisible(v) {
+    if (!jumpBtn) return;
+    if (v) jumpBtn.classList.add('visible');
+    else jumpBtn.classList.remove('visible');
+  }
+  function setUnread(n) {
+    unreadCount = n;
+    if (!jumpBadge) return;
+    if (n > 0) {
+      jumpBadge.textContent = n > 99 ? '99+' : String(n);
+      jumpBadge.style.display = 'inline-block';
+    } else {
+      jumpBadge.style.display = 'none';
+    }
+  }
+  function scrollToBottom() {
+    logEl.scrollTop = logEl.scrollHeight;
+    setUnread(0);
+    setJumpVisible(false);
+  }
+  if (jumpBtn) jumpBtn.addEventListener('click', scrollToBottom);
+  logEl.addEventListener('scroll', function(){
+    if (isAtBottom()) {
+      setUnread(0);
+      setJumpVisible(false);
+    } else if (!jumpBtn || !jumpBtn.classList.contains('visible')) {
+      setJumpVisible(true);
+    }
+  });
+
   function append(cls, label, body, cat) {
     cat = cat || 'ws';
-    var atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 10;
+    var atBottom = isAtBottom();
     var row = document.createElement('div');
     row.className = 'log-line ' + cls;
     row.dataset.filterCat = cat;
     if (!isVisible(cat)) row.style.display = 'none';
     row.innerHTML = '<span class="log-label">' + escHtml(label) + '</span><span class="log-body">' + escHtml(body) + '</span>';
     logEl.appendChild(row);
-    if (atBottom && row.style.display !== 'none') logEl.scrollTop = logEl.scrollHeight;
+    if (atBottom && row.style.display !== 'none') {
+      logEl.scrollTop = logEl.scrollHeight;
+    } else if (row.style.display !== 'none') {
+      // 사용자가 위로 스크롤 중 — unread 카운트 + jump 버튼 표시.
+      setUnread(unreadCount + 1);
+      setJumpVisible(true);
+    }
   }
 
   // 필터 체크박스 wiring — 페이지 로드 직후 1회.
