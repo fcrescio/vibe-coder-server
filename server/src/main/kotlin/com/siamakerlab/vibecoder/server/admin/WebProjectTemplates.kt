@@ -815,6 +815,36 @@ $authBannerHtml
   -->
 </div>
 
+<!-- v0.97.0 — 콘솔 메시지 필터. 엑셀 필터 스타일. mandatory 항목은 disabled. -->
+<details id="console-filter" style="margin-bottom:6px;font-size:12px">
+  <summary style="cursor:pointer;color:var(--text-dim);padding:4px 0;user-select:none">
+    🔍 ${esc(t("console.filter.title"))} <span id="filter-summary" class="dim" style="font-size:11px"></span>
+  </summary>
+  <div style="padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid #2a2a2a;border-radius:6px;margin-top:4px">
+    <p class="hint" style="margin:0 0 8px;font-size:11px">${esc(t("console.filter.hint"))}</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+      <div>
+        <div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">${esc(t("console.filter.mandatory"))}</div>
+        <label style="display:block;padding:2px 0;opacity:0.7;cursor:not-allowed"><input type="checkbox" class="filter-cb" data-cat="assistant" checked disabled> ${esc(t("console.filter.cat.assistant"))}</label>
+        <label style="display:block;padding:2px 0;opacity:0.7;cursor:not-allowed"><input type="checkbox" class="filter-cb" data-cat="error" checked disabled> ${esc(t("console.filter.cat.error"))}</label>
+        <label style="display:block;padding:2px 0;opacity:0.7;cursor:not-allowed"><input type="checkbox" class="filter-cb" data-cat="system" checked disabled> ${esc(t("console.filter.cat.system"))}</label>
+      </div>
+      <div>
+        <div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">${esc(t("console.filter.optional"))}</div>
+        <label style="display:block;padding:2px 0;cursor:pointer"><input type="checkbox" class="filter-cb" data-cat="tool_use" checked> ${esc(t("console.filter.cat.tool_use"))}</label>
+        <label style="display:block;padding:2px 0;cursor:pointer"><input type="checkbox" class="filter-cb" data-cat="tool_result" checked> ${esc(t("console.filter.cat.tool_result"))}</label>
+        <label style="display:block;padding:2px 0;cursor:pointer"><input type="checkbox" class="filter-cb" data-cat="session" checked> ${esc(t("console.filter.cat.session"))}</label>
+        <label style="display:block;padding:2px 0;cursor:pointer"><input type="checkbox" class="filter-cb" data-cat="done" checked> ${esc(t("console.filter.cat.done"))}</label>
+        <label style="display:block;padding:2px 0;cursor:pointer"><input type="checkbox" class="filter-cb" data-cat="replay" checked> ${esc(t("console.filter.cat.replay"))}</label>
+        <label style="display:block;padding:2px 0;cursor:pointer"><input type="checkbox" class="filter-cb" data-cat="ws" checked> ${esc(t("console.filter.cat.ws"))}</label>
+      </div>
+    </div>
+    <div style="margin-top:6px;display:flex;justify-content:flex-end">
+      <button type="button" id="filter-reset" class="chip chip-link" style="font-size:11px;padding:3px 10px">${esc(t("console.filter.reset"))}</button>
+    </div>
+  </div>
+</details>
+
 <div id="console-log" class="console-log" aria-live="polite"></div>
 
 <div style="display:flex;justify-content:flex-end;margin-bottom:6px;gap:4px;flex-wrap:wrap">
@@ -854,14 +884,87 @@ $authBannerHtml
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  function append(cls, label, body) {
+  // v0.97.0 — 콘솔 메시지 필터링.
+  // mandatory 카테고리 (assistant/error/system) 는 disabled checkbox — 항상 표시.
+  // optional 카테고리 6 개는 localStorage 영속 토글.
+  // append(cls, label, body, cat) → row.dataset.filterCat = cat, 필터 적용.
+  var FILTER_KEY = 'vibe-console-filter-' + projectId;
+  var MANDATORY_CATS = ['assistant', 'error', 'system'];
+  var OPTIONAL_CATS = ['tool_use', 'tool_result', 'session', 'done', 'replay', 'ws'];
+  var filterState = (function() {
+    try {
+      var raw = localStorage.getItem(FILTER_KEY);
+      if (!raw) return {};
+      var parsed = JSON.parse(raw);
+      return typeof parsed === 'object' && parsed !== null ? parsed : {};
+    } catch (e) { return {}; }
+  })();
+  function isVisible(cat) {
+    if (MANDATORY_CATS.indexOf(cat) >= 0) return true;
+    return filterState[cat] !== false;  // 기본 true.
+  }
+  function persistFilter() {
+    try { localStorage.setItem(FILTER_KEY, JSON.stringify(filterState)); } catch (e) {}
+  }
+  function applyFilterToAll() {
+    var rows = logEl.querySelectorAll('.log-line');
+    for (var i = 0; i < rows.length; i++) {
+      var c = rows[i].dataset.filterCat || 'ws';
+      rows[i].style.display = isVisible(c) ? '' : 'none';
+    }
+    updateFilterSummary();
+  }
+  function updateFilterSummary() {
+    var sumEl = document.getElementById('filter-summary');
+    if (!sumEl) return;
+    var hidden = OPTIONAL_CATS.filter(function(c) { return filterState[c] === false; });
+    sumEl.textContent = hidden.length === 0 ? '' : '— ' + hidden.length + ' hidden';
+  }
+
+  function append(cls, label, body, cat) {
+    cat = cat || 'ws';
     var atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 10;
     var row = document.createElement('div');
     row.className = 'log-line ' + cls;
+    row.dataset.filterCat = cat;
+    if (!isVisible(cat)) row.style.display = 'none';
     row.innerHTML = '<span class="log-label">' + escHtml(label) + '</span><span class="log-body">' + escHtml(body) + '</span>';
     logEl.appendChild(row);
-    if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+    if (atBottom && row.style.display !== 'none') logEl.scrollTop = logEl.scrollHeight;
   }
+
+  // 필터 체크박스 wiring — 페이지 로드 직후 1회.
+  (function initFilter() {
+    var cbs = document.querySelectorAll('.filter-cb');
+    for (var i = 0; i < cbs.length; i++) {
+      var cb = cbs[i];
+      var cat = cb.dataset.cat;
+      if (OPTIONAL_CATS.indexOf(cat) >= 0 && filterState[cat] === false) {
+        cb.checked = false;
+      }
+      cb.addEventListener('change', function(e) {
+        var c = e.target.dataset.cat;
+        if (MANDATORY_CATS.indexOf(c) >= 0) return;  // disabled, but defensive.
+        if (e.target.checked) {
+          delete filterState[c];  // default=true → 키 비우면 'true' 와 같음.
+        } else {
+          filterState[c] = false;
+        }
+        persistFilter();
+        applyFilterToAll();
+      });
+    }
+    var reset = document.getElementById('filter-reset');
+    if (reset) {
+      reset.addEventListener('click', function() {
+        filterState = {};
+        persistFilter();
+        for (var j = 0; j < cbs.length; j++) cbs[j].checked = true;
+        applyFilterToAll();
+      });
+    }
+    updateFilterSummary();
+  })();
 
   // Claude 응답에 'Not logged in' 같은 인증 실패 패턴이 보이면 즉시 폼을 disable 하고
   // 빨간 배너를 띄운다. 진단 (EnvDiagnostics) 이 false positive 였을 때의 라이브 fallback.
@@ -948,36 +1051,37 @@ $authBannerHtml
   function renderFrame(f) {
     var t = f.type;
     if (t === 'console_session_started') {
-      append('sys', 'session', 'started ' + (f.sessionId || '').slice(0,12) + (f.model ? ' · ' + f.model : ''));
+      append('sys', 'session', 'started ' + (f.sessionId || '').slice(0,12) + (f.model ? ' · ' + f.model : ''), 'session');
     } else if (t === 'console_assistant') {
-      append('assistant', 'assistant', f.text || '');
+      append('assistant', 'assistant', f.text || '', 'assistant');
       detectAuthFailure(f.text);
     } else if (t === 'console_tool_use') {
       var rendered = renderToolUse(f.toolName, f.input);
-      append('tool', rendered.label, rendered.body);
+      append('tool', rendered.label, rendered.body, 'tool_use');
     } else if (t === 'console_tool_result') {
       var out = typeof f.output === 'string' ? f.output : JSON.stringify(f.output);
       var resultLabel = f.isError ? 'tool-err' : '✓ result';
       append(f.isError ? 'tool-err' : 'tool-out', resultLabel,
-             out.length > 500 ? out.slice(0,500) + ' …(+' + (out.length - 500) + ')' : out);
+             out.length > 500 ? out.slice(0,500) + ' …(+' + (out.length - 500) + ')' : out,
+             'tool_result');
       detectAuthFailure(out);
     } else if (t === 'console_error') {
-      append('err', 'error', (f.code || '') + ': ' + (f.message || ''));
+      append('err', 'error', (f.code || '') + ': ' + (f.message || ''), 'error');
       detectAuthFailure(f.message);
     } else if (t === 'console_done') {
-      append('sys', 'done', f.reason || 'end_turn');
+      append('sys', 'done', f.reason || 'end_turn', 'done');
       setInFlight(false);
     } else if (t === 'console_system') {
       // 'turn_cancelled' / 'process_crashed' 등 종료 신호 — stop 버튼 숨김
       if (f.code === 'turn_cancelled' || f.code === 'process_crashed' || f.code === 'idle_terminated') {
         setInFlight(false);
       }
-      append('sys', f.code || 'system', f.message || '');
+      append('sys', f.code || 'system', f.message || '', 'system');
       detectAuthFailure(f.message);
     } else if (t === 'console_replay_begin') {
-      append('sys', 'replay', 'history begin (' + f.fromSeq + ' → ' + f.toSeq + ')');
+      append('sys', 'replay', 'history begin (' + f.fromSeq + ' → ' + f.toSeq + ')', 'replay');
     } else if (t === 'console_replay_end') {
-      append('sys', 'replay', 'history end — live frames follow');
+      append('sys', 'replay', 'history end — live frames follow', 'replay');
     }
   }
 
@@ -989,7 +1093,7 @@ $authBannerHtml
     ws = new WebSocket(proto + '//' + location.host + '/ws/projects/' + projectId + '/console/logs');
 
     ws.onopen = function() {
-      append('sys', 'ws', 'connected');
+      append('sys', 'ws', 'connected', 'ws');
       // 인증은 WS handshake 의 cookie 헤더로 처리 (vibe_session 은 httpOnly 이므로
       // JS 가 읽지 못함 — XSS 방어). 서버가 handshake 시점에 cookie 에서 토큰을 추출.
     };
@@ -999,20 +1103,20 @@ $authBannerHtml
         var f = JSON.parse(ev.data);
         // 서버는 인증 성공 시 별도 응답 없이 바로 frame을 보낸다.
         // 실패 시엔 type=error + CloseReason 으로 응답 후 close.
-        if (f.type === 'error') { append('err', 'ws', (f.code || '') + ': ' + (f.message || '')); return; }
+        if (f.type === 'error') { append('err', 'ws', (f.code || '') + ': ' + (f.message || ''), 'error'); return; }
         renderFrame(f);
       } catch (e) {
-        append('err', 'parse', String(e));
+        append('err', 'parse', String(e), 'error');
       }
     };
 
     ws.onclose = function(ev) {
-      append('sys', 'ws', (${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.ws.reconnect5s", "___CODE___"))}).replace('___CODE___', ev.code));
+      append('sys', 'ws', (${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.ws.reconnect5s", "___CODE___"))}).replace('___CODE___', ev.code), 'ws');
       setTimeout(connect, 5000);
     };
 
     ws.onerror = function() {
-      append('err', 'ws', 'error');
+      append('err', 'ws', 'error', 'ws');
     };
   }
 
@@ -1031,9 +1135,9 @@ $authBannerHtml
       await fetch('/api/projects/' + projectId + '/claude/console/cancel', {
         method: 'POST', credentials: 'same-origin',
       });
-      append('sys', 'cancel', ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.cancel.sent"))});
+      append('sys', 'cancel', ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.cancel.sent"))}, 'system');
     } catch (e) {
-      append('err', 'cancel', String(e));
+      append('err', 'cancel', String(e), 'error');
     } finally {
       setInFlight(false);
     }
@@ -1052,14 +1156,14 @@ $authBannerHtml
       });
       if (!res.ok) {
         var msg = await res.text();
-        append('err', 'send', res.status + ' ' + msg);
+        append('err', 'send', res.status + ' ' + msg, 'error');
         setInFlight(false);
       } else {
-        append('user', 'user', text);
+        append('user', 'user', text, 'assistant');
         input.value = '';
       }
     } catch (e) {
-      append('err', 'send', String(e));
+      append('err', 'send', String(e), 'error');
       setInFlight(false);
     } finally {
       sendBtn.disabled = false;

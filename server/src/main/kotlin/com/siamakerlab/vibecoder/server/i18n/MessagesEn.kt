@@ -981,6 +981,22 @@ internal object MessagesEn {
         "api.common.projectNotFound" to "project '%s' not found",
         "api.common.artifactNotFound" to "Artifact '%s' not found",
 
+        // ─────────────────────────────────────────────── console filter (v0.97.0)
+        "console.filter.title" to "Filter messages",
+        "console.filter.hint" to "Always-on items are required for context. Toggle the rest to reduce noise.",
+        "console.filter.mandatory" to "Always shown",
+        "console.filter.optional" to "Toggle",
+        "console.filter.cat.assistant" to "Claude response",
+        "console.filter.cat.error" to "Errors",
+        "console.filter.cat.system" to "System events (cancel / crash / idle)",
+        "console.filter.cat.tool_use" to "Tool calls (Read / Write / Bash …)",
+        "console.filter.cat.tool_result" to "Tool results",
+        "console.filter.cat.session" to "Session start / new",
+        "console.filter.cat.done" to "Turn completion",
+        "console.filter.cat.replay" to "Replay markers",
+        "console.filter.cat.ws" to "WebSocket connection",
+        "console.filter.reset" to "Show all",
+
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude authentication",
         "claude.option.oauth" to "OAuth (recommended)",

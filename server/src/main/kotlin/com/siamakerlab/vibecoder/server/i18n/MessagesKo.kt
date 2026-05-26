@@ -958,6 +958,22 @@ internal object MessagesKo {
         "api.common.projectNotFound" to "프로젝트 '%s' 를 찾을 수 없습니다",
         "api.common.artifactNotFound" to "아티팩트 '%s' 를 찾을 수 없습니다",
 
+        // ─────────────────────────────────────────────── console filter (v0.97.0)
+        "console.filter.title" to "메시지 필터",
+        "console.filter.hint" to "필수 항목은 맥락 유지를 위해 항상 표시됩니다. 선택 항목 토글로 노이즈를 줄이세요.",
+        "console.filter.mandatory" to "항상 표시",
+        "console.filter.optional" to "선택 표시",
+        "console.filter.cat.assistant" to "Claude 응답",
+        "console.filter.cat.error" to "에러",
+        "console.filter.cat.system" to "시스템 이벤트 (취소 / 크래시 / idle)",
+        "console.filter.cat.tool_use" to "도구 호출 (Read / Write / Bash 등)",
+        "console.filter.cat.tool_result" to "도구 결과",
+        "console.filter.cat.session" to "세션 시작 / 새 세션",
+        "console.filter.cat.done" to "턴 종료",
+        "console.filter.cat.replay" to "Replay 마커",
+        "console.filter.cat.ws" to "WebSocket 연결",
+        "console.filter.reset" to "모두 표시",
+
         // ─────────────────────────────────────────────── claude
         "claude.title" to "Claude 인증",
         "claude.option.oauth" to "OAuth (권장)",
