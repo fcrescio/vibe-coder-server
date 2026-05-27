@@ -352,6 +352,9 @@ internal object MessagesKo {
         // v1.15.0 — Web Speech API 음성 입력 버튼.
         "console.voice.start" to "음성 입력 시작 (마이크 권한 필요)",
         "console.voice.stop" to "음성 입력 중지",
+        // v1.15.1 — 음성 인식 결과 자동 전송 옵션.
+        "console.voice.autoSend" to "자동 전송",
+        "console.voice.autoSend.tip" to "발화가 끝나면 prompt 를 자동으로 Claude 에 전송합니다. 사용자 선호는 브라우저에 저장됩니다.",
         "builds.title" to "빌드",
         "builds.empty" to "아직 빌드가 없습니다. 위 버튼으로 첫 빌드를 시작하세요.",
         "builds.summary.title" to "빌드 history",

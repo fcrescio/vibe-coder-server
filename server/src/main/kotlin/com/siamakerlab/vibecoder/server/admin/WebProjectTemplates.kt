@@ -1003,6 +1003,13 @@ $authBannerHtml
       <small class="dim" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(if (blocking) t("console.input.blockedHint") else t("console.input.hint"))}</small>
     </div>
     <!-- v1.15.0 — Web Speech API 음성 입력. 미지원 브라우저는 voice-input.js 가 자동 hide. -->
+    <!-- v1.15.1 — "자동 전송" 옵션 추가. checked 시 발화 종료 시 자동 submit. -->
+    <label id="voice-auto-send-wrap" for="voice-auto-send"
+           style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim);cursor:pointer;flex-shrink:0;user-select:none"
+           title="${esc(t("console.voice.autoSend.tip"))}">
+      <input type="checkbox" id="voice-auto-send" style="margin:0">
+      ${esc(t("console.voice.autoSend"))}
+    </label>
     <button type="button" id="voice-btn" hidden
             data-title-start="${esc(t("console.voice.start"))}"
             data-title-stop="${esc(t("console.voice.stop"))}"

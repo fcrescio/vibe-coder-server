@@ -374,6 +374,9 @@ internal object MessagesEn {
         // v1.15.0 — Web Speech API voice input button.
         "console.voice.start" to "Start voice input (microphone permission required)",
         "console.voice.stop" to "Stop voice input",
+        // v1.15.1 — Auto-send option for voice input.
+        "console.voice.autoSend" to "Auto-send",
+        "console.voice.autoSend.tip" to "Automatically send the prompt to Claude when speech ends. Preference is stored in your browser.",
         "builds.title" to "Builds",
         "builds.empty" to "No builds yet. Start the first one with the button above.",
         "builds.summary.title" to "Build history",

@@ -21,12 +21,28 @@
 
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) {
-      // 미지원 브라우저 — 버튼 완전 hide.
+      // 미지원 브라우저 — 버튼 + 옵션 완전 hide.
       btn.style.display = 'none';
+      var optWrap = document.getElementById('voice-auto-send-wrap');
+      if (optWrap) optWrap.style.display = 'none';
       return;
     }
     btn.hidden = false;
     btn.style.display = '';
+
+    // v1.15.1 — "자동 전송" 옵션. checked 시 발화 종료(onend) 시점에 prompt-form
+    // 을 자동 submit. 사용자 선호는 localStorage 영속.
+    var autoSend = document.getElementById('voice-auto-send');
+    if (autoSend) {
+      try {
+        autoSend.checked = localStorage.getItem('vibe.voice.autoSend') === '1';
+      } catch (e) {}
+      autoSend.addEventListener('change', function () {
+        try {
+          localStorage.setItem('vibe.voice.autoSend', autoSend.checked ? '1' : '0');
+        } catch (e) {}
+      });
+    }
 
     var rec = new SR();
     rec.continuous = true;
@@ -64,6 +80,17 @@
       btn.textContent = '🎤';
       btn.title = btn.dataset.titleStart || '🎤';
       applyResult();   // commit final text
+      // v1.15.1 — auto-send: 발화 종료 시 form 자동 submit (사용자 옵션 ON + 텍스트 있음).
+      if (autoSend && autoSend.checked && (input.value || '').trim().length > 0) {
+        var form = input.form || document.getElementById('prompt-form');
+        if (form) {
+          if (typeof form.requestSubmit === 'function') {
+            try { form.requestSubmit(); } catch (e) { form.submit(); }
+          } else {
+            form.submit();
+          }
+        }
+      }
     };
     rec.onerror = function (e) {
       console && console.warn && console.warn('voice-input:', e.error);
