@@ -947,6 +947,18 @@ $authBannerHtml
   </div>
 </details>
 
+<!-- v1.20.0 — 자동 스크롤 모드 토글. ON 이면 새 메시지 도착 시 사용자 스크롤
+     위치 무시하고 항상 최하단. OFF 면 v1.6.4 의 stick-to-bottom (사용자가
+     하단에 있을 때만 따라감). 사용자 선호는 localStorage 영속, default ON.
+     prompt 전송 직후엔 토글 무관 항상 스크롤 (sendPrompt 안에서 명시 호출). -->
+<div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-bottom:4px">
+  <label for="autoscroll-toggle" style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim);cursor:pointer;user-select:none"
+         title="${esc(t("console.autoscroll.tip"))}">
+    <input type="checkbox" id="autoscroll-toggle" style="margin:0">
+    📌 ${esc(t("console.autoscroll"))}
+  </label>
+</div>
+
 <!-- v1.6.4 — 스크롤 + 우하단 jump-to-bottom 버튼 wrapper. -->
 <div class="console-log-wrap">
   <div id="console-log" class="console-log" aria-live="polite"></div>
@@ -1114,6 +1126,27 @@ $authBannerHtml
   function isAtBottom() {
     return logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 12;
   }
+
+  // v1.20.0 — Auto-scroll 모드 토글. ON 시 사용자 스크롤 위치 무시하고 항상 stick.
+  var autoScrollOn = true;
+  try {
+    var saved = localStorage.getItem('vibe.console.autoscroll');
+    autoScrollOn = (saved === null) ? true : (saved === '1');   // default ON
+  } catch (e) {}
+  var autoScrollCb = document.getElementById('autoscroll-toggle');
+  if (autoScrollCb) {
+    autoScrollCb.checked = autoScrollOn;
+    autoScrollCb.addEventListener('change', function () {
+      autoScrollOn = autoScrollCb.checked;
+      try { localStorage.setItem('vibe.console.autoscroll', autoScrollOn ? '1' : '0'); } catch (e) {}
+      if (autoScrollOn) {
+        // 켜는 순간 즉시 최하단으로 jump (사용자 의도 명확).
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+    });
+  }
+  // append() 등이 사용. autoScrollOn 이면 무조건 stick, 아니면 사용자 위치 따라.
+  function shouldStick() { return autoScrollOn || isAtBottom(); }
   function setJumpVisible(v) {
     if (!jumpBtn) return;
     if (v) jumpBtn.classList.add('visible');
@@ -1162,7 +1195,8 @@ $authBannerHtml
   function append(cls, label, body, cat, opts) {
     cat = cat || 'ws';
     opts = opts || {};
-    var atBottom = isAtBottom();
+    // v1.20.0 — autoScrollOn 이면 위치 무관 stick. 아니면 기존 isAtBottom 만.
+    var atBottom = shouldStick();
     var row = document.createElement('div');
     row.className = 'log-line ' + cls;
     row.dataset.filterCat = cat;
@@ -1640,6 +1674,9 @@ $authBannerHtml
       } else {
         append('user', 'user', text, 'assistant');
         input.value = '';
+        // v1.20.0 — prompt 전송 직후엔 토글 모드 무관 항상 최하단으로 jump.
+        // 사용자가 자기 prompt + 응답을 바로 봐야 함이 명확.
+        scrollToBottom();
       }
     } catch (e) {
       append('err', 'send', String(e), 'error');

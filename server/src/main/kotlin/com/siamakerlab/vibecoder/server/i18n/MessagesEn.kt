@@ -377,6 +377,9 @@ internal object MessagesEn {
         // v1.15.1 — Auto-send option for voice input.
         "console.voice.autoSend" to "Auto-send",
         "console.voice.autoSend.tip" to "Automatically send the prompt to Claude when speech ends. Preference is stored in your browser.",
+        // v1.20.0 — Console auto-scroll mode.
+        "console.autoscroll" to "Auto-scroll",
+        "console.autoscroll.tip" to "Always stick to the bottom on new messages, regardless of where the user is scrolled. When OFF, only stick if the user is already near the bottom. Preference is stored in your browser.",
         "builds.title" to "Builds",
         "builds.empty" to "No builds yet. Start the first one with the button above.",
         "builds.summary.title" to "Build history",

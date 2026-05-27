@@ -355,6 +355,9 @@ internal object MessagesKo {
         // v1.15.1 — 음성 인식 결과 자동 전송 옵션.
         "console.voice.autoSend" to "자동 전송",
         "console.voice.autoSend.tip" to "발화가 끝나면 prompt 를 자동으로 Claude 에 전송합니다. 사용자 선호는 브라우저에 저장됩니다.",
+        // v1.20.0 — 콘솔 auto-scroll 모드.
+        "console.autoscroll" to "자동 스크롤",
+        "console.autoscroll.tip" to "새 응답 도착 시 사용자 스크롤 위치 무시하고 항상 최하단. OFF 면 사용자가 하단에 있을 때만 따라감. 사용자 선호는 브라우저에 저장됨.",
         "builds.title" to "빌드",
         "builds.empty" to "아직 빌드가 없습니다. 위 버튼으로 첫 빌드를 시작하세요.",
         "builds.summary.title" to "빌드 history",
