@@ -62,6 +62,7 @@ internal object MessagesKo {
         // ─────────────────────────────────────────────── nav (top-level)
         "nav.home" to "홈",
         "nav.projects" to "프로젝트",
+        "nav.chat" to "채팅",
         "nav.tools" to "도구",
         "nav.builds" to "빌드",
         "nav.devices" to "디바이스",
@@ -82,6 +83,14 @@ internal object MessagesKo {
         "settings.tab.monitoring" to "모니터링",
         // v1.22.0 — 설정 통합 탭 페이지 타이틀.
         "settings.tabs.title" to "설정",
+        // v1.23.0 — 도구 통합 탭 페이지.
+        "tools.tabs.title" to "도구",
+        "tools.tab.overview" to "개요",
+        "tools.tab.multi" to "멀티 콘솔",
+        "tools.tab.emulator" to "에뮬레이터",
+        "tools.tab.codeSearch" to "코드 검색",
+        "tools.tab.logs" to "빌드 로그",
+        "tools.tab.history" to "대화 검색",
 
         // ─────────────────────────────────────────────── settings page
         "settings.title" to "설정",

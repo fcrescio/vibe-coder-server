@@ -46,7 +46,7 @@ fun Routing.envFilesRoutes(authDeps: AdminRoutesDeps, projects: ProjectService, 
         }
         val ok = call.request.queryParameters["ok"]
         val err = call.request.queryParameters["err"]
-        call.respondText(EnvFilesTemplates.page(sess.username, p, files, ok, err, sess.csrf), ContentType.Text.Html)
+        call.respondText(EnvFilesTemplates.page(sess.username, p, files, ok, err, sess.csrf, lang = sess.language), ContentType.Text.Html)
     }
 
     post("/projects/{id}/env-files/save") {
@@ -117,6 +117,8 @@ internal object EnvFilesTemplates {
         ok: String?,
         err: String?,
         csrf: String?,
+    
+        lang: String = "en",
     ): String {
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""
@@ -165,7 +167,8 @@ $errHtml
 </p>
 
 $cards
-"""
+""",
+            lang = lang,
         )
     }
 }

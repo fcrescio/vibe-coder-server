@@ -56,6 +56,7 @@ fun Routing.webauthnRoutes(
                 currentPath = "/webauthn",
                 csrf = sess.csrf,
                 body = renderWebauthnPage(sess.username, sess.userId, creds, passwordlessOnly, sess.csrf),
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )

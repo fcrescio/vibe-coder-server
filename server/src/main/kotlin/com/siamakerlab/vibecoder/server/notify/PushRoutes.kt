@@ -94,6 +94,7 @@ fun Routing.pushRoutes(
                 currentPath = "/settings",
                 csrf = sess.csrf,
                 body = body,
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )

@@ -2538,7 +2538,9 @@ $toolbar
   table.devices tr.fts-selectable td a { pointer-events: none; }
   table.devices tr.fts-selectable { cursor: pointer; user-select: none; }
   table.devices tr.fts-selected { background: rgba(106,169,255,0.15) !important; }
-  table.devices tr.fts-selected td { box-shadow: inset 3px 0 0 var(--accent, #6aa9ff); }
+  /* v1.23.1 — 회귀 회수: inset shadow 가 모든 td 좌측에 그려져 cell 사이가 세로 라인
+     처럼 보였음. 첫 td 에만 적용해서 row 전체에서 좌측 accent bar 한 개만. */
+  table.devices tr.fts-selected td:first-child { box-shadow: inset 3px 0 0 var(--accent, #6aa9ff); }
 </style>
 
 <table class="devices">

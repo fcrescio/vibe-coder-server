@@ -146,6 +146,7 @@ fun Routing.symbolRoutes(
                 currentPath = "/projects",
                 csrf = sess.csrf,
                 body = body,
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )

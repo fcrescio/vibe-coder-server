@@ -111,6 +111,8 @@ private object WrapperTemplates {
         ok: String?,
         err: String?,
         csrf: String?,
+    
+        lang: String = "en",
     ): String {
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""
@@ -164,7 +166,8 @@ $errHtml
   </form>
   <p class="hint" style="margin-top:8px;font-size:12px">참고 — 최신 안정 버전 확인: <a href="https://gradle.org/releases/" target="_blank">gradle.org/releases ↗</a></p>
 </div>
-"""
+""",
+            lang = lang,
         )
     }
 }
@@ -175,6 +178,8 @@ private object StatsTemplates {
         p: com.siamakerlab.vibecoder.shared.dto.ProjectDto,
         result: CodeStatsService.Result,
         csrf: String?,
+    
+        lang: String = "en",
     ): String {
         val rows = if (result.byLanguage.isEmpty()) {
             """<tr><td colspan="4" class="dim" style="text-align:center;padding:14px">no code files indexed</td></tr>"""
@@ -229,7 +234,8 @@ $errBanner
   node_modules, .idea, 5 MB 초과 파일, 바이너리 확장자. 외부 도구 (cloc, scc) 없이
   in-process walk.
 </p>
-"""
+""",
+            lang = lang,
         )
     }
 }
@@ -251,6 +257,8 @@ private object SearchTemplates {
         projectFilter: String?,
         caseSensitive: Boolean,
         matches: List<CodeSearchService.Match>,
+    
+        lang: String = "en",
     ): String {
         val rows = if (matches.isEmpty() && q != null) {
             """<tr><td colspan="3" class="dim" style="text-align:center;padding:14px">"${esc(q)}" 에 매치되는 줄이 없습니다.</td></tr>"""
@@ -318,7 +326,8 @@ private object SearchTemplates {
   대화 검색은 <a href="/history">/history</a>, 빌드 로그는 <a href="/logs">/logs</a>.
   본 페이지는 source 트리 (workspace/&lt;projectId&gt;/) 만.
 </p>
-"""
+""",
+            lang = lang,
         )
     }
 }

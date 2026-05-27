@@ -182,6 +182,7 @@ private fun renderPage(
   "대화 히스토리" 링크. <a href="/chat/history">Chat 히스토리</a> 는 General Chat 전용.
   다음 cycle 에서 PostgreSQL FTS (tsvector) 로 정확도/성능 향상 예정.
 </p>
-"""
+""",
+        lang = lang,
     )
 }

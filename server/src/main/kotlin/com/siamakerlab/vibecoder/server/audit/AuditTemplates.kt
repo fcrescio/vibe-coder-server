@@ -20,6 +20,7 @@ object AuditTemplates {
         pageSize: Int,
         total: Long,
         csrf: String? = null,
+        lang: String = "en",
     ): String {
         val actionOpts = ("""<option value="">(all)</option>""" +
             actions.joinToString("") { a ->
@@ -129,7 +130,8 @@ object AuditTemplates {
   Time 은 UTC ISO-8601. ts range 비교는 문자열 사전식 비교라 ISO-8601 인덱스 친화적.
   100개씩 page. 미래 사이클에서 ts 인덱스 + JSON detail 검색 추가 예정.
 </p>
-"""
+""",
+            lang = lang,
         )
     }
 

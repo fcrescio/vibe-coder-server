@@ -37,7 +37,7 @@ fun Routing.dependencyAuditRoutes(authDeps: AdminRoutesDeps, projects: ProjectSe
         val run = call.request.queryParameters["run"] == "1"
         val result = if (run) svc.audit(id, moduleName, configuration) else null
         call.respondText(
-            DependencyAuditTemplates.page(sess.username, p, moduleName, configuration, result, sess.csrf),
+            DependencyAuditTemplates.page(sess.username, p, moduleName, configuration, result, sess.csrf, lang = sess.language),
             ContentType.Text.Html,
         )
     }
@@ -68,6 +68,8 @@ private object DependencyAuditTemplates {
         configuration: String,
         result: DependencyAudit.Result?,
         csrf: String?,
+    
+        lang: String = "en",
     ): String {
         val resultHtml = when {
             result == null -> """<p class="hint">아래 "실행" 버튼으로 의존성 트리를 가져옵니다 (10-90s).</p>"""
@@ -125,7 +127,8 @@ $resultHtml
   minor (osv-scanner / OWASP dependencyCheckAnalyze 통합 검토).
   타임아웃 90 s, raw output 200 KB cap.
 </p>
-"""
+""",
+            lang = lang,
         )
     }
 }

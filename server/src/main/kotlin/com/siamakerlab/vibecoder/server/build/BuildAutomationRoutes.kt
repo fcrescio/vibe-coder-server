@@ -261,6 +261,8 @@ private object AutomationTemplates {
         err: String?,
         newSecret: String?,
         csrf: String?,
+    
+        lang: String = "en",
     ): String {
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""
@@ -383,7 +385,8 @@ curl -X POST http://&lt;host&gt;:17880/api/webhooks/build/${esc(p.id)} \
       X-Vibe-Signature 는 body integrity 추가 보장. 외부 노출 시 반드시 HTTPS reverse-proxy.</p>
   </details>
 </div>
-"""
+""",
+            lang = lang,
         )
     }
 }

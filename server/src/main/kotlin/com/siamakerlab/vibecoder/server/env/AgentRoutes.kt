@@ -39,7 +39,7 @@ fun Routing.agentRoutes(authDeps: AdminRoutesDeps, registry: AgentRegistry) {
         val agents = runCatching { registry.list() }.getOrElse { emptyList() }
         val ok = call.request.queryParameters["ok"]
         val err = call.request.queryParameters["err"]
-        call.respondText(AgentTemplates.listPage(sess.username, agents, ok, err, sess.csrf), ContentType.Text.Html)
+        call.respondText(AgentTemplates.listPage(sess.username, agents, ok, err, sess.csrf, lang = sess.language), ContentType.Text.Html)
     }
 
     get("/agents/{name}/edit") {
@@ -52,7 +52,7 @@ fun Routing.agentRoutes(authDeps: AdminRoutesDeps, registry: AgentRegistry) {
             call.respondRedirect("/agents?err=${enc("agent '$name' not found")}")
             return@get
         }
-        call.respondText(AgentTemplates.editPage(sess.username, name, body, sess.csrf), ContentType.Text.Html)
+        call.respondText(AgentTemplates.editPage(sess.username, name, body, sess.csrf, lang = sess.language), ContentType.Text.Html)
     }
 
     post("/agents/save") {
@@ -115,6 +115,8 @@ private object AgentTemplates {
         ok: String?,
         err: String?,
         csrf: String?,
+    
+        lang: String = "en",
     ): String {
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""
@@ -179,7 +181,8 @@ $errHtml
   파일은 <code>$CLAUDE_DIR_NOTE</code> 에 저장. Claude Code CLI 가 부팅 시
   읽어 sub-agent 로 사용. 컨테이너 재시작 / 이미지 업그레이드와 무관 (볼륨).
 </p>
-"""
+""",
+            lang = lang,
         )
     }
 
@@ -188,6 +191,8 @@ $errHtml
         name: String,
         body: String,
         csrf: String?,
+    
+        lang: String = "en",
     ): String = AdminTemplates.shell(
         title = "Edit agent: $name",
         username = username,
@@ -210,6 +215,7 @@ $errHtml
   </div>
 </form>
 """,
+        lang = lang,
     )
 
     private const val CLAUDE_DIR_NOTE = "/home/vibe/.claude/agents/"

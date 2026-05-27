@@ -24,6 +24,18 @@ import io.ktor.server.routing.get
  * v0.87.0 Phase 64.11 — 모든 사용자 가시 한국어 i18n 키화 (tools.*).
  */
 fun Routing.toolsRoutes(authDeps: AdminRoutesDeps) {
+
+    // v1.23.0 — 도구 통합 탭 페이지. 사이드바 "도구" link 가 가리키는 진입점.
+    // /tools, /multi-console, /emulator, /code-search, /logs, /history 를 iframe
+    // prerender. SettingsTabsTemplate / ProjectTabsTemplate 와 일관 디자인.
+    get("/tools/tabs") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@get
+        call.respondText(
+            ToolsTabsTemplate.page(sess.username, csrf = sess.csrf, lang = sess.language),
+            ContentType.Text.Html,
+        )
+    }
+
     get("/tools") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val lang = sess.language

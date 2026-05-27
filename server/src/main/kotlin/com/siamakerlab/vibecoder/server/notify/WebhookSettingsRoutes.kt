@@ -28,7 +28,7 @@ fun Routing.webhookSettingsRoutes(authDeps: AdminRoutesDeps, notifier: WebhookNo
         val ok = call.request.queryParameters["ok"]
         val err = call.request.queryParameters["err"]
         call.respondText(
-            WebhookSettingsTemplates.page(sess.username, cfg, sess.csrf, ok, err),
+            WebhookSettingsTemplates.page(sess.username, cfg, sess.csrf, ok, err, lang = sess.language),
             ContentType.Text.Html,
         )
     }
@@ -64,6 +64,8 @@ object WebhookSettingsTemplates {
         csrf: String?,
         ok: String?,
         err: String?,
+    
+        lang: String = "en",
     ): String {
         val statusBadge = if (cfg.enabled) """<span class="ok">✓ 활성</span>"""
         else """<span class="warn">✗ 비활성</span>"""
@@ -157,7 +159,8 @@ VIBECODER_WEBHOOK_TELEGRAM_CHAT_ID=987654321</pre>
     서버가 요청을 거절합니다 (Slack: <code>hooks.slack.com</code>, Discord:
     <code>discord.com</code>/<code>discordapp.com</code>, Telegram: 토큰 형식 검증).</p>
 </div>
-"""
+""",
+            lang = lang,
         )
     }
 }

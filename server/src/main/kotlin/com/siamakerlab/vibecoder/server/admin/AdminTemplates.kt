@@ -149,8 +149,8 @@ object AdminTemplates {
   <div class="nav-links">
     ${link("/", t("nav.home"), "dashboard", "home")}
     ${link("/projects", t("nav.projects"), "projects", "folder")}
-    ${link("/chat", "Chat", "chat", "chat")}
-    ${link("/tools", t("nav.tools"), "tools", "tools")}
+    ${link("/chat", t("nav.chat"), "chat", "chat")}
+    ${link("/tools/tabs", t("nav.tools"), "tools", "tools")}
     ${link("/settings/tabs", t("nav.settings"), "settings", "settings")}
   </div>
   <!-- v1.3.2 — 전역 Claude 쿼타 pill. v1.6.2 — header 에 refresh 버튼 + 타임존 제거. -->

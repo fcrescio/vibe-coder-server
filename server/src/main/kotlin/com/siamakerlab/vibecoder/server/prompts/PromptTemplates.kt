@@ -16,6 +16,8 @@ object PromptTemplates {
         csrf: String? = null,
         flashErr: String? = null,
         flashOk: String? = null,
+    
+        lang: String = "en",
     ): String {
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
@@ -117,7 +119,8 @@ function prefillEdit(id, title, cat, body) {
   document.getElementById('form-title-input').focus();
 }
 </script>
-"""
+""",
+            lang = lang,
         )
     }
 

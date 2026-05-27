@@ -45,6 +45,7 @@ fun Routing.usageRoutes(
                 currentPath = "/usage",
                 csrf = sess.csrf,
                 body = body,
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )

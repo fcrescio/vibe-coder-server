@@ -122,6 +122,7 @@ $rowsHtml
                 currentPath = "/projects",
                 csrf = sess.csrf,
                 body = body,
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )
@@ -152,6 +153,7 @@ $rowsHtml
                 currentPath = "/projects",
                 csrf = sess.csrf,
                 body = body,
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )

@@ -520,7 +520,8 @@ $errHtml
 </script>
 <p style="display:none">
 </p>
-"""
+""",
+            lang = lang,
         )
     }
 

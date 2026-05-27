@@ -32,7 +32,7 @@ fun Routing.emulatorRoutes(authDeps: AdminRoutesDeps, svc: EmulatorService) {
         val d = svc.diagnose()
         val ok = call.request.queryParameters["ok"]
         val err = call.request.queryParameters["err"]
-        call.respondText(EmulatorTemplates.page(sess.username, d, ok, err, sess.csrf), ContentType.Text.Html)
+        call.respondText(EmulatorTemplates.page(sess.username, d, ok, err, sess.csrf, lang = sess.language), ContentType.Text.Html)
     }
 
     /** v0.24.0 — 디폴트 AVD 자동 생성 (vibe-default). 한 번만 호출하면 됨. */
@@ -92,6 +92,8 @@ private object EmulatorTemplates {
         flashOk: String? = null,
         flashErr: String? = null,
         csrf: String?,
+        /** v1.23.1 — 한국어 설정 상태에서 nav 가 영어로 보이던 회귀. shell 에 명시 전달. */
+        lang: String = "en",
     ): String {
         val badge = { ok: Boolean, label: String ->
             if (ok) """<span class="ok">✓ $label</span>"""
@@ -112,6 +114,7 @@ private object EmulatorTemplates {
             username = username,
             currentPath = "/emulator",
             csrf = csrf,
+            lang = lang,
             body = """
 <header>
   <h1>Android Emulator <small class="dim" style="font-size:14px;font-weight:400">v0.19.0 — 진단 + 가이드</small></h1>

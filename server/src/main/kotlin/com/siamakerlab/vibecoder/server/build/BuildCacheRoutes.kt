@@ -34,7 +34,7 @@ fun Routing.buildCacheRoutes(authDeps: AdminRoutesDeps, svc: BuildCacheService) 
         val ok = call.request.queryParameters["ok"]
         val err = call.request.queryParameters["err"]
         call.respondText(
-            BuildCacheTemplates.page(sess.username, sizes, sess.csrf, ok, err),
+            BuildCacheTemplates.page(sess.username, sizes, sess.csrf, ok, err, lang = sess.language),
             ContentType.Text.Html,
         )
     }
@@ -87,6 +87,8 @@ private object BuildCacheTemplates {
         csrf: String?,
         ok: String?,
         err: String?,
+    
+        lang: String = "en",
     ): String {
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""
@@ -154,7 +156,8 @@ $errHtml
       알림은 자동, 본 페이지는 수동 정리.</li>
   </ul>
 </div>
-"""
+""",
+            lang = lang,
         )
     }
 }

@@ -42,7 +42,7 @@ fun Routing.promptRoutes(
         val err = call.request.queryParameters["err"]
         val ok = call.request.queryParameters["ok"]
         call.respondText(
-            PromptTemplates.listPage(sess.username, templates, csrf = sess.csrf, flashErr = err, flashOk = ok),
+            PromptTemplates.listPage(sess.username, templates, csrf = sess.csrf, flashErr = err, flashOk = ok, lang = sess.language),
             ContentType.Text.Html,
         )
     }

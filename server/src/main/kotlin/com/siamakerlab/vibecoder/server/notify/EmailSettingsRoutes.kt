@@ -28,7 +28,7 @@ fun Routing.emailSettingsRoutes(authDeps: AdminRoutesDeps, notifier: EmailNotifi
         val ok = call.request.queryParameters["ok"]
         val err = call.request.queryParameters["err"]
         call.respondText(
-            EmailSettingsTemplates.page(sess.username, cfg, sess.csrf, ok, err),
+            EmailSettingsTemplates.page(sess.username, cfg, sess.csrf, ok, err, lang = sess.language),
             ContentType.Text.Html,
         )
     }
@@ -58,6 +58,8 @@ object EmailSettingsTemplates {
         csrf: String?,
         ok: String?,
         err: String?,
+    
+        lang: String = "en",
     ): String {
         val statusBadge = if (cfg.enabled)
             """<span class="ok">✓ 활성</span>"""
@@ -155,7 +157,8 @@ VIBECODER_SMTP_TO=ops@example.com,me@personal.com</pre>
     <li><strong>self-host (Postfix 등)</strong>: 25 (no TLS) 또는 587 (STARTTLS).</li>
   </ul>
 </div>
-"""
+""",
+            lang = lang,
         )
     }
 }

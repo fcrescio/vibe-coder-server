@@ -37,6 +37,7 @@ fun Routing.auditRoutes(authDeps: AdminRoutesDeps, repo: AuditLogRepository) {
                 pageSize = pageSize,
                 total = total,
                 csrf = sess.csrf,
+                lang = sess.language,
             ),
             ContentType.Text.Html,
         )

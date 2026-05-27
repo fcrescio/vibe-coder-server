@@ -84,6 +84,7 @@ internal object MessagesEn {
         // ─────────────────────────────────────────────── nav (top-level)
         "nav.home" to "Home",
         "nav.projects" to "Projects",
+        "nav.chat" to "Chat",
         "nav.tools" to "Tools",
         "nav.builds" to "Builds",
         "nav.devices" to "Devices",
@@ -104,6 +105,14 @@ internal object MessagesEn {
         "settings.tab.monitoring" to "Monitoring",
         // v1.22.0 — Settings unified tab page title.
         "settings.tabs.title" to "Settings",
+        // v1.23.0 — Tools unified tab page.
+        "tools.tabs.title" to "Tools",
+        "tools.tab.overview" to "Overview",
+        "tools.tab.multi" to "Multi-console",
+        "tools.tab.emulator" to "Emulator",
+        "tools.tab.codeSearch" to "Code search",
+        "tools.tab.logs" to "Build logs",
+        "tools.tab.history" to "Conversation search",
 
         // ─────────────────────────────────────────────── settings page
         "settings.title" to "Settings",
