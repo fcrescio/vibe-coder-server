@@ -745,24 +745,37 @@ table.devices small.dim { font-size: 11px; }
     text-align: center;
 }
 
+/* v1.21.0 — Claude Code 터미널 스타일에 가깝게 재구성.
+   - 90px label column 제거 → 단일 column + 짧은 ASCII prefix (::before pseudo).
+   - 카드 사이 border 제거, padding tight (dense terminal feel).
+   - role 별 색상 prefix 만 색 — 본문은 모노스페이스 흰색. */
 .console-log .log-line {
-    display: grid;
-    /* v1.7.9 — label | content. meta (time+copy) 는 content 내부 하단으로 이동. */
-    grid-template-columns: 90px 1fr;
-    gap: 12px;
-    padding: 4px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.03);
-    align-items: flex-start;
+    display: block;
+    padding: 1px 0 1px 1.6em;
+    position: relative;
+    border-bottom: none;
 }
-.console-log .log-line:last-child { border-bottom: none; }
-
-.console-log .log-label {
-    color: var(--text-dim);
-    text-transform: uppercase;
-    font-size: 10.5px;
-    letter-spacing: 0.5px;
-    padding-top: 1px;
+.console-log .log-line::before {
+    position: absolute;
+    left: 0;
+    top: 1px;
+    font-family: inherit;
+    font-weight: 600;
+    white-space: pre;
     user-select: none;
+}
+.console-log .user::before      { content: '> ';   color: var(--primary, #6aa9ff); }
+.console-log .assistant::before { content: '⏺ ';   color: #5ed3a1; }
+.console-log .tool::before      { content: '⏺ ';   color: #cfa763; }
+.console-log .tool-out::before  { content: '  ⎿ '; color: #8ea0c2; padding-left: 0.4em; }
+.console-log .tool-err::before  { content: '  ⎿ '; color: var(--danger, #ff6b6b); padding-left: 0.4em; }
+.console-log .sys::before       { content: '⎯ ';   color: #6c7a93; }
+.console-log .err::before       { content: '! ';   color: var(--danger, #ff6b6b); font-weight: 700; }
+
+/* v1.21.0 — 기존 .log-label 은 server 측에서 여전히 emit (script 가 사용) 하지만
+   시각적으로는 hide. role 정보는 ::before prefix + class 색으로 표현. */
+.console-log .log-label {
+    display: none;
 }
 .console-log .log-content { display: flex; flex-direction: column; min-width: 0; }
 .console-log .log-body { white-space: pre-wrap; word-break: break-word; }
