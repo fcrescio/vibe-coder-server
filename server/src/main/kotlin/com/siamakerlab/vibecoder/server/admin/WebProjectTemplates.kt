@@ -557,22 +557,15 @@ object WebProjectTemplates {
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
 
+        // v1.14.3 — 등록된 프로젝트 list: lastBuild / openConsole 컬럼 제거. name + package 만.
+        // 진입은 name link (/projects/{id}) 가 처리 — 통합 탭 페이지로 직행.
         val rowsHtml = if (projects.isEmpty()) {
-            """<tr><td colspan="4" class="dim">${esc(t("projects.list.empty"))}</td></tr>"""
+            """<tr><td colspan="2" class="dim">${esc(t("projects.list.empty"))}</td></tr>"""
         } else {
             projects.joinToString("\n") { p ->
-                val statusBadge = when (p.lastBuildStatus) {
-                    "SUCCESS" -> """<span class="ok">SUCCESS</span>"""
-                    "FAILED", "TIMEOUT" -> """<span class="warn">${esc(p.lastBuildStatus)}</span>"""
-                    "RUNNING", "PENDING" -> """<span>${esc(p.lastBuildStatus)}</span>"""
-                    null -> """<span class="dim">-</span>"""
-                    else -> """<span>${esc(p.lastBuildStatus)}</span>"""
-                }
                 """<tr>
                     <td><a href="/projects/${esc(p.id)}"><strong>${esc(p.name)}</strong><br><small class="dim">${esc(p.id)}</small></a></td>
                     <td><code>${esc(p.packageName)}</code></td>
-                    <td>$statusBadge</td>
-                    <td><a href="/projects/${esc(p.id)}/console" class="primary-link" style="width:auto;display:inline-block;padding:6px 12px">${esc(t("projects.list.openConsole"))}</a></td>
                   </tr>"""
             }
         }
@@ -688,7 +681,7 @@ $errHtml
     <h2>${esc(t("projects.list.title"))}</h2>
     <table class="devices">
       <thead>
-        <tr><th>${esc(t("projects.list.col.name"))}</th><th>${esc(t("projects.list.col.package"))}</th><th>${esc(t("projects.list.col.lastBuild"))}</th><th></th></tr>
+        <tr><th>${esc(t("projects.list.col.name"))}</th><th>${esc(t("projects.list.col.package"))}</th></tr>
       </thead>
       <tbody>
         $rowsHtml
