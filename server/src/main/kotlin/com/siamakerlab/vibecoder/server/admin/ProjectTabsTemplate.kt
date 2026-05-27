@@ -104,13 +104,17 @@ internal object ProjectTabsTemplate {
             currentPath = "/projects",
             csrf = csrf,
             lang = lang,
+            // v1.16.0 — .content.fullbleed 모드. ProjectTabs 가 viewport 100% 안에서
+            // 자체 layout (sticky header + tab bar + iframe area) 구성.
+            fullbleed = true,
             body = """
 <style>
-  /* v1.11.0 — Project tabs layout. Sticky header + tab bar + iframe area. */
+  /* v1.11.0 — Project tabs layout. Sticky header + tab bar + iframe area.
+     v1.16.0 — admin shell 의 .content.fullbleed 안 → height 100% 부모 기준.
+     이전 calc(100vh - 16px) + margin: -16px 트릭 제거 (.content 가 padding 0). */
   #project-tabs-root {
     display: flex; flex-direction: column;
-    height: calc(100vh - 16px);   /* admin shell padding */
-    margin: -16px; padding: 0;
+    height: 100%;
     background: var(--bg, #0b0d12);
   }
   #project-tabs-root .pt-header {

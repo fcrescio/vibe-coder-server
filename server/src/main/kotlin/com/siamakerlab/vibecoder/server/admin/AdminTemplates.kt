@@ -36,9 +36,16 @@ object AdminTemplates {
         csrf: String? = null,
         /** v0.77.0 — Phase 64 i18n. WebSession.language ("en"/"ko"). nav/tabBar 라벨 분기. */
         lang: String = "en",
+        /**
+         * v1.16.0 — `.content.fullbleed` 변형 사용. ProjectTabsTemplate 처럼 자체적으로
+         * viewport 100% 안에서 layout 을 구성하는 page 가 true 로 호출. .content 의 padding
+         * / max-width 제거 + overflow hidden → 자식이 직접 100% 박스 사용.
+         */
+        fullbleed: Boolean = false,
     ): String {
         val nav = if (showNav) navHtml(currentPath, username, csrf, lang) else ""
         val layoutCls = if (showNav) "layout" else "layout no-nav"
+        val contentCls = if (fullbleed) "content fullbleed" else "content"
         val maybeTabs =
             if (showNav && SettingsNav.topLevelOf(currentPath) == "settings")
                 SettingsNav.tabBar(currentPath, lang)
@@ -84,7 +91,7 @@ object AdminTemplates {
 <body>
   <div class="$layoutCls">
     $nav
-    <main class="content">
+    <main class="$contentCls">
       $maybeTabs
       $body
     </main>

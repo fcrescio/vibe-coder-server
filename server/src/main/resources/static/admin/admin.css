@@ -21,6 +21,8 @@ html, body {
     margin: 0;
     padding: 0;
     height: 100%;
+    /* v1.16.0 — 가로 스크롤 차단 (자식이 부모 너비 초과 시 자체 overflow 처리). */
+    overflow: hidden;
     background: var(--bg);
     color: var(--text);
     font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", sans-serif;
@@ -34,7 +36,12 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
 .layout {
     display: grid;
     grid-template-columns: 220px 1fr;
-    min-height: 100vh;
+    /* v1.16.0 — 동적 viewport (`dvh`) → mobile 주소창 동적 height 도 정확.
+       fallback: vh. 정확히 viewport 만 차지 + 자체 overflow 차단 → 사이드바와
+       컨텐츠가 각자 자체 영역에서 스크롤. */
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
     transition: grid-template-columns 0.18s ease;
 }
 .layout.no-nav { grid-template-columns: 1fr; }
@@ -52,6 +59,10 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
     gap: 16px;
     transition: padding 0.18s ease;
     align-items: stretch;
+    /* v1.16.0 — 사이드바 자체는 viewport 안에 항상 100% 표시 (스크롤 X). nav-links
+       가 길어지면 그 안에서만 자체 스크롤 (overflow: auto 가 nav-links 에 적용). */
+    overflow: hidden;
+    min-height: 0;
 }
 
 /* v1.7.6 — 브랜드: 아이콘 위 + 타이틀 아래 (column). 전체가 홈 link <a>.
@@ -140,6 +151,12 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
     flex-direction: column;
     gap: 4px;
     flex: 1;
+    /* v1.16.0 — 사이드바 자체는 overflow: hidden. nav-links 가 viewport 보다 길면
+       여기서만 세로 스크롤 (사이드바 다른 영역 — 브랜드 / quota / user-box — 은
+       항상 보임). */
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
 }
 .nav-links a {
     padding: 8px 12px;
@@ -231,6 +248,38 @@ a:hover { color: var(--primary-hover); text-decoration: underline; }
     max-width: 1200px;
     width: 100%;
     justify-self: center;
+    /* v1.16.0 — 컨텐츠 영역 내 세로 스크롤만, 가로 스크롤 차단. min-height: 0 은
+       grid 자식이 overflow 를 정상 처리하기 위함. box-sizing 으로 padding 포함. */
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+    box-sizing: border-box;
+}
+/* v1.16.0 — ProjectTabsTemplate 같이 자체적으로 100% viewport 안에 layout 을
+   구성하는 page 용 변형. padding / max-width 제거, 내부 자식이 직접 100% 채움. */
+.content.fullbleed {
+    padding: 0;
+    max-width: none;
+    overflow: hidden;
+}
+
+/* v1.16.0 — 모바일 폭 자동 collapsed sidebar.
+   - 768px 이하: 사이드바 56px 폭, 라벨 / 브랜드 타이틀 / quota / 로그아웃 등 hide.
+   - 자동 collapsed CSS 는 기존 [data-sidebar-collapsed="1"] 룰들이 처리하지만,
+     media query 안에서 selector 를 layout 으로 한정해 같은 효과 적용. */
+@media (max-width: 768px) {
+    .layout { grid-template-columns: 56px 1fr; }
+    .layout .brand-title,
+    .layout .nav-links a .nav-label,
+    .layout .quota-pill,
+    .layout .user-box .user,
+    .layout .logout { display: none; }
+    .layout .sidebar { padding: 12px 8px; gap: 10px; align-items: center; }
+    .layout .brand-icon { width: 40px; height: 40px; }
+    .layout .user-box { padding-top: 0; border-top: none; }
+    .layout .sidebar-toggle { width: 32px; height: 32px; }
+    /* 모바일 content padding 도 축소. */
+    .content { padding: 16px; }
 }
 
 header h1 {
