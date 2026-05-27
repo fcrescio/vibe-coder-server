@@ -67,7 +67,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
     // ── 진입점: 대시보드 = 루트 ────────────────────────────────────
     get("/") {
         val sess = requireSessionOrRedirect(deps) ?: return@get
-        val status = deps.statusService.snapshot()
+        val status = deps.statusService.snapshot(sess.language)
         val deviceCount = deps.deviceRepo.listAll().size
         // running build count는 status에 없으므로 0 표시. (간단함을 위해 PoC에선 보류)
         // Claude 인증 진단도 같이 — 사용자가 콘솔에서 처음으로 에러를 만나기 전에 대시보드에서 알아채도록.

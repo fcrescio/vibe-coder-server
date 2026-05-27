@@ -12,7 +12,7 @@ class StatusService(
     private val buildRepo: BuildRepository,
     private val env: EnvDiagnostics,
 ) {
-    fun snapshot(lang: String = "en"): ServerStatusDto {
+    fun snapshot(lang: String): ServerStatusDto {
         val workspaceRoot = Path.of(config.workspace.root).toAbsolutePath()
         val freeSpace = runCatching { workspaceRoot.toFile().freeSpace }.getOrDefault(-1L)
         val envSnap = env.run(lang)
