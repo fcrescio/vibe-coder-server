@@ -558,14 +558,17 @@ object WebProjectTemplates {
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
 
         // v1.14.3 — 등록된 프로젝트 list: lastBuild / openConsole 컬럼 제거. name + package 만.
-        // 진입은 name link (/projects/{id}) 가 처리 — 통합 탭 페이지로 직행.
+        // v1.14.4 — row 전체 영역이 클릭 가능 + 첫 화면 무조건 console (#console hash 명시).
+        //           각 td 의 자식을 inherit color + block link 로 채워서 셀 어디든 클릭 통함.
         val rowsHtml = if (projects.isEmpty()) {
             """<tr><td colspan="2" class="dim">${esc(t("projects.list.empty"))}</td></tr>"""
         } else {
             projects.joinToString("\n") { p ->
-                """<tr>
-                    <td><a href="/projects/${esc(p.id)}"><strong>${esc(p.name)}</strong><br><small class="dim">${esc(p.id)}</small></a></td>
-                    <td><code>${esc(p.packageName)}</code></td>
+                val href = "/projects/${esc(p.id)}#console"
+                val cellLinkStyle = "display:block;color:inherit;text-decoration:none"
+                """<tr class="row-link">
+                    <td><a href="$href" style="$cellLinkStyle"><strong>${esc(p.name)}</strong><br><small class="dim">${esc(p.id)}</small></a></td>
+                    <td><a href="$href" style="$cellLinkStyle"><code>${esc(p.packageName)}</code></a></td>
                   </tr>"""
             }
         }
@@ -679,6 +682,12 @@ $errHtml
 
   <div class="card">
     <h2>${esc(t("projects.list.title"))}</h2>
+    <style>
+      /* v1.14.4 — row 전체 영역 클릭 가능. cell padding 안에서도 hover 강조 / cursor 변경. */
+      table.devices tr.row-link td { padding: 0; }
+      table.devices tr.row-link td a { padding: 10px 12px; }
+      table.devices tr.row-link:hover { background: #1a1f2c; cursor: pointer; }
+    </style>
     <table class="devices">
       <thead>
         <tr><th>${esc(t("projects.list.col.name"))}</th><th>${esc(t("projects.list.col.package"))}</th></tr>
