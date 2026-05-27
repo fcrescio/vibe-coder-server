@@ -136,6 +136,12 @@ services:
       # release / debug / properties / admob 파일 생성. 영속 유지 — 키스토어
       # 분실은 Play Store 업로드 영구 차단.
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/keystores:/home/vibe/keystores
+      # v1.7.25 — Android Gradle 의 default debug.keystore 영속. 영속 안 하면
+      # 컨테이너 재시작마다 fingerprint 가 바뀌어 같은 packageName 의 기존
+      # 설치 앱과 cert 불일치 → INSTALL_FAILED_UPDATE_INCOMPATIBLE.
+      # 호스트 PC 의 ~/.android/debug.keystore 를 이 디렉토리에 복사해두면
+      # 호스트 / 컨테이너 빌드가 같은 debug cert 공유.
+      - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/android:/home/vibe/.android
 
       # ── Claude 인증 ─────────────────────────────────────────────
       # 기본: 통합 디렉토리 안의 vibe-coder-data/claude/.
