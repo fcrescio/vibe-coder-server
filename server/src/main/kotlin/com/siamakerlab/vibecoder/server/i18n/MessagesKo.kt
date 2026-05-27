@@ -1107,7 +1107,7 @@ internal object MessagesKo {
         "api.fileBrowser.emptyName" to "이름이 비어 있습니다.",
         "api.fileBrowser.invalidName" to "이름에 슬래시 또는 . / .. 사용 불가.",
         // v1.24.0 — 디렉토리 부분 삭제 실패.
-        "api.fileBrowser.partialDelete" to "{0}개 항목 삭제 실패. 일부: {1}",
+        "api.fileBrowser.partialDelete" to "{0}개 항목 삭제 실패. 일부: {1} — 권한/잠금 해소 후 같은 디렉토리에서 재시도 가능 (이미 삭제된 항목은 skip).",
         // GitCloneService
         "api.gitClone.sshDir" to "~/.ssh 디렉토리 생성 실패: %s",
         "api.gitClone.sshKeygen" to "ssh-keygen 실행 실패: %s",

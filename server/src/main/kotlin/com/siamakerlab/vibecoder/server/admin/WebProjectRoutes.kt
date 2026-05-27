@@ -887,6 +887,18 @@ fun Routing.webProjectRoutes(
         // CSP sandbox: 응답이 어떤 동적 코드도 실행 못 함 (이미지/바이너리 의도된 용도).
         // 같은 origin 이라도 stored-XSS 차단.
         call.response.header("Content-Security-Policy", "default-src 'none'; sandbox")
+        // v1.24.1 — Active-content MIME (svg / html / js) 인 경우 attachment 강제 →
+        // 일부 브라우저가 nosniff+CSP 우회해 inline 렌더 시도하는 케이스까지 차단.
+        // octet-stream downgrade 와 이중 방어.
+        if (com.siamakerlab.vibecoder.server.files.ProjectFileBrowser.isUntrustedMime(raw.mime)) {
+            val name = relPath.substringAfterLast('/')
+            call.response.header(
+                HttpHeaders.ContentDisposition,
+                ContentDisposition.Attachment.withParameter(
+                    ContentDisposition.Parameters.FileName, name,
+                ).toString(),
+            )
+        }
         call.respondFile(raw.absolutePath.toFile())
     }
 

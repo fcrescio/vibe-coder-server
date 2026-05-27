@@ -224,7 +224,7 @@ class ProjectFileBrowser(
      */
     fun delete(projectId: String, relPath: String) {
         if (relPath.isBlank()) throw ApiException.localized(400, "empty_path", messageKey = "api.fileBrowser.emptyPath")
-        val (_, target) = safeWriteTarget(projectId, relPath)
+        val (projectRoot, target) = safeWriteTarget(projectId, relPath)
         if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             throw ApiException.localized(404, "path_not_found", messageKey = "api.fileBrowser.pathNotFound", args = listOf(relPath))
         }
@@ -234,11 +234,13 @@ class ProjectFileBrowser(
         } else if (target.isDirectory()) {
             // v1.24.0 — 실패 path 모아서 마지막에 throw. 이전엔 runCatching 으로 silent
             // → 부분 삭제만 일어나도 UI 가 "삭제됨" 으로 오인. 실패 시 사용자에게 명시.
+            // v1.24.1 — 실패 path 는 projectRoot 기준 상대 경로 — 외부 노출 환경에서
+            // 서버측 워크스페이스 path (`/workspace/projects/...`) 노출 회피.
             val failed = mutableListOf<String>()
             Files.walk(target).use { stream ->
                 stream.sorted(Comparator.reverseOrder()).forEach { p ->
                     runCatching { Files.delete(p) }.onFailure {
-                        failed += p.toString()
+                        failed += projectRoot.relativize(p).toString().replace('\\', '/')
                         log.warn(it) { "delete failed: $p" }
                     }
                 }

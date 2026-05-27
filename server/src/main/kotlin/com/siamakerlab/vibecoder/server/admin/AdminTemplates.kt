@@ -128,7 +128,9 @@ object AdminTemplates {
         return """<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">$inner</svg>"""
     }
 
-    private fun navHtml(currentPath: String, username: String?, csrf: String?, lang: String = "en"): String {
+    // v1.24.1 — lang default 제거. shell() 의 lang required 변경과 일관 — helper
+    // 호출자가 무심코 lang 안 넘기면 "en" 으로 fall-through 회귀 가능성 차단.
+    private fun navHtml(currentPath: String, username: String?, csrf: String?, lang: String): String {
         val activeTop = SettingsNav.topLevelOf(currentPath)
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         fun link(href: String, label: String, key: String, icon: String): String {

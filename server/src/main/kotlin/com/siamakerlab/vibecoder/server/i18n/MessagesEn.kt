@@ -1129,7 +1129,7 @@ internal object MessagesEn {
         "api.fileBrowser.emptyName" to "Name is empty.",
         "api.fileBrowser.invalidName" to "Name cannot contain slashes or . / ..",
         // v1.24.0 — Partial directory delete failure.
-        "api.fileBrowser.partialDelete" to "Failed to delete {0} items. Sample: {1}",
+        "api.fileBrowser.partialDelete" to "Failed to delete {0} items. Sample: {1} — retry the same directory after resolving permission/lock (already-deleted entries are skipped).",
         // GitCloneService
         "api.gitClone.sshDir" to "Failed to create ~/.ssh directory: %s",
         "api.gitClone.sshKeygen" to "ssh-keygen execution failed: %s",
