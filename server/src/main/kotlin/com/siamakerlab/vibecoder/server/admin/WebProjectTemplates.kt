@@ -588,19 +588,9 @@ object WebProjectTemplates {
 $okHtml
 $errHtml
 
-<section class="grid" style="grid-template-columns: 2fr 1fr">
-  <div class="card">
-    <h2>${esc(t("projects.list.title"))}</h2>
-    <table class="devices">
-      <thead>
-        <tr><th>${esc(t("projects.list.col.name"))}</th><th>${esc(t("projects.list.col.package"))}</th><th>${esc(t("projects.list.col.lastBuild"))}</th><th></th></tr>
-      </thead>
-      <tbody>
-        $rowsHtml
-      </tbody>
-    </table>
-  </div>
-
+<!-- v1.14.1 — 좌우 (2fr 1fr) 배치 → 상하 single-column. 신규 등록 카드가 상단,
+     기존 프로젝트 목록이 하단. 사이드바 접힘 시에도 가로 폭 부족 없음. -->
+<section class="grid" style="grid-template-columns: 1fr">
   <div class="card">
     <h2>${esc(t("projects.new.title"))}</h2>
     <form method="post" action="/projects" id="new-project-form">
@@ -688,6 +678,18 @@ $errHtml
         }
       }
     </script>
+  </div>
+
+  <div class="card">
+    <h2>${esc(t("projects.list.title"))}</h2>
+    <table class="devices">
+      <thead>
+        <tr><th>${esc(t("projects.list.col.name"))}</th><th>${esc(t("projects.list.col.package"))}</th><th>${esc(t("projects.list.col.lastBuild"))}</th><th></th></tr>
+      </thead>
+      <tbody>
+        $rowsHtml
+      </tbody>
+    </table>
   </div>
 </section>
 """
