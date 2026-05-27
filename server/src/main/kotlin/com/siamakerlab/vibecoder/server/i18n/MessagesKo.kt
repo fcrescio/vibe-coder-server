@@ -518,6 +518,10 @@ internal object MessagesKo {
         "fileView.heading" to "파일 보기 / 편집",
         "fileView.toggleMode" to "View 모드 ↔ Edit 모드",
         "fileView.parentDir" to "← 상위 폴더",
+        // v1.17.0 — 이미지 뷰어 모드.
+        "fileView.image.label" to "이미지",
+        "fileView.image.download" to "다운로드",
+        "fileView.image.loadFailed" to "이미지를 불러오지 못했습니다.",
         "fileView.cancel" to "취소",
         "fileView.save" to "저장",
         "fileView.editHint" to "Ctrl+S 로 저장. 이진/심볼릭/1MB 초과는 서버에서 차단.",

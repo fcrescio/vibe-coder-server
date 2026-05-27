@@ -661,6 +661,33 @@ fun Routing.webProjectRoutes(
             call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
             return@get
         }
+        // v1.17.0 — 이미지 파일은 별도 image 모드로 분기. fileBrowser.read() 가
+        // binary 차단하기 전에 확장자 기준 판정 — viewer 가 <img src="/raw?path=..."> 사용.
+        if (com.siamakerlab.vibecoder.server.files.ProjectFileBrowser.isImagePath(relPath)) {
+            // path traversal / 파일 존재 검증만 미리 시도. 실패 시 error banner 렌더.
+            val sizeOrNull = runCatching {
+                fileBrowser.resolveForRawRead(id, relPath).sizeBytes
+            }.getOrNull()
+            if (sizeOrNull == null) {
+                val msg = Messages.t(sess.language, "flash.file.openFailed")
+                call.respondText(
+                    WebProjectTemplates.fileViewPage(
+                        sess.username, p, relPath, null,
+                        flashErr = msg, csrf = sess.csrf, lang = sess.language,
+                    ),
+                    ContentType.Text.Html, HttpStatusCode.BadRequest,
+                )
+                return@get
+            }
+            call.respondText(
+                WebProjectTemplates.fileViewPage(
+                    sess.username, p, relPath, view = null,
+                    imageSizeBytes = sizeOrNull, csrf = sess.csrf, lang = sess.language,
+                ),
+                ContentType.Text.Html,
+            )
+            return@get
+        }
         val view = runCatching { fileBrowser.read(id, relPath) }.getOrElse {
             val msg = (it as? ApiException)?.message ?: it.message ?: Messages.t(sess.language, "flash.file.openFailed")
             call.respondText(
@@ -680,6 +707,21 @@ fun Routing.webProjectRoutes(
             ),
             ContentType.Text.Html,
         )
+    }
+
+    // v1.17.0 — 이미지 / binary 파일 raw stream. <img src="..."> 가 직접 fetch.
+    get("/projects/{id}/raw") {
+        requireSessionOrRedirect(authDeps) ?: return@get
+        val id = call.parameters["id"]!!
+        val relPath = call.request.queryParameters["path"].orEmpty()
+        val raw = runCatching { fileBrowser.resolveForRawRead(id, relPath) }.getOrElse { e ->
+            val sc = (e as? ApiException)?.statusCode ?: 500
+            call.respondText(e.message ?: "raw read failed", ContentType.Text.Plain, HttpStatusCode.fromValue(sc))
+            return@get
+        }
+        call.response.header(HttpHeaders.CacheControl, "private, max-age=60")
+        call.response.header(HttpHeaders.ContentType, raw.mime)
+        call.respondFile(raw.absolutePath.toFile())
     }
 
     post("/projects/{id}/edit") {

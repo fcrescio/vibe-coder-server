@@ -334,10 +334,78 @@ class ProjectFileBrowser(
         else -> "text/plain"
     }
 
+    /**
+     * v1.17.0 — 이미지 raw stream 읽기. /raw 엔드포인트가 path traversal 검증 후
+     * 직접 file 을 stream 으로 응답할 수 있도록 안전 검증된 절대 경로 + 추정 MIME
+     * 만 반환. 호출자가 Files.newInputStream(path) 또는 respondFile 으로 응답.
+     */
+    fun resolveForRawRead(projectId: String, relPath: String): RawFile {
+        if (relPath.isBlank()) throw ApiException.localized(400, "empty_path", messageKey = "api.fileBrowser.emptyPath")
+        val projectRoot = workspace.projectRoot(projectId)
+        if (!projectRoot.exists()) {
+            throw ApiException.localized(404, "project_root_not_found", messageKey = "api.fileBrowser.projectRootNotFound")
+        }
+        val target = PathSafety.normalizeAndCheck(projectRoot, relPath)
+        if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw ApiException.localized(404, "file_not_found", messageKey = "api.fileBrowser.fileNotFound", args = listOf(relPath))
+        }
+        if (Files.isSymbolicLink(target)) {
+            throw ApiException.localized(403, "symlink_blocked", messageKey = "api.fileBrowser.symlinkBlockedView")
+        }
+        if (!target.isRegularFile()) {
+            throw ApiException.localized(400, "not_a_file", messageKey = "api.fileBrowser.notAFile")
+        }
+        val size = Files.size(target)
+        // 이미지 raw stream 한도 — view 보다 크게 (10 MB). 일반 Android asset 충분.
+        if (size > MAX_RAW_BYTES) {
+            throw ApiException.localized(413, "file_too_large",
+                messageKey = "api.fileBrowser.fileTooLarge", args = listOf(size, MAX_RAW_BYTES))
+        }
+        return RawFile(target, size, guessImageMime(relPath))
+    }
+
+    /** v1.17.0 — read-only raw stream + 추정 MIME. /raw endpoint 가 직접 InputStream 응답. */
+    data class RawFile(
+        val absolutePath: Path,
+        val sizeBytes: Long,
+        val mime: String,
+    )
+
     companion object {
         /** UI 에서 열거 가능한 최대 텍스트 파일 크기 — 1 MB. */
         const val MAX_VIEW_BYTES = 1024L * 1024
         /** v1.14.0 — 파일 탐색기 업로드 단일 파일 한도 — 50 MB. workspace 안 source asset 가정. */
         const val MAX_UPLOAD_BYTES = 50L * 1024 * 1024
+        /** v1.17.0 — /raw 엔드포인트 stream 한도 — 10 MB (이미지 viewer 용). */
+        const val MAX_RAW_BYTES = 10L * 1024 * 1024
+
+        /**
+         * v1.17.0 — 파일 경로의 확장자가 image 인지 판정. /view 라우트가 image 모드
+         * 분기 결정에 사용.
+         */
+        fun isImagePath(path: String): Boolean {
+            val lower = path.lowercase()
+            return IMAGE_EXTENSIONS.any { lower.endsWith(it) }
+        }
+
+        private val IMAGE_EXTENSIONS = listOf(
+            ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".avif", ".svg",
+        )
+
+        /** v1.17.0 — 확장자 기반 MIME 추정. /raw 응답 헤더용. */
+        fun guessImageMime(path: String): String {
+            val lower = path.lowercase()
+            return when {
+                lower.endsWith(".png") -> "image/png"
+                lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+                lower.endsWith(".gif") -> "image/gif"
+                lower.endsWith(".webp") -> "image/webp"
+                lower.endsWith(".bmp") -> "image/bmp"
+                lower.endsWith(".ico") -> "image/x-icon"
+                lower.endsWith(".avif") -> "image/avif"
+                lower.endsWith(".svg") -> "image/svg+xml"
+                else -> "application/octet-stream"
+            }
+        }
     }
 }

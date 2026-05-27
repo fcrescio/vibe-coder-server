@@ -2498,6 +2498,11 @@ $toolbar
         relPath: String,
         view: ProjectFileBrowser.FileView?,
         flashErr: String? = null,
+        /**
+         * v1.17.0 — 이미지 모드. relPath 가 이미지 확장자인 경우 [view] 대신 본 size
+         * 가 non-null 로 전달. body 는 `<img src="/raw?path=...">` viewer.
+         */
+        imageSizeBytes: Long? = null,
         csrf: String? = null,
         lang: String = "en",
     ): String {
@@ -2505,7 +2510,42 @@ $toolbar
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         val crumbs = renderBreadcrumbs(p.id, relPath, isFile = true)
 
-        val bodyHtml = if (view == null) {
+        val bodyHtml = if (imageSizeBytes != null) {
+            // v1.17.0 — 이미지 뷰어 모드. raw stream endpoint 를 직접 가리킴.
+            val sizeKb = (imageSizeBytes + 512L) / 1024L
+            val rawUrl = "/projects/${esc(p.id)}/raw?path=${relPath.encodeUrl()}"
+            """
+<div class="card" style="margin-bottom:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <div><strong><code>${esc(relPath)}</code></strong>
+      <span class="dim" style="font-size:12px;margin-left:8px">${sizeKb}KB · ${esc(t("fileView.image.label"))}</span>
+      <span id="img-dims" class="dim" style="font-size:12px;margin-left:8px"></span>
+    </div>
+    <div style="display:flex;gap:6px">
+      <a href="$rawUrl" download class="chip chip-link">⬇ ${esc(t("fileView.image.download"))}</a>
+      <a href="/projects/${esc(p.id)}/tree?path=${parentOf(relPath).encodeUrl()}" class="chip chip-link">${esc(t("fileView.parentDir"))}</a>
+    </div>
+  </div>
+</div>
+<div class="card" style="padding:12px;display:flex;justify-content:center;align-items:center;background:repeating-conic-gradient(#1a1a1a 0% 25%, #222 0% 50%) 50% / 24px 24px">
+  <img id="img-viewer" src="$rawUrl" alt="${esc(relPath)}"
+       style="max-width:100%;height:auto;display:block;background:#0e0e0e;border:1px solid #2a2a2a;border-radius:4px">
+</div>
+<script>
+(function() {
+  var img = document.getElementById('img-viewer');
+  var dims = document.getElementById('img-dims');
+  if (!img || !dims) return;
+  img.addEventListener('load', function() {
+    dims.textContent = img.naturalWidth + ' × ' + img.naturalHeight + ' px';
+  });
+  img.addEventListener('error', function() {
+    dims.textContent = '${esc(t("fileView.image.loadFailed"))}';
+  });
+})();
+</script>
+"""
+        } else if (view == null) {
             errHtml.ifEmpty { """<p class="dim">${esc(t("fileView.cannotOpen"))}</p>""" }
         } else {
             val sizeKb = (view.sizeBytes + 512L) / 1024L

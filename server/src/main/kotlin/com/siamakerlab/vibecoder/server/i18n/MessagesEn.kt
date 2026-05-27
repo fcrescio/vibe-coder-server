@@ -540,6 +540,10 @@ internal object MessagesEn {
         "fileView.heading" to "File view / edit",
         "fileView.toggleMode" to "View mode ↔ Edit mode",
         "fileView.parentDir" to "← Parent folder",
+        // v1.17.0 — Image viewer mode.
+        "fileView.image.label" to "Image",
+        "fileView.image.download" to "Download",
+        "fileView.image.loadFailed" to "Failed to load image.",
         "fileView.cancel" to "Cancel",
         "fileView.save" to "Save",
         "fileView.editHint" to "Ctrl+S to save. Binary / symlink / over 1MB are blocked server-side.",
