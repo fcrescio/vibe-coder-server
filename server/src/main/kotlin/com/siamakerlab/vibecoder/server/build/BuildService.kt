@@ -15,7 +15,10 @@ import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.dto.BuildDto
 import com.siamakerlab.vibecoder.shared.dto.TaskStatus
 import com.siamakerlab.vibecoder.shared.ws.WsFrame
+import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.flow.MutableSharedFlow
+
+private val log = KotlinLogging.logger {}
 
 class BuildService(
     private val config: ServerConfig,
@@ -28,6 +31,11 @@ class BuildService(
     private val clock: Clock,
     /** v0.17.0 — 빌드 결과 이메일 알림. null 이면 알림 skip (테스트). v0.27.0+ Notifiers facade (email + webhook). */
     private val notifier: com.siamakerlab.vibecoder.server.notify.Notifiers? = null,
+    /**
+     * v1.8.0 — 빌드 시작 시점에 프로젝트 packageName 으로 키스토어 조회 → Gradle
+     * `-Pandroid.injected.signing.*` inject. null 이면 비활성 (단위 테스트용).
+     */
+    private val keystores: com.siamakerlab.vibecoder.server.admin.KeystoreService? = null,
 ) {
 
     /**
@@ -42,6 +50,7 @@ class BuildService(
         val build = buildRepo.create(buildId, projectId, "debug", logFile.toString(),
             gitBranch = branch, gitSha = sha)
 
+        val signing = resolveSigning(row, hub, buildId)
         queue.submit(
             projectId = projectId, taskId = buildId,
             onStart = { buildRepo.setStatus(buildId, TaskStatus.RUNNING) },
@@ -54,6 +63,7 @@ class BuildService(
                         debugTask = row.debugTask,
                         logger = logger,
                         cancellation = cancel,
+                        signing = signing,
                     )
                     if (exit != 0) throw ApiException.localized(500, "build_failed",
                         messageKey = "api.build.gradleExit", args = listOf(exit))
@@ -97,13 +107,14 @@ class BuildService(
         val build = buildRepo.create(buildId, projectId, "debug", logFile.toString(),
             gitBranch = branch, gitSha = sha)
         buildRepo.setStatus(buildId, TaskStatus.RUNNING)
+        val signing = resolveSigning(row, hub, buildId)
         val logger = TaskLogger(buildId, logFile, hub, clock)
         try {
             val cancel = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
             val exit = builder.runAssembleDebug(
                 source = java.nio.file.Path.of(row.sourcePath),
                 moduleName = row.moduleName, debugTask = row.debugTask,
-                logger = logger, cancellation = cancel,
+                logger = logger, cancellation = cancel, signing = signing,
             )
             if (exit != 0) {
                 buildRepo.setStatus(buildId, TaskStatus.FAILED, "gradle exit $exit")
@@ -292,6 +303,30 @@ class BuildService(
         artifactId = artifactId, errorMessage = errorMessage,
         gitBranch = gitBranch, gitSha = gitSha,
     )
+
+    /**
+     * v1.8.0 — 빌드 시작 시 프로젝트 packageName 으로 KeystoreService.loadSigning 호출.
+     *
+     * 매칭되는 키스토어 (release `.keystore` + `.properties`) 가 있으면 builder 에
+     * 전달해서 Gradle CLI 에 `-Pandroid.injected.signing.*` 4종 inject. WS 빌드 로그에
+     * "signing inject" 사실만 한 줄 publish (비밀번호 미포함). null 이면 silent skip
+     * (대부분의 프로젝트가 키스토어 없이도 debug 빌드 가능).
+     */
+    private fun resolveSigning(
+        row: com.siamakerlab.vibecoder.server.repo.ProjectRow,
+        hub: LogHub,
+        buildId: String,
+    ): com.siamakerlab.vibecoder.server.admin.SigningCredentials? {
+        val ks = keystores ?: return null
+        val signing = ks.loadSigning(row.packageName) ?: return null
+        // 실제 사용자 가시 빌드 로그는 GradleBuilder.runAssembleDebug 의 logger.info("Signing injected: ...")
+        // 가 처리 — 여기선 서버 로그 한 줄로만 흔적 남김 (passwords 미포함).
+        log.info {
+            "[build $buildId] signing inject candidate: package=${row.packageName} " +
+                "storeFile=${signing.storeFile} keyAlias=${signing.keyAlias}"
+        }
+        return signing
+    }
 
     /**
      * v0.71.0 — Phase 51 #9: 빌드 시작 시점의 git branch/sha 수집. 실패 graceful.

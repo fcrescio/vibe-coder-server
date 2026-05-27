@@ -213,7 +213,17 @@ fun main(args: Array<String>) {
     )
     val gradle = GradleBuilder(config)
     val artifacts = ArtifactService(config, workspace, artifactRepo, buildRepo, clock)
-    val build = BuildService(config, workspace, projects, buildRepo, queue, gradle, artifacts, clock, notifier = notifiers)
+    // v1.8.0 — 키스토어 디렉토리는 호스트 영속 볼륨 (`/home/vibe/keystores`).
+    // 빌드 시 packageName 매칭으로 Gradle signing inject (Phase 1) 와
+    // keystoreRoutes 의 "Apply to project" Claude prompt (Phase 2) 가
+    // 같은 KeystoreService 인스턴스를 공유.
+    val keystoreService = com.siamakerlab.vibecoder.server.admin.KeystoreService(
+        defaults = config.keystore.defaults,
+    )
+    val build = BuildService(
+        config, workspace, projects, buildRepo, queue, gradle, artifacts, clock,
+        notifier = notifiers, keystores = keystoreService,
+    )
     val git = GitReader()
     val gitWriter = com.siamakerlab.vibecoder.server.git.GitWriter()
     val emulator = com.siamakerlab.vibecoder.server.emulator.EmulatorService()
@@ -446,6 +456,7 @@ fun main(args: Array<String>) {
         apkVerifier = apkVerifier,
         fcmSender = fcmSender,
         kotlinLspService = kotlinLspService,
+        keystoreService = keystoreService,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {

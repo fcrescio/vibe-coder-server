@@ -1,7 +1,10 @@
 package com.siamakerlab.vibecoder.server.admin
 
+import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
 import com.siamakerlab.vibecoder.server.config.KeystoreDefaults
 import com.siamakerlab.vibecoder.server.i18n.Messages
+import com.siamakerlab.vibecoder.server.repo.ProjectRepository
+import com.siamakerlab.vibecoder.server.repo.ProjectRow
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.server.application.call
@@ -18,20 +21,31 @@ private val log = KotlinLogging.logger {}
  * v1.5.0 — 키스토어 관리 라우트.
  *
  * SSR:
- *   GET  /settings/keystores               — 목록 + create form
- *   POST /settings/keystores               — 새 키스토어 set 생성
- *   POST /settings/keystores/{pkg}/delete  — 키스토어 set 삭제
+ *   GET  /settings/keystores                              — 목록 + create form
+ *   POST /settings/keystores                              — 새 키스토어 set 생성
+ *   POST /settings/keystores/{pkg}/delete                 — 키스토어 set 삭제
+ *   POST /settings/keystores/{pkg}/apply/{projectId}      — v1.8.0 Claude 콘솔 prompt 로
+ *                                                            프로젝트 build.gradle.kts 자동 수정
  */
-fun Routing.keystoreRoutes(authDeps: AdminRoutesDeps, service: KeystoreService) {
+fun Routing.keystoreRoutes(
+    authDeps: AdminRoutesDeps,
+    service: KeystoreService,
+    projectRepo: ProjectRepository,
+    sessionManager: ClaudeSessionManager,
+) {
     get("/settings/keystores") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         if (!requireAdminOrRedirect(sess)) return@get
         val entries = runCatching { service.list() }.getOrDefault(emptyList())
+        // v1.8.0 — Apply-to-project 드롭다운에 노출할 프로젝트 목록 (scratch 제외).
+        val projects = runCatching { projectRepo.list() }.getOrDefault(emptyList())
+            .filter { it.id != "__scratch__" }
         val flash = call.request.queryParameters["flash"]
         call.respondText(
             KeystoreTemplates.page(
                 username = sess.username,
                 entries = entries,
+                projects = projects,
                 defaults = authDeps.config.keystore.defaults,
                 flash = flash,
                 csrf = sess.csrf,
@@ -82,6 +96,135 @@ fun Routing.keystoreRoutes(authDeps: AdminRoutesDeps, service: KeystoreService) 
             .onFailure { log.warn(it) { "keystore delete failed for $pkg" } }
         call.respondRedirect("/settings/keystores?flash=deleted:$pkg")
     }
+
+    /**
+     * v1.8.0 — Phase 2: 프로젝트 build.gradle.kts 자동 수정 prompt 를 Claude 콘솔에 전송.
+     *
+     * 키스토어 set 이 존재하고 프로젝트가 존재하면, 정형화된 한국어 prompt 를
+     * [ClaudeSessionManager.sendPrompt] 으로 보내고 콘솔 페이지로 redirect.
+     * Claude 가 read/edit 도구로 build.gradle.kts 의 `signingConfigs.{debug,release}` 를
+     * `/home/vibe/keystores/<pkg>-keystore.properties` 기반으로 영구 적용.
+     *
+     * 비밀번호는 prompt 본문에 절대 포함하지 않음 — properties 파일 경로만 전달.
+     * Claude 가 `Properties().load(FileInputStream(...))` 로 런타임에 읽도록 가이드.
+     */
+    post("/settings/keystores/{pkg}/apply/{projectId}") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireAdminOrRedirect(sess)) return@post
+        com.siamakerlab.vibecoder.server.auth.CsrfTokens.verifyCsrfFromQueryOrHeader(call)
+        val pkg = call.parameters["pkg"].orEmpty()
+        val projectId = call.parameters["projectId"].orEmpty()
+
+        val entry = service.get(pkg)
+        if (entry == null) {
+            call.respondRedirect("/settings/keystores?flash=err:keystore_not_found")
+            return@post
+        }
+        val project = projectRepo.findById(projectId)
+        if (project == null) {
+            call.respondRedirect("/settings/keystores?flash=err:project_not_found")
+            return@post
+        }
+
+        val prompt = buildApplySigningPrompt(project, service, entry)
+        val sent = runCatching {
+            sessionManager.sendPrompt(projectId, prompt)
+        }.onFailure { log.warn(it) { "apply-signing prompt failed for $projectId / $pkg" } }
+            .isSuccess
+
+        if (sent) {
+            // 콘솔 페이지로 이동 — 사용자가 Claude 응답을 즉시 볼 수 있게.
+            call.respondRedirect("/projects/$projectId/console?flash=signing_applied:$pkg")
+        } else {
+            call.respondRedirect("/settings/keystores?flash=err:claude_send_failed")
+        }
+    }
+}
+
+/**
+ * v1.8.0 — Claude 가 일관된 결과를 만들도록 정형화된 prompt.
+ *
+ * 매개변수만 치환되고 본문은 고정 — 같은 (project, keystore) 조합엔 매번 같은
+ * 지시가 전송됨. 비밀번호는 본문에 포함되지 않으며, properties 파일 경로 + 표준
+ * Gradle 패턴 (Properties.load + signingConfigs) 만 안내.
+ */
+private fun buildApplySigningPrompt(
+    project: ProjectRow,
+    service: KeystoreService,
+    entry: KeystoreEntry,
+): String {
+    val pkg = entry.packageName
+    val propsPath = service.propertiesPath(pkg)
+    val storePath = service.storeFilePath(pkg)
+    val debugStorePath = storePath.parent.resolve("$pkg-debug.keystore")
+    val moduleName = project.moduleName
+    val debugVariantLine = if (entry.debugExists) {
+        "- 디버그 키스토어도 같은 set 에 있음 (`$debugStorePath`). debug variant 도 같은 properties 의 password / alias 를 재사용하되 storeFile 만 `$pkg-debug.keystore` 로 지정."
+    } else {
+        "- 디버그 전용 키스토어 파일은 없음. 필요 시 release 와 같은 storeFile 을 debug 에도 재사용 (단일사용자 LAN 도구라 안전)."
+    }
+    return """
+[vibe-coder-server / 키스토어 자동 적용]
+
+프로젝트 `${project.id}` 의 안드로이드 모듈 `$moduleName` 의 build.gradle.kts 를 다음 키스토어로 영구 서명되게 수정해 주세요.
+
+대상 패키지: $pkg
+키스토어 set (호스트 영속 볼륨 `/home/vibe/keystores/` 안에 위치):
+- release keystore: $storePath
+- properties     : $propsPath  (storeFile / storePassword / keyAlias / keyPassword 4종 평문 포함)
+$debugVariantLine
+
+수정 절차:
+1. `$moduleName/build.gradle.kts` 의 `android { ... }` 블록 위에 properties 로더 추가
+   (이미 있으면 중복 방지):
+
+   ```kotlin
+   import java.util.Properties
+   import java.io.FileInputStream
+
+   val signingPropsFile = file("$propsPath")
+   val signingProps = Properties().apply {
+       if (signingPropsFile.exists()) {
+           FileInputStream(signingPropsFile).use { load(it) }
+       }
+   }
+   ```
+
+2. `android { ... }` 안에 `signingConfigs { ... }` 블록을 작성/갱신:
+
+   ```kotlin
+   signingConfigs {
+       create("release") {
+           if (signingPropsFile.exists()) {
+               storeFile = file(signingProps.getProperty("storeFile"))
+               storePassword = signingProps.getProperty("storePassword")
+               keyAlias = signingProps.getProperty("keyAlias")
+               keyPassword = signingProps.getProperty("keyPassword")
+           }
+       }
+       getByName("debug") {
+           if (signingPropsFile.exists()) {
+               storeFile = file(signingProps.getProperty("storeFile"))
+               storePassword = signingProps.getProperty("storePassword")
+               keyAlias = signingProps.getProperty("keyAlias")
+               keyPassword = signingProps.getProperty("keyPassword")
+           }
+       }
+   }
+   ```
+
+3. `buildTypes { release { ... } }` 안에 `signingConfig = signingConfigs.getByName("release")` 가 들어가게.
+4. 빈 `signingConfigs` 또는 default debug 만 남은 기존 블록은 위 패턴으로 통합. groovy DSL (`build.gradle`) 이면 같은 의미의 groovy 문법으로 작성.
+5. KTS 임포트는 파일 상단의 plugins 블록 위에 모아 두기.
+
+규칙:
+- 비밀번호 / alias 평문을 build.gradle.kts 에 하드코딩하지 말 것. **반드시 properties 파일 경로만 사용**.
+- 변경은 `$moduleName/build.gradle.kts` 한 파일에만. 다른 파일 수정 금지.
+- 수정 후 어떤 라인이 추가됐는지 diff 형태로 알려 주세요.
+- 이미 같은 properties 파일을 가리키는 signingConfigs 가 있으면 "이미 적용되어 있어 변경 없음" 으로 회신.
+
+작업 완료 후 사용자가 빌드 (assembleDebug 또는 assembleRelease) 를 실행할 예정이라, 위 절차만 정확히 처리하고 빌드는 자동 실행하지 마세요.
+""".trim()
 }
 
 internal object KeystoreTemplates {
@@ -94,6 +237,7 @@ internal object KeystoreTemplates {
     fun page(
         username: String,
         entries: List<KeystoreEntry>,
+        projects: List<ProjectRow>,
         defaults: KeystoreDefaults,
         flash: String?,
         csrf: String?,
@@ -105,12 +249,13 @@ internal object KeystoreTemplates {
             flash == null -> ""
             flash.startsWith("ok:") -> """<div class="flash ok">✓ ${esc(t("ks.flash.created"))} <code>${esc(flash.removePrefix("ok:"))}</code></div>"""
             flash.startsWith("deleted:") -> """<div class="flash ok">✓ ${esc(t("ks.flash.deleted"))} <code>${esc(flash.removePrefix("deleted:"))}</code></div>"""
+            flash.startsWith("applied:") -> """<div class="flash ok">✓ ${esc(t("ks.flash.applied"))} <code>${esc(flash.removePrefix("applied:"))}</code></div>"""
             flash.startsWith("err:") -> """<div class="flash err">⚠ ${esc(flash.removePrefix("err:"))}</div>"""
             else -> ""
         }
 
         val rows = if (entries.isEmpty()) {
-            """<tr><td colspan="4" class="dim" style="text-align:center;padding:18px">${esc(t("ks.empty"))}</td></tr>"""
+            """<tr><td colspan="5" class="dim" style="text-align:center;padding:18px">${esc(t("ks.empty"))}</td></tr>"""
         } else entries.joinToString("\n") { e ->
             val files = buildList {
                 if (e.releaseExists) add("release")
@@ -118,10 +263,48 @@ internal object KeystoreTemplates {
                 if (e.propertiesExists) add(".properties")
                 if (e.admobExists) add("admob")
             }.joinToString(" · ")
+            // v1.8.0 — Apply to project 드롭다운. packageName 이 일치하는 프로젝트가 있으면
+            // 그 옵션을 최상단으로 (recommended), 나머지는 그 뒤에. 프로젝트가 없으면 비활성 안내.
+            val applyCell = if (projects.isEmpty()) {
+                """<span class="dim" style="font-size:12px">${esc(t("ks.apply.noProjects"))}</span>"""
+            } else {
+                val matching = projects.filter { it.packageName == e.packageName }
+                val others = projects.filter { it.packageName != e.packageName }
+                val opts = buildString {
+                    if (matching.isNotEmpty()) {
+                        append("""<optgroup label="${esc(t("ks.apply.matching"))}">""")
+                        matching.forEach { p ->
+                            append("""<option value="${esc(p.id)}">${esc(p.name)} (${esc(p.id)})</option>""")
+                        }
+                        append("</optgroup>")
+                    }
+                    if (others.isNotEmpty()) {
+                        append("""<optgroup label="${esc(t("ks.apply.others"))}">""")
+                        others.forEach { p ->
+                            append("""<option value="${esc(p.id)}">${esc(p.name)} (${esc(p.packageName)})</option>""")
+                        }
+                        append("</optgroup>")
+                    }
+                }
+                val confirmMsg = t("ks.apply.confirm")
+                """<form method="post" class="ks-apply-form" data-pkg="${esc(e.packageName)}"
+                          style="display:inline-flex;gap:6px;align-items:center"
+                          onsubmit="this.action = '/settings/keystores/${esc(e.packageName)}/apply/' + this.projectId.value; return confirm('${esc(confirmMsg)}')">
+                      $csrfHidden
+                      <select name="projectId" required style="padding:6px;font-size:12px">
+                        <option value="">${esc(t("ks.apply.selectProject"))}</option>
+                        $opts
+                      </select>
+                      <button type="submit" class="chip chip-action" style="background:#1e40af;color:#fff;font-size:12px">
+                        ${esc(t("ks.apply.button"))}
+                      </button>
+                    </form>"""
+            }
             """<tr>
               <td><code>${esc(e.packageName)}</code></td>
               <td class="dim">${esc(files)}</td>
               <td class="dim" style="font-size:12px">${esc(e.createdAt ?: "—")}</td>
+              <td>$applyCell</td>
               <td style="text-align:right">
                 <form method="post" action="/settings/keystores/${esc(e.packageName)}/delete"
                       style="display:inline" onsubmit="return confirm('${esc(t("ks.confirm.delete"))}')">
@@ -162,6 +345,7 @@ $flashHtml
         <th style="text-align:left;padding:8px">${esc(t("ks.col.package"))}</th>
         <th style="text-align:left;padding:8px">${esc(t("ks.col.files"))}</th>
         <th style="text-align:left;padding:8px">${esc(t("ks.col.created"))}</th>
+        <th style="text-align:left;padding:8px">${esc(t("ks.col.apply"))}</th>
         <th></th>
       </tr>
     </thead>

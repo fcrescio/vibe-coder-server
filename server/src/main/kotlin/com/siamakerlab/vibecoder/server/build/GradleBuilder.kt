@@ -1,5 +1,6 @@
 package com.siamakerlab.vibecoder.server.build
 
+import com.siamakerlab.vibecoder.server.admin.SigningCredentials
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.OsType
 import com.siamakerlab.vibecoder.server.core.ProcessRunner
@@ -16,6 +17,14 @@ class GradleBuilder(private val config: ServerConfig) {
         debugTask: String,
         logger: TaskLogger,
         cancellation: Flow<Unit>,
+        /**
+         * v1.8.0 — 매칭되는 키스토어가 있으면 `android.injected.signing.*` 4종을
+         * Gradle CLI 에 inject. AGP 의 IDE-injected signing path 를 활용 — release
+         * variant 빌드 시 즉시 효과. debug variant 는 build.gradle.kts 의
+         * `signingConfigs.debug` 가 명시되어 있어야 적용되므로, Phase 2 (Claude
+         * 콘솔의 "Apply signing" 액션) 와 보완 관계.
+         */
+        signing: SigningCredentials? = null,
     ): Int {
         val os = OsType.detect()
 
@@ -36,9 +45,19 @@ class GradleBuilder(private val config: ServerConfig) {
 
         // Use `:module:assembleDebug` syntax which works on every OS without quoting.
         val fullTask = ":$moduleName:$debugTask"
-        val tasks = listOf(fullTask, "--no-daemon", "--stacktrace")
+        val signingArgs = signing?.toInjectedArgs().orEmpty()
+        val tasks = listOf(fullTask, "--no-daemon", "--stacktrace") + signingArgs
         val command = os.gradleCommand(source, tasks)
-        logger.info("OS=$os, gradle command: ${command.joinToString(" ")}")
+        // v1.8.0 — store/key password 는 ps 노출은 단일사용자 컨테이너 특성상 감수하지만
+        // 빌드 로그에 평문 echo 되지 않도록 redact.
+        val printable = command.map { redactSigningArg(it) }
+        logger.info("OS=$os, gradle command: ${printable.joinToString(" ")}")
+        if (signing != null) {
+            logger.info(
+                "Signing injected: storeFile=${signing.storeFile} keyAlias=${signing.keyAlias} " +
+                    "(release variant 즉시 적용 / debug 는 build.gradle.kts 의 signingConfigs.debug 가 필요)"
+            )
+        }
 
         val runner = ProcessRunner(workdir = source)
         val result = runner.run(
@@ -49,6 +68,21 @@ class GradleBuilder(private val config: ServerConfig) {
 
         logger.info("Gradle exited code=${result.exitCode} timedOut=${result.timedOut} duration=${result.durationMs}ms")
         return result.exitCode
+    }
+
+    private fun SigningCredentials.toInjectedArgs(): List<String> = listOf(
+        "-Pandroid.injected.signing.store.file=$storeFile",
+        "-Pandroid.injected.signing.store.password=$storePassword",
+        "-Pandroid.injected.signing.key.alias=$keyAlias",
+        "-Pandroid.injected.signing.key.password=$keyPassword",
+    )
+
+    private fun redactSigningArg(arg: String): String = when {
+        arg.startsWith("-Pandroid.injected.signing.store.password=") ->
+            "-Pandroid.injected.signing.store.password=***"
+        arg.startsWith("-Pandroid.injected.signing.key.password=") ->
+            "-Pandroid.injected.signing.key.password=***"
+        else -> arg
     }
 
     /**

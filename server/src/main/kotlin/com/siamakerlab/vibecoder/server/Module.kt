@@ -224,6 +224,11 @@ data class ServerContext(
     val fcmSender: com.siamakerlab.vibecoder.server.notify.FcmSender,
     /** v0.74.0 — Phase 57 #7 Kotlin LSP (KOTLIN_LSP_PATH 환경 변수 시 활성). */
     val kotlinLspService: com.siamakerlab.vibecoder.server.projects.KotlinLspService,
+    /**
+     * v1.8.0 — `/home/vibe/keystores` 영속 볼륨의 Android 키스토어 관리 + Gradle
+     * signing inject. [BuildService] 와 [keystoreRoutes] 가 같은 인스턴스 공유.
+     */
+    val keystoreService: KeystoreService,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -338,7 +343,8 @@ fun Application.module(ctx: ServerContext) {
         // v1.3.2 — 전역 (계정 단위) Claude 쿼타 — 사이드바 / Android 헤더용.
         quotaRoutes(ctx.claudeStatusService)
         // v1.5.0 — Android 키스토어 관리 (설정 → Keystores).
-        keystoreRoutes(adminDeps, KeystoreService(defaults = adminDeps.config.keystore.defaults))
+        // v1.8.0 — 같은 service 인스턴스를 BuildService 도 공유 (Gradle signing inject).
+        keystoreRoutes(adminDeps, ctx.keystoreService, ctx.projectRepo, ctx.sessionManager)
         // v1.6.0 — Workspace terminal (security.allowTerminal=true 일 때만 등록).
         terminalRoutes(adminDeps, TerminalSessionManager(), ctx.deviceRepo, ctx.tokens)
         // v0.10.0 — admin SSR 라우트들의 JSON API 이중 노출 (vibe-coder-android wire)

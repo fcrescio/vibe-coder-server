@@ -709,6 +709,14 @@ services:
       # (one form per package → generates release / debug / properties / AdMob
       # files). LOSING THE RELEASE KEY blocks Play Store updates forever, so
       # back up this directory religiously.
+      # v1.8.0 — Keystores are auto-applied to builds in two layers:
+      #   (a) BuildService injects `-Pandroid.injected.signing.*` to Gradle when
+      #       the project's packageName matches a keystore set (release variant
+      #       — debug needs build.gradle.kts edits via (b)).
+      #   (b) Settings → Keystores → "Apply to project" sends a Claude-console
+      #       prompt that edits the project's build.gradle.kts to load
+      #       /home/vibe/keystores/<pkg>-keystore.properties and wires it into
+      #       signingConfigs.{debug,release}. One click per (project, keystore).
       - ./vibe-coder-data/dev-tools/keystores:/home/vibe/keystores
       - ./vibe-coder-data/claude:/home/vibe/.claude
     healthcheck:

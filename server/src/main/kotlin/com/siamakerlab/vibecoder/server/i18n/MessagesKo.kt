@@ -1331,10 +1331,19 @@ internal object MessagesKo {
         "ks.admob.native" to "네이티브 광고 단위 ID",
         "ks.flash.created" to "키스토어 set 생성됨:",
         "ks.flash.deleted" to "키스토어 set 삭제됨:",
+        "ks.flash.applied" to "Claude 콘솔에 build.gradle.kts 수정 prompt 전송됨:",
+        // v1.8.0 — Phase 2 Apply-to-project 컬럼.
+        "ks.col.apply" to "프로젝트 적용 (Claude)",
+        "ks.apply.button" to "Apply",
+        "ks.apply.selectProject" to "— 프로젝트 선택 —",
+        "ks.apply.matching" to "동일 패키지",
+        "ks.apply.others" to "다른 프로젝트",
+        "ks.apply.noProjects" to "프로젝트 없음",
+        "ks.apply.confirm" to "선택한 프로젝트의 build.gradle.kts 를 이 키스토어로 영구 서명되게 수정하도록 Claude 콘솔에 prompt 를 전송합니다. 진행할까요?",
         "ks.usage.title" to "Android 앱에서 사용",
-        "ks.usage.body" to "키스토어 생성 후 build.gradle.kts 가 다음 파일들을 참조:",
-        "ks.usage.step1" to "키스토어 볼륨을 Android 빌드 컨테이너에 마운트하거나, 빌드 전 호스트의 ../keystores/ 로 파일 복사.",
-        "ks.usage.step2" to "build.gradle.kts: Properties().load(FileInputStream(\"/home/vibe/keystores/<pkg>-keystore.properties\")) → signingConfigs.release 에 storeFile/storePassword/keyAlias/keyPassword 주입.",
+        "ks.usage.body" to "v1.8.0+ — 키스토어 생성/업로드 후 두 단계로 자동 적용:",
+        "ks.usage.step1" to "릴리즈 빌드는 자동 — vibe-coder-server 가 packageName 매칭 시 Gradle CLI 에 `-Pandroid.injected.signing.*` 4종을 inject (passwords redacted in logs).",
+        "ks.usage.step2" to "디버그 빌드 / IDE 빌드까지 일관되게 적용하려면 위 \"Apply\" 버튼으로 프로젝트의 build.gradle.kts 에 signingConfigs.{debug,release} 를 영구 작성 (Claude 콘솔 prompt 전송).",
         "ks.usage.step3" to "선택: <pkg>-admob.properties 의 광고 ID 들을 manifestPlaceholders + buildConfigField 로 주입.",
 
         // ─────────────────────────────────────────────── terminal (v1.6.0)

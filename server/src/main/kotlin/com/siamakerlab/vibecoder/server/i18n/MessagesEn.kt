@@ -1354,10 +1354,19 @@ internal object MessagesEn {
         "ks.admob.native" to "Native ad unit",
         "ks.flash.created" to "Keystore set created:",
         "ks.flash.deleted" to "Keystore set deleted:",
+        "ks.flash.applied" to "build.gradle.kts apply-signing prompt sent to Claude console:",
+        // v1.8.0 — Phase 2 Apply-to-project column.
+        "ks.col.apply" to "Apply to project (Claude)",
+        "ks.apply.button" to "Apply",
+        "ks.apply.selectProject" to "— choose project —",
+        "ks.apply.matching" to "Same package",
+        "ks.apply.others" to "Other projects",
+        "ks.apply.noProjects" to "No projects",
+        "ks.apply.confirm" to "This sends a prompt to the Claude console asking it to modify the project's build.gradle.kts so this keystore is used for signing. Continue?",
         "ks.usage.title" to "How to use in your Android app",
-        "ks.usage.body" to "After creating a keystore, your build.gradle.kts can reference it directly:",
-        "ks.usage.step1" to "Mount the keystore volume into your Android build container or copy files to ../keystores/ on the host before building.",
-        "ks.usage.step2" to "In build.gradle.kts, load /home/vibe/keystores/<pkg>-keystore.properties via Properties().load(FileInputStream(...)) inside signingConfigs.release.",
+        "ks.usage.body" to "v1.8.0+ — Two layers of automatic application after creating/uploading a keystore:",
+        "ks.usage.step1" to "Release builds: automatic. vibe-coder-server injects `-Pandroid.injected.signing.*` (passwords redacted in logs) whenever the project's packageName matches a keystore set.",
+        "ks.usage.step2" to "Debug builds / IDE builds: use the \"Apply\" dropdown above to send a prompt to the Claude console — Claude edits build.gradle.kts to set up signingConfigs.{debug,release} permanently against /home/vibe/keystores/<pkg>-keystore.properties.",
         "ks.usage.step3" to "Optionally read <pkg>-admob.properties for AdMob app/unit IDs — use manifestPlaceholders and buildConfigField.",
 
         // ─────────────────────────────────────────────── terminal (v1.6.0)

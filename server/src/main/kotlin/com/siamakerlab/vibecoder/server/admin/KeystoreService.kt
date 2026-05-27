@@ -6,6 +6,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
+import java.util.Properties
 import java.util.concurrent.TimeUnit
 
 private val log = KotlinLogging.logger {}
@@ -59,6 +60,45 @@ class KeystoreService(
         val release = keystoreDir.resolve("$packageName.keystore")
         if (!Files.exists(release)) return null
         return entryFor(packageName)
+    }
+
+    /** Host path of `<pkg>.keystore` (always under [keystoreDir]) — for build.gradle.kts inline reference. */
+    fun storeFilePath(packageName: String): Path = keystoreDir.resolve("$packageName.keystore")
+
+    /** Host path of `<pkg>-keystore.properties` — Claude prompt 에 절대경로로 노출. */
+    fun propertiesPath(packageName: String): Path = keystoreDir.resolve("$packageName-keystore.properties")
+
+    /**
+     * v1.8.0 — 빌드 시 Gradle `-Pandroid.injected.signing.*` inject 용 자격증명 로드.
+     *
+     * 우선 `<pkg>-keystore.properties` 의 storeFile / storePassword / keyAlias /
+     * keyPassword 를 읽고, storeFile 이 비어있으면 `<pkg>.keystore` 로 fallback.
+     * key files 자체가 존재하지 않으면 null — 호출자(BuildService)가 silent skip.
+     */
+    fun loadSigning(packageName: String): SigningCredentials? {
+        if (!packageNameRegex.matches(packageName)) return null
+        val release = keystoreDir.resolve("$packageName.keystore")
+        val props = keystoreDir.resolve("$packageName-keystore.properties")
+        if (!Files.exists(release) || !Files.exists(props)) return null
+        val p = Properties()
+        runCatching {
+            Files.newBufferedReader(props).use { p.load(it) }
+        }.getOrElse { return null }
+        val storePassword = p.getProperty("storePassword")?.takeIf { it.isNotBlank() } ?: return null
+        val keyAlias = p.getProperty("keyAlias")?.takeIf { it.isNotBlank() } ?: return null
+        val keyPassword = p.getProperty("keyPassword")?.takeIf { it.isNotBlank() } ?: storePassword
+        val storeFile = p.getProperty("storeFile")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { Path.of(it) }
+            ?.takeIf { Files.exists(it) }
+            ?: release
+        return SigningCredentials(
+            storeFile = storeFile,
+            storePassword = storePassword,
+            keyAlias = keyAlias,
+            keyPassword = keyPassword,
+            propertiesFile = props,
+        )
     }
 
     private fun entryFor(packageName: String): KeystoreEntry {
@@ -220,4 +260,19 @@ data class AdmobIds(
     val appOpenUnitId: String = "",
     val bannerUnitId: String = "",
     val nativeUnitId: String = "",
+)
+
+/**
+ * v1.8.0 — Gradle `android.injected.signing.*` inject 용 자격증명 + 원본 properties 경로.
+ *
+ * 호출자(BuildService)는 storePassword / keyPassword 가 log / CLI command line 에
+ * echo 되지 않게 redact 책임. [propertiesFile] 은 Phase 2 (Claude 콘솔 prompt)에서
+ * build.gradle.kts 영구 수정 안내용으로 참조.
+ */
+data class SigningCredentials(
+    val storeFile: Path,
+    val storePassword: String,
+    val keyAlias: String,
+    val keyPassword: String,
+    val propertiesFile: Path,
 )
