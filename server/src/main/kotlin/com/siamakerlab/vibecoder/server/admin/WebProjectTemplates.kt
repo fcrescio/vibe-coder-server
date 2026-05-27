@@ -589,11 +589,15 @@ $okHtml
 $errHtml
 
 <!-- v1.14.1 — 좌우 (2fr 1fr) 배치 → 상하 single-column. 신규 등록 카드가 상단,
-     기존 프로젝트 목록이 하단. 사이드바 접힘 시에도 가로 폭 부족 없음. -->
+     기존 프로젝트 목록이 하단. 사이드바 접힘 시에도 가로 폭 부족 없음.
+     v1.14.2 — 신규 등록 카드는 default closed (<details> native 토글). 사용자가
+     실제로 새 프로젝트 만들 때만 펼침. -->
 <section class="grid" style="grid-template-columns: 1fr">
-  <div class="card">
-    <h2>${esc(t("projects.new.title"))}</h2>
-    <form method="post" action="/projects" id="new-project-form">
+  <details class="card">
+    <summary style="cursor:pointer;font-weight:600;font-size:18px;list-style:none">
+      <span style="display:inline-block;width:1em">▸</span>${esc(t("projects.new.title"))}
+    </summary>
+    <form method="post" action="/projects" id="new-project-form" style="margin-top:12px">
       ${CsrfTokens.hiddenInput(csrf)}
 
       <!-- v1.7.0 — 소스 유형 선택을 가장 먼저. clone 선택 시 다른 fields 자동 hide +
@@ -678,7 +682,7 @@ $errHtml
         }
       }
     </script>
-  </div>
+  </details>
 
   <div class="card">
     <h2>${esc(t("projects.list.title"))}</h2>
