@@ -26,7 +26,7 @@ internal object ToolsTabsTemplate {
         Tab("history",       "tools.tab.history",    "/history",       "ttab-history"),
     )
 
-    fun page(username: String, csrf: String?, lang: String = "en"): String {
+    fun page(username: String, csrf: String?, lang: String): String {
         val t = { key: String -> Messages.t(lang, key) }
         val esc = ::escapeHtml
 

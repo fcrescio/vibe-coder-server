@@ -241,7 +241,7 @@ internal object KeystoreTemplates {
         defaults: KeystoreDefaults,
         flash: String?,
         csrf: String?,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> Messages.t(lang, key) }
         val csrfHidden = csrf?.let { """<input type="hidden" name="_csrf" value="${esc(it)}">""" } ?: ""

@@ -20,7 +20,7 @@ object AuditTemplates {
         pageSize: Int,
         total: Long,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val actionOpts = ("""<option value="">(all)</option>""" +
             actions.joinToString("") { a ->

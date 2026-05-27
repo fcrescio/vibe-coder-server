@@ -42,7 +42,7 @@ object McpTemplates {
         states: Map<String, McpService.EntryState>,
         flash: String?,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> Messages.t(lang, key) }
         val total = McpCatalog.size

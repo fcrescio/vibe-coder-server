@@ -37,7 +37,7 @@ object EnvSetupTemplates {
         /** v1.9.0 — `?git=saved|cleared|err:<code>` flash. */
         gitFlash: String? = null,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> Messages.t(lang, key) }
         val cards = states.joinToString("\n") { renderCard(it, csrf, lang) }
@@ -401,7 +401,7 @@ $statusHint
         username: String,
         state: ClaudeLoginService.SessionDto?,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> Messages.t(lang, key) }
         val (statusText, statusCls) = stateLabel(state?.state, lang)
@@ -598,7 +598,7 @@ $lastLinesBlock
     // 진행 페이지 (/env-setup/tasks/{taskId})
     // ────────────────────────────────────────────────────────────────────
 
-    fun taskProgressPage(username: String, taskId: String, lang: String = "en"): String {
+    fun taskProgressPage(username: String, taskId: String, lang: String): String {
         val t = { key: String -> Messages.t(lang, key) }
         val safeId = esc(taskId)
         // JS 안에서 쓰일 i18n 문자열은 jsLit 으로 single-quoted literal 화.
@@ -760,7 +760,7 @@ $lastLinesBlock
     }
 
     /** POST 실패 시 inline 으로 안내. */
-    fun errorBlurb(message: String, lang: String = "en"): String {
+    fun errorBlurb(message: String, lang: String): String {
         val t = { key: String -> Messages.t(lang, key) }
         val htmlLang = if (lang == "ko") "ko" else "en"
         return """<!doctype html><html lang="$htmlLang"><head><meta charset="utf-8"><title>${esc(t("env.error.title"))}</title>

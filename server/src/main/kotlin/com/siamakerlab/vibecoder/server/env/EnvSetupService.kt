@@ -170,9 +170,9 @@ class EnvSetupService(
     /** 모든 컴포넌트의 현재 상태를 한 번에 반환.
      *  v1.7.16 — lang 받음. 호출자 (EnvSetupRoutes) 가 sess.language 전달.
      *  default "en" — API / internal 호출자 호환. */
-    fun detectAll(lang: String = "en"): List<ComponentState> = SetupComponent.entries.map { detect(it, lang) }
+    fun detectAll(lang: String): List<ComponentState> = SetupComponent.entries.map { detect(it, lang) }
 
-    fun detect(c: SetupComponent, lang: String = "en"): ComponentState = when (c) {
+    fun detect(c: SetupComponent, lang: String): ComponentState = when (c) {
         SetupComponent.JAVA -> probeCmd(c, listOf("java", "-version"), lang)
         SetupComponent.GIT -> probeCmd(c, listOf("git", "--version"), lang)
         SetupComponent.NODE -> probeCmd(c, listOf("node", "--version"), lang)

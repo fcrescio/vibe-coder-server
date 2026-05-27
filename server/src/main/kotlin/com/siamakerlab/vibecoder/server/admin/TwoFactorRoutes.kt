@@ -114,7 +114,7 @@ private object TwoFactorTemplates {
             .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             .replace("\"", "&quot;").replace("'", "&#39;")
 
-    fun disabledPage(username: String, csrf: String?, secret: String, otpauthUri: String, lang: String = "en"): String {
+    fun disabledPage(username: String, csrf: String?, secret: String, otpauthUri: String, lang: String): String {
         val t = { key: String -> Messages.t(lang, key) }
         return AdminTemplates.shell(
             title = t("twofa.title"),
@@ -157,7 +157,7 @@ private object TwoFactorTemplates {
         )
     }
 
-    fun enabledPage(username: String, csrf: String?, enabledAt: String?, lang: String = "en"): String {
+    fun enabledPage(username: String, csrf: String?, enabledAt: String?, lang: String): String {
         val t = { key: String -> Messages.t(lang, key) }
         return AdminTemplates.shell(
             title = t("twofa.title"),

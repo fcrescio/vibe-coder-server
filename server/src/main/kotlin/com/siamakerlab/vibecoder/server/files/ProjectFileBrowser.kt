@@ -544,12 +544,32 @@ class ProjectFileBrowser(
         /** v1.24.0 — 응답 header 강화가 필요한 위험 mime. /raw 라우트가 추가 header 적용. */
         fun isUntrustedMime(mime: String): Boolean = mime in UNTRUSTED_MIMES
 
+        /**
+         * v1.25.0 — path 확장자 또는 MIME 기준 위험 판정. v1.24.1 의 `isUntrustedMime`
+         * 만으로는 `guessImageMime(.svg) = application/octet-stream` 이 이미 downgrade
+         * 된 후라 SVG 에 대해 false → attachment 강제가 발화 안 함. path 확장자도 같이
+         * 보면 SVG 도 정상적으로 attachment.
+         */
+        fun isUntrustedPathOrMime(path: String, mime: String): Boolean {
+            if (mime in UNTRUSTED_MIMES) return true
+            val lower = path.lowercase()
+            return UNTRUSTED_EXTENSIONS.any { lower.endsWith(it) }
+        }
+
         private val UNTRUSTED_MIMES = setOf(
             "image/svg+xml",
             "text/html",
             "application/xhtml+xml",
             "application/javascript",
             "text/javascript",
+        )
+
+        // v1.25.0 — MIME 이 downgrade 된 후에도 위험 확장자는 path 기반으로 차단.
+        private val UNTRUSTED_EXTENSIONS = listOf(
+            ".svg", ".svgz",
+            ".html", ".htm", ".xhtml",
+            ".js", ".mjs",
+            ".xml", ".xsl", ".xslt",   // XSLT 가 일부 브라우저에서 inline render
         )
     }
 }

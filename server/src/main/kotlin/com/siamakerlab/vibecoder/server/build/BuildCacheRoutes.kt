@@ -88,7 +88,7 @@ private object BuildCacheTemplates {
         ok: String?,
         err: String?,
     
-        lang: String = "en",
+        lang: String,
     ): String {
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""

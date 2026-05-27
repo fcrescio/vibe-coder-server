@@ -43,7 +43,7 @@ fun Routing.codeAnalysisRoutes(
         val ok = call.request.queryParameters["ok"]
         val err = call.request.queryParameters["err"]
         call.respondText(
-            WrapperTemplates.page(sess.username, p, info, ok, err, sess.csrf),
+            WrapperTemplates.page(sess.username, p, info, ok, err, sess.csrf, lang = sess.language),
             ContentType.Text.Html,
         )
     }
@@ -76,7 +76,7 @@ fun Routing.codeAnalysisRoutes(
         }
         val result = statsService.analyze(id)
         call.respondText(
-            StatsTemplates.page(sess.username, p, result, sess.csrf),
+            StatsTemplates.page(sess.username, p, result, sess.csrf, lang = sess.language),
             ContentType.Text.Html,
         )
     }
@@ -90,7 +90,7 @@ fun Routing.codeAnalysisRoutes(
         val matches = if (q == null) emptyList()
         else searchService.search(q, projectFilter, caseSensitive)
         call.respondText(
-            SearchTemplates.page(sess.username, sess.csrf, q, projectFilter, caseSensitive, matches),
+            SearchTemplates.page(sess.username, sess.csrf, q, projectFilter, caseSensitive, matches, lang = sess.language),
             ContentType.Text.Html,
         )
     }
@@ -112,7 +112,7 @@ private object WrapperTemplates {
         err: String?,
         csrf: String?,
     
-        lang: String = "en",
+        lang: String,
     ): String {
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""
@@ -179,7 +179,7 @@ private object StatsTemplates {
         result: CodeStatsService.Result,
         csrf: String?,
     
-        lang: String = "en",
+        lang: String,
     ): String {
         val rows = if (result.byLanguage.isEmpty()) {
             """<tr><td colspan="4" class="dim" style="text-align:center;padding:14px">no code files indexed</td></tr>"""
@@ -258,7 +258,7 @@ private object SearchTemplates {
         caseSensitive: Boolean,
         matches: List<CodeSearchService.Match>,
     
-        lang: String = "en",
+        lang: String,
     ): String {
         val rows = if (matches.isEmpty() && q != null) {
             """<tr><td colspan="3" class="dim" style="text-align:center;padding:14px">"${esc(q)}" 에 매치되는 줄이 없습니다.</td></tr>"""

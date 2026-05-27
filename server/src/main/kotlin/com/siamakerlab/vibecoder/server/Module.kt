@@ -273,7 +273,11 @@ fun Application.module(ctx: ServerContext) {
         // Ktor 3.1.x exposes pingPeriodMillis / timeoutMillis (Long) on WebSocketOptions.
         pingPeriodMillis = 20_000L
         timeoutMillis = 45_000L
-        maxFrameSize = Long.MAX_VALUE
+        // v1.25.0 — 이전엔 Long.MAX_VALUE 라 단일 frame 으로 메모리 고갈 DoS surface.
+        // 인증된 사용자만 도달하므로 실 위험 낮으나 외부 노출 (vibe.wody.work) 환경에서
+        // 잘못 만든 클라이언트의 무한 buffer 차단. Claude stream / 콘솔 텍스트 / 빌드
+        // 로그 모두 단일 frame 8MB 이내. 큰 응답은 자체 frame split.
+        maxFrameSize = 8L * 1024 * 1024
         masking = false
         contentConverter = KotlinxWebsocketSerializationConverter(jsonCfg)
     }

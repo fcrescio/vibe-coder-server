@@ -17,7 +17,7 @@ object PromptTemplates {
         flashErr: String? = null,
         flashOk: String? = null,
     
-        lang: String = "en",
+        lang: String,
     ): String {
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""

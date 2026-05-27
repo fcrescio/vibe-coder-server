@@ -60,7 +60,7 @@ fun Routing.buildAutomationRoutes(
         val flashErr = call.request.queryParameters["err"]
         val newSecret = call.request.queryParameters["newSecret"]   // 1회 노출
         call.respondText(
-            AutomationTemplates.page(sess.username, p, schedules, secrets, flashOk, flashErr, newSecret, sess.csrf),
+            AutomationTemplates.page(sess.username, p, schedules, secrets, flashOk, flashErr, newSecret, sess.csrf, lang = sess.language),
             ContentType.Text.Html,
         )
     }
@@ -262,7 +262,7 @@ private object AutomationTemplates {
         newSecret: String?,
         csrf: String?,
     
-        lang: String = "en",
+        lang: String,
     ): String {
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""

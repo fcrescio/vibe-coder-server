@@ -69,7 +69,7 @@ private object DependencyAuditTemplates {
         result: DependencyAudit.Result?,
         csrf: String?,
     
-        lang: String = "en",
+        lang: String,
     ): String {
         val resultHtml = when {
             result == null -> """<p class="hint">아래 "실행" 버튼으로 의존성 트리를 가져옵니다 (10-90s).</p>"""

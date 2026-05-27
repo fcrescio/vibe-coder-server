@@ -56,7 +56,7 @@ private fun renderPage(
     csrf: String?,
     selectedIds: List<String>,
     allProjects: List<com.siamakerlab.vibecoder.shared.dto.ProjectDto>,
-    lang: String = "en",
+    lang: String,
 ): String {
     val t = { key: String -> Messages.t(lang, key) }
     val n = selectedIds.size

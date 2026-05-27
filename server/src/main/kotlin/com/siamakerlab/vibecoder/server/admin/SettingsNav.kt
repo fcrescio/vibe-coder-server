@@ -68,7 +68,7 @@ internal object SettingsNav {
      *
      * v0.77.0 — i18n. [lang] 으로 라벨 분기. 호출자가 WebSession.language 전달.
      */
-    fun tabBar(currentPath: String, lang: String = "en"): String {
+    fun tabBar(currentPath: String, lang: String): String {
         val tab = tabOf(currentPath)
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val tabs = listOf(

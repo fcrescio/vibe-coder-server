@@ -56,7 +56,7 @@ private fun renderUsagePage(
     snapshots: Map<String, com.siamakerlab.vibecoder.server.claude.ClaudeStatusService.RawSnapshot>,
     projects: Map<String, com.siamakerlab.vibecoder.shared.dto.ProjectDto>,
     cacheStats: Map<String, com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository.UsageSummary> = emptyMap(),
-    lang: String = "en",
+    lang: String,
 ): String {
     val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
     fun fmt(n: Long): String = "%,d".format(n)

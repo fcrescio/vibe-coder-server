@@ -210,7 +210,7 @@ private suspend fun renderHistory(
     displayName: String,
     isChat: Boolean,
     repo: ConversationTurnRepository,
-    lang: String = "en",
+    lang: String,
 ) {
     val params = call.request.queryParameters
     // v0.52.0 — agent filter via ?agent=. UI semantics:
@@ -287,7 +287,7 @@ object HistoryTemplates {
         flashOk: String? = null,
         flashErr: String? = null,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val okHtml = flashOk?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""

@@ -38,7 +38,7 @@ internal object SettingsTabsTemplate {
         Tab("users",         "settings.tab.users",         "/users",                    "stab-users"),
     )
 
-    fun page(username: String, csrf: String?, lang: String = "en"): String {
+    fun page(username: String, csrf: String?, lang: String): String {
         val t = { key: String -> Messages.t(lang, key) }
         val esc = ::escapeHtml
 

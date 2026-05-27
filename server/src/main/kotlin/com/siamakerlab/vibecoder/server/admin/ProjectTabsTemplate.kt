@@ -68,7 +68,7 @@ internal object ProjectTabsTemplate {
         flashErr: String?,
         flashOk: String?,
         csrf: String?,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> Messages.t(lang, key) }
         val esc = ::escapeHtml

@@ -84,7 +84,7 @@ internal object SshKeyTemplates {
             .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             .replace("\"", "&quot;").replace("'", "&#39;")
 
-    fun page(username: String, snap: SshKeySnapshot?, csrf: String? = null, lang: String = "en"): String {
+    fun page(username: String, snap: SshKeySnapshot?, csrf: String? = null, lang: String): String {
         val t = { key: String -> Messages.t(lang, key) }
         val csrfHidden = csrf?.let {
             """<input type="hidden" name="_csrf" value="${esc(it)}">"""

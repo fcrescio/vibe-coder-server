@@ -116,7 +116,7 @@ private object AgentTemplates {
         err: String?,
         csrf: String?,
     
-        lang: String = "en",
+        lang: String,
     ): String {
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""
@@ -192,7 +192,7 @@ $errHtml
         body: String,
         csrf: String?,
     
-        lang: String = "en",
+        lang: String,
     ): String = AdminTemplates.shell(
         title = "Edit agent: $name",
         username = username,

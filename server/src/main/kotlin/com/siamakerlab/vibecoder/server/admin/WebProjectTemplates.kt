@@ -78,7 +78,7 @@ object WebProjectTemplates {
         body: String,
         cmd: String,
         detail: String?,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val detailHtml = if (detail.isNullOrBlank()) "" else
@@ -153,7 +153,7 @@ object WebProjectTemplates {
         flashOk: String?,
         flashErr: String?,
         csrf: String?,
-        lang: String = "en",
+        lang: String,
     ): String {
         if (b.status.name != "SUCCESS") return ""
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
@@ -225,7 +225,7 @@ object WebProjectTemplates {
         flashOk: String?,
         flashErr: String?,
         csrf: String?,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val readyBadge = when {
@@ -282,7 +282,7 @@ object WebProjectTemplates {
      */
     private fun renderBuildStatistics(
         stats: com.siamakerlab.vibecoder.server.build.BuildService.BuildStatistics?,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         if (stats == null || stats.total == 0) return ""
@@ -383,7 +383,7 @@ object WebProjectTemplates {
      */
     private fun renderBuildComparison(
         cmp: com.siamakerlab.vibecoder.server.build.BuildService.BuildComparison?,
-        lang: String = "en",
+        lang: String,
         /** v0.89.0 — cross-branch toggle link 용. null 이면 토글 link 안 보임. */
         projectId: String? = null,
         buildId: String? = null,
@@ -469,7 +469,7 @@ object WebProjectTemplates {
 
     private fun renderSignerInspection(
         insp: com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector.Inspection?,
-        lang: String = "en",
+        lang: String,
     ): String {
         if (insp == null) return ""
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
@@ -517,7 +517,7 @@ object WebProjectTemplates {
     }
 
     /** 로그 카드 하단 caption — replay 출처/잘림 안내 또는 라이브 안내. */
-    private fun replayCaption(replay: BuildLogReplay?, attachWs: Boolean, lang: String = "en"): String {
+    private fun replayCaption(replay: BuildLogReplay?, attachWs: Boolean, lang: String): String {
         if (attachWs) return ""
         if (replay == null) {
             return """<p class="hint">${com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "build.detail.replayNotFound")}</p>"""
@@ -551,7 +551,7 @@ object WebProjectTemplates {
         flashErr: String? = null,
         flashOk: String? = null,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
@@ -713,7 +713,7 @@ $errHtml
         flashErr: String? = null,
         flashOk: String? = null,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
@@ -811,7 +811,7 @@ $errHtml
          * inline JSON 으로 embed 되어 페이지 load 직후 JS 가 prepend.
          */
         initialHistory: List<com.siamakerlab.vibecoder.server.repo.ConversationTurnRow> = emptyList(),
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val statusBadge = when {
@@ -1841,7 +1841,7 @@ $authBannerHtml
         flashErr: String? = null,
         flashOk: String? = null,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
@@ -1933,7 +1933,7 @@ ${renderBuildHistoryChart(builds, artifactsByBuild, lang)}
     private fun renderBuildHistoryChart(
         builds: List<BuildDto>,
         artifacts: Map<String, ArtifactRow>,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         if (builds.size < 2) return ""
@@ -2043,7 +2043,7 @@ ${renderBuildHistoryChart(builds, artifactsByBuild, lang)}
         /** v0.58.0 — Phase 37 이전 성공 빌드와의 비교 카드 (null = no prior success). */
         comparison: com.siamakerlab.vibecoder.server.build.BuildService.BuildComparison? = null,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val statusCls = when (b.status.name) {
@@ -2214,7 +2214,7 @@ ${if (attachWs) """
         flashErr: String? = null,
         flashOk: String? = null,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
@@ -2295,7 +2295,7 @@ $errHtml
         unavailable: Boolean,
         csrf: String? = null,
         commitFlash: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val unavailableHtml = if (unavailable) {
@@ -2414,7 +2414,7 @@ ${if (status != null && !unavailable) """
         flashErr: String? = null,
         flashOk: String? = null,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
@@ -2577,7 +2577,7 @@ $toolbar
          */
         imageSizeBytes: Long? = null,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""

@@ -118,7 +118,7 @@ internal object EnvFilesTemplates {
         err: String?,
         csrf: String?,
     
-        lang: String = "en",
+        lang: String,
     ): String {
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""

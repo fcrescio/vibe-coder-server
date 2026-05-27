@@ -59,7 +59,7 @@ object EmailSettingsTemplates {
         ok: String?,
         err: String?,
     
-        lang: String = "en",
+        lang: String,
     ): String {
         val statusBadge = if (cfg.enabled)
             """<span class="ok">✓ 활성</span>"""

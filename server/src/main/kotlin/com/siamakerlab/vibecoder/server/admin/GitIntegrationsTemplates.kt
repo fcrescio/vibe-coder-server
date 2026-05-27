@@ -32,7 +32,7 @@ object GitIntegrationsTemplates {
         sshPubKey: String?,
         flash: String?,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> Messages.t(lang, key) }
         val jsCopied = jsLit(t("gitint.ssh.copied"))

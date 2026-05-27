@@ -93,7 +93,7 @@ private object EmulatorTemplates {
         flashErr: String? = null,
         csrf: String?,
         /** v1.23.1 — 한국어 설정 상태에서 nav 가 영어로 보이던 회귀. shell 에 명시 전달. */
-        lang: String = "en",
+        lang: String,
     ): String {
         val badge = { ok: Boolean, label: String ->
             if (ok) """<span class="ok">✓ $label</span>"""

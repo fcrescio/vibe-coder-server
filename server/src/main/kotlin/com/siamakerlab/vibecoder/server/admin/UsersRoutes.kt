@@ -169,7 +169,7 @@ private object UsersTemplates {
         ok: String?,
         err: String?,
         csrf: String?,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> Messages.t(lang, key) }
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""

@@ -160,7 +160,7 @@ internal object TerminalTemplates {
             .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             .replace("\"", "&quot;").replace("'", "&#39;")
 
-    fun page(username: String, csrf: String?, lang: String = "en"): String {
+    fun page(username: String, csrf: String?, lang: String): String {
         val t = { key: String -> Messages.t(lang, key) }
         return AdminTemplates.shell(
             title = t("term.title"),

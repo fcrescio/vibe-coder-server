@@ -95,7 +95,7 @@ private fun renderPage(
     q: String?,
     role: String?,
     rows: List<ConversationTurnRow>,
-    lang: String = "en",
+    lang: String,
 ): String {
     val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
     val roleOpts = listOf("", "user", "assistant", "tool_use", "tool_result", "system", "error")

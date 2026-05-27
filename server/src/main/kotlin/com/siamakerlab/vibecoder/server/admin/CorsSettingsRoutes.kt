@@ -40,7 +40,7 @@ object CorsSettingsTemplates {
             .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             .replace("\"", "&quot;").replace("'", "&#39;")
 
-    fun page(username: String, cors: CorsSection, csrf: String? = null, lang: String = "en"): String {
+    fun page(username: String, cors: CorsSection, csrf: String? = null, lang: String): String {
         val t = { key: String -> Messages.t(lang, key) }
         val hosts = cors.allowedHosts
         val isAnyHost = hosts.contains("*")

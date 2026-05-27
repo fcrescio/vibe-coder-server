@@ -248,7 +248,7 @@ object AdminTemplates {
     // Setup
     // ────────────────────────────────────────────────────────────────────
 
-    fun setupPage(error: String? = null, lang: String = "en"): String {
+    fun setupPage(error: String? = null, lang: String): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (error != null) """<div class="error">${esc(error)}</div>""" else ""
         return shell(
@@ -290,7 +290,7 @@ object AdminTemplates {
         totpUsername: String? = null,
         totpPassword: String? = null,
         /** v0.78.0 — Phase 64 i18n. 로그인 전이라 user 식별 안 됨 → server default 만 사용. */
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (error != null) """<div class="error">${esc(error)}</div>""" else ""
@@ -440,7 +440,7 @@ object AdminTemplates {
         /** v1.9.0 — git global identity 미설정 시 dashboard 상단에 yellow banner. */
         gitIdentityMissing: Boolean = false,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val tArgs = { key: String, args: Array<Any?> -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key, *args) }
@@ -522,7 +522,7 @@ $gitIdentityBanner
     /**
      * v0.29.0 — 대시보드 디스크 사용량 카드.
      */
-    private fun renderDiskUsageCard(snap: com.siamakerlab.vibecoder.server.disk.DiskMonitor.Snapshot?, lang: String = "en"): String {
+    private fun renderDiskUsageCard(snap: com.siamakerlab.vibecoder.server.disk.DiskMonitor.Snapshot?, lang: String): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         if (snap == null) {
             return """
@@ -559,7 +559,7 @@ $gitIdentityBanner
      * `ClaudeUsageMonitor` 의 마지막 snapshot 이 없거나 percent 추출 실패 시 비활성
      * 안내. 추출된 percent 가 있으면 80%↑ 노랑 / 95%↑ 빨강 strip + reset 시각.
      */
-    private fun renderClaudeUsageCard(snapshot: com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto?, lang: String = "en"): String {
+    private fun renderClaudeUsageCard(snapshot: com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto?, lang: String): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         if (snapshot == null) {
             return """
@@ -648,7 +648,7 @@ $gitIdentityBanner
         flashErr: String? = null,
         csrf: String? = null,
         /** v0.77.0 — Phase 64 i18n. WebSession.language ("en"/"ko"). 모든 t() 호출에 사용. */
-        lang: String = "en",
+        lang: String,
         /** v0.77.0 — 사용자 선택값 (null = 서버 default 사용). dropdown 의 currentValue. */
         userLanguage: String? = null,
         /** v0.77.0 — 서버 default ("en"/"ko"). dropdown 의 "Use server default (xx)" 라벨. */
@@ -755,7 +755,7 @@ $errHtml
         flashOk: String? = null,
         flashErr: String? = null,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
@@ -797,7 +797,7 @@ $errHtml
         currentDeviceId: String,
         flashOk: String? = null,
         csrf: String? = null,
-        lang: String = "en",
+        lang: String,
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
@@ -844,7 +844,7 @@ $okHtml
     // 에러 페이지
     // ────────────────────────────────────────────────────────────────────
 
-    fun errorPage(code: Int, message: String, lang: String = "en"): String {
+    fun errorPage(code: Int, message: String, lang: String): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val tArgs = { key: String, args: Array<Any?> -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key, *args) }
         val title = tArgs("error.page.title", arrayOf<Any?>(code.toString()))

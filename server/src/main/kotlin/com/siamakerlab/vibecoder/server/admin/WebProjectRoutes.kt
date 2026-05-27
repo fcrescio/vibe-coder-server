@@ -890,7 +890,10 @@ fun Routing.webProjectRoutes(
         // v1.24.1 — Active-content MIME (svg / html / js) 인 경우 attachment 강제 →
         // 일부 브라우저가 nosniff+CSP 우회해 inline 렌더 시도하는 케이스까지 차단.
         // octet-stream downgrade 와 이중 방어.
-        if (com.siamakerlab.vibecoder.server.files.ProjectFileBrowser.isUntrustedMime(raw.mime)) {
+        // v1.25.0 — path 확장자 기반 판정도 OR. v1.24.0 의 guessImageMime(.svg) 가
+        // 이미 octet-stream 으로 downgrade 한 후라 mime 만 보면 SVG 가 untrusted 로
+        // 잡히지 않던 회귀 회수.
+        if (com.siamakerlab.vibecoder.server.files.ProjectFileBrowser.isUntrustedPathOrMime(relPath, raw.mime)) {
             val name = relPath.substringAfterLast('/')
             call.response.header(
                 HttpHeaders.ContentDisposition,

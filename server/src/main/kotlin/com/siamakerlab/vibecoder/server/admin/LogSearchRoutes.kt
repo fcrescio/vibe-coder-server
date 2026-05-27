@@ -72,7 +72,7 @@ private fun renderPage(
     q: String?,
     projectFilter: String?,
     matches: List<LogMatch>,
-    lang: String = "en",
+    lang: String,
 ): String {
     val t = { key: String -> Messages.t(lang, key) }
     val rowsHtml = if (matches.isEmpty() && q != null) {

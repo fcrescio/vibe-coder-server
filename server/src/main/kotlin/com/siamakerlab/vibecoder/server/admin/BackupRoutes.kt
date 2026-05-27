@@ -143,7 +143,7 @@ private fun renderPage(
     sizes: List<SubdirSize>,
     autoBackups: List<BackupService.AutoBackupEntry> = emptyList(),
     backupCfg: com.siamakerlab.vibecoder.server.config.BackupSection? = null,
-    lang: String = "en",
+    lang: String,
 ): String {
     val t = { key: String -> Messages.t(lang, key) }
     val total = sizes.sumOf { it.bytes }

@@ -23,7 +23,7 @@ class EnvDiagnostics(private val config: ServerConfig) {
      * v1.7.15 — lang 받아 message / detail 을 i18n 키 기반으로 emit. 호출자가
      * sess.language 전달. API endpoint 등 lang 없는 호출자는 default "en".
      */
-    fun run(lang: String = "en"): EnvironmentCheckDto {
+    fun run(lang: String): EnvironmentCheckDto {
         val cli = checkClaude(lang)
         return EnvironmentCheckDto(
             java = checkJava(lang),
@@ -239,10 +239,10 @@ class EnvDiagnostics(private val config: ServerConfig) {
     }
 
     /** v1.7.17 — buildClaudeAuthHelp 도 lang 받음. 호출자가 같은 lang 전달. */
-    private fun buildClaudeAuthHelp(cfg: Path, lang: String = "en"): String =
+    private fun buildClaudeAuthHelp(cfg: Path, lang: String): String =
         com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "diag.claudeAuth.help", cfg.toString())
 
-    private fun checkWorkspace(lang: String = "en"): CheckItemDto {
+    private fun checkWorkspace(lang: String): CheckItemDto {
         val root = Path.of(config.workspace.root)
         return try {
             if (!root.exists()) Files.createDirectories(root)
