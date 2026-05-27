@@ -61,6 +61,20 @@ for dir in \
     fi
 done
 
+# v1.7.23 — 워크스페이스 각 프로젝트의 .gradle / .android 캐시 디렉토리 안에
+# root 소유 잔여물 자동 정리. 이전에 docker exec (default user root) 또는
+# 다른 process 가 그 path 에 쓴 file 이 남으면 vibe 가 Gradle build 시
+# "executionHistory.lock (Permission denied)" 에러. find 로 빠르게 idempotent.
+for sub in .gradle .android; do
+    find /workspace -mindepth 2 -maxdepth 3 -type d -name "$sub" 2>/dev/null | while read -r p; do
+        bad=$(find "$p" -mindepth 1 ! -user vibe -print -quit 2>/dev/null)
+        if [[ -n "$bad" ]]; then
+            warn "$p 안 root-owned 잔여물 발견 — chown -R vibe:vibe"
+            chown -R vibe:vibe "$p" 2>/dev/null || true
+        fi
+    done
+done
+
 # ─── 2b. SSH 키 자동 발급 (v1.2.0, v1.2.1 graceful degrade) ────────────────
 # 컨테이너 첫 부팅 시 vibe 사용자의 ED25519 SSH 키쌍을 자동 생성.
 # 이미 있으면 절대 덮어쓰지 않음 (서버 업데이트 / 이미지 교체 시 동일 키 유지).
