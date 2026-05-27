@@ -147,7 +147,17 @@ class ProjectService(
             srcRoot.createDirectories()
             log.info { "created empty project folder $srcRoot" }
         }
-
+        // v1.7.22 — moduleName auto-detect (clone / empty 모두). 기본값 "app" 가
+        // multi-module 프로젝트에서 빌드 실패하던 회귀 해소. clone 한 경우 settings
+        // 파싱 + com.android.application plugin 모듈 찾기. empty 신규 프로젝트는
+        // 디폴트 "app" 그대로.
+        val detectedModule = if (isClone) {
+            runCatching { detectAppModuleFromClonedRepo(srcRoot) }.getOrNull()
+        } else null
+        val moduleNameFinal = detectedModule ?: DEFAULT_MODULE
+        if (detectedModule != null && detectedModule != DEFAULT_MODULE) {
+            log.info { "[clone:${body.projectId}] auto-detected app moduleName: $detectedModule" }
+        }
         // CLAUDE.md / .claude/settings.json 은 clone 후에도 동일하게 보강 — 기존 파일 보존.
         // v0.99.0 — 프로젝트 입력 정보 (appName / packageName / projectId / moduleName /
         // debugTask / cloneUrl) 를 CLAUDE.md 최상단 ## Project Info 섹션에 자동 주입.
@@ -158,7 +168,7 @@ class ProjectService(
                 appName = body.appName,
                 packageName = body.packageName,
                 projectId = body.projectId,
-                moduleName = DEFAULT_MODULE,
+                moduleName = moduleNameFinal,
                 debugTask = DEFAULT_DEBUG_TASK,
                 sourceType = body.sourceType,
                 cloneUrl = body.cloneUrl,
@@ -187,7 +197,7 @@ class ProjectService(
             name = body.appName,
             packageName = body.packageName,
             sourcePath = srcRoot.toString(),
-            moduleName = DEFAULT_MODULE,
+            moduleName = moduleNameFinal,
             debugTask = DEFAULT_DEBUG_TASK,
         )
 
@@ -396,6 +406,49 @@ class ProjectService(
      *
      * 첫 매치 반환. 모두 실패 시 null.
      */
+    /**
+     * v1.7.22 — clone 후 settings.gradle.kts 의 `include(":...")` 항목 중
+     * `com.android.application` plugin 이 적용된 모듈을 찾아 server 의
+     * `moduleName` 으로 사용. 기본값 `"app"` 가 multi-module 프로젝트
+     * (예: vibe-coder-android 의 `:android-app:app`) 에서 작동 안 하던
+     * "project 'app' not found in root project" 빌드 실패 해소.
+     *
+     * 반환 형식 — Gradle path 의 leading `:` 제거. BuildService 가
+     * `":$moduleName:$debugTask"` 로 조립하므로 nested 모듈은 콜론 그대로
+     * (예: `"android-app:app"`).
+     */
+    private fun detectAppModuleFromClonedRepo(root: Path): String? {
+        if (!Files.isDirectory(root)) return null
+        val includeRegex = Regex("""include\s*\(?\s*["':]([a-zA-Z0-9_.:\-]+)["']""")
+        val appPluginRegex = Regex("""com\.android\.application""")
+        // 1) settings.gradle(.kts) 파싱 → include 된 module path 모두 수집.
+        val settingsCandidates = listOf("settings.gradle.kts", "settings.gradle")
+        val includes = mutableListOf<String>()
+        for (name in settingsCandidates) {
+            val f = root.resolve(name)
+            if (!f.toFile().isFile) continue
+            val text = runCatching { Files.readString(f) }.getOrNull() ?: continue
+            includeRegex.findAll(text).forEach { m ->
+                val raw = m.groupValues[1].trim().trimStart(':')
+                if (raw.isNotEmpty()) includes.add(raw)
+            }
+            break
+        }
+        if (includes.isEmpty()) return null
+        // 2) 각 module 의 build.gradle(.kts) 에서 com.android.application 적용 여부 확인.
+        for (mod in includes) {
+            val moduleDir = root.resolve(mod.replace(':', '/'))
+            val candidates = listOf("build.gradle.kts", "build.gradle")
+            for (g in candidates) {
+                val gf = moduleDir.resolve(g)
+                if (!gf.toFile().isFile) continue
+                val text = runCatching { Files.readString(gf) }.getOrNull() ?: continue
+                if (appPluginRegex.containsMatchIn(text)) return mod
+            }
+        }
+        return null
+    }
+
     private fun detectPackageFromClonedRepo(root: Path): String? {
         if (!Files.isDirectory(root)) return null
         val gradleRegex = Regex("""(?:applicationId|namespace)\s*[=]?\s*["']([a-zA-Z][a-zA-Z0-9_.]+)["']""")
