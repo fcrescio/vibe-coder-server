@@ -992,31 +992,38 @@ $authBannerHtml
 <form id="prompt-form" class="prompt-form" autocomplete="off">
   <!-- maxlength 는 char 단위라 ASCII 기준 32K. 한국어 등 multi-byte 입력은
        실제 UTF-8 byte 가 32K 를 넘으면 서버에서 prompt_too_large (400) 로 거절. -->
-  <textarea id="prompt-input" rows="${if (starterPrompt != null) 8 else 3}" maxlength="32768"
-            placeholder="${esc(if (blocking) t("console.input.disabled") else t("console.input.placeholder")).replace("\n", "&#10;")}"
-            ${if (blocking) "disabled" else "required"}>${esc(starterPrompt)}</textarea>
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px">
+  <!-- v1.16.1 — textarea + voice/send 버튼을 동일 row 에 가로 배치. send 가
+       textarea 의 우측 (사용자 요청). 버튼들은 column flex 로 stack, 하단 정렬. -->
+  <div style="display:flex;gap:8px;align-items:stretch">
+    <textarea id="prompt-input" rows="${if (starterPrompt != null) 8 else 3}" maxlength="32768"
+              placeholder="${esc(if (blocking) t("console.input.disabled") else t("console.input.placeholder")).replace("\n", "&#10;")}"
+              style="flex:1;width:auto;min-width:0"
+              ${if (blocking) "disabled" else "required"}>${esc(starterPrompt)}</textarea>
+    <div style="display:flex;flex-direction:column;gap:6px;justify-content:flex-end;flex-shrink:0">
+      <!-- v1.15.0 — Web Speech API 음성 입력. 미지원 브라우저는 voice-input.js 가 자동 hide. -->
+      <button type="button" id="voice-btn" hidden
+              data-title-start="${esc(t("console.voice.start"))}"
+              data-title-stop="${esc(t("console.voice.stop"))}"
+              title="${esc(t("console.voice.start"))}"
+              style="width:auto;padding:8px 12px;background:#1a1a1a;color:var(--text);border:1px solid #2a2a2a;border-radius:6px;cursor:pointer;font-size:16px"
+              ${if (blocking) "disabled" else ""}>🎤</button>
+      <button type="submit" class="primary" id="send-btn" style="width:auto;padding:8px 16px;white-space:nowrap" ${if (blocking) "disabled" else ""}>${esc(t("console.input.send"))}</button>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap">
     <!-- v1.7.4 — busy 뱃지 + hint 라벨 한 줄. busy 뱃지가 좌측 끝, 그 다음 hint. -->
     <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
       <span id="busy-badge" data-state="idle"
             style="font-size:12px;padding:3px 10px;border-radius:12px;font-weight:500;white-space:nowrap;flex-shrink:0">${esc(t("console.busy.idle"))}</span>
       <small class="dim" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(if (blocking) t("console.input.blockedHint") else t("console.input.hint"))}</small>
     </div>
-    <!-- v1.15.0 — Web Speech API 음성 입력. 미지원 브라우저는 voice-input.js 가 자동 hide. -->
-    <!-- v1.15.1 — "자동 전송" 옵션 추가. checked 시 발화 종료 시 자동 submit. -->
+    <!-- v1.15.1 — "자동 전송" 옵션 (voice input). checked 시 발화 종료 시 자동 submit. -->
     <label id="voice-auto-send-wrap" for="voice-auto-send"
            style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim);cursor:pointer;flex-shrink:0;user-select:none"
            title="${esc(t("console.voice.autoSend.tip"))}">
       <input type="checkbox" id="voice-auto-send" style="margin:0">
       ${esc(t("console.voice.autoSend"))}
     </label>
-    <button type="button" id="voice-btn" hidden
-            data-title-start="${esc(t("console.voice.start"))}"
-            data-title-stop="${esc(t("console.voice.stop"))}"
-            title="${esc(t("console.voice.start"))}"
-            style="width:auto;padding:8px 12px;flex-shrink:0;background:#1a1a1a;color:var(--text);border:1px solid #2a2a2a;border-radius:6px;cursor:pointer;font-size:16px"
-            ${if (blocking) "disabled" else ""}>🎤</button>
-    <button type="submit" class="primary" id="send-btn" style="width:auto;padding:8px 16px;flex-shrink:0" ${if (blocking) "disabled" else ""}>${esc(t("console.input.send"))}</button>
   </div>
 </form>
 <script src="/static/voice-input.js" defer></script>
