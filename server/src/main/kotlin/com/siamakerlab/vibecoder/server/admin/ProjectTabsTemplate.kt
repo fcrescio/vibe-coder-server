@@ -120,22 +120,22 @@ internal object ProjectTabsTemplate {
   #project-tabs-root .pt-header h1 {
     font-size: 16px; margin: 0; font-weight: 600;
   }
-  /* v1.13.0 — Overview 의 메타데이터 카드 내용을 헤더 인라인 칩 row 로 통합. */
-  #project-tabs-root .pt-header .meta-chips {
-    display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center;
-    font-size: 11px; color: var(--text-dim, #888);
-    font-family: ui-monospace, Menlo, monospace;
-  }
-  #project-tabs-root .pt-header .meta-chip {
-    display: inline-flex; align-items: center; gap: 4px;
-  }
-  #project-tabs-root .pt-header .meta-chip .label {
-    color: #5a6175; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
-  }
-  #project-tabs-root .pt-header .meta-chip code {
-    color: var(--text, #ddd); background: transparent; padding: 0;
-  }
   #project-tabs-root .pt-header .spacer { flex: 1; }
+  /* v1.13.1 — 메타데이터를 헤더 chip 에서 빼고 Settings 드롭다운 안의 dl 로 이동. */
+  #project-tabs-root .pt-settings .meta-block {
+    padding: 8px 14px; border-bottom: 1px solid #1f2330; margin-bottom: 4px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+  }
+  #project-tabs-root .pt-settings .meta-block dl {
+    margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px;
+  }
+  #project-tabs-root .pt-settings .meta-block dt {
+    color: #5a6175; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.05em; align-self: center;
+  }
+  #project-tabs-root .pt-settings .meta-block dd {
+    margin: 0; color: var(--text, #ddd); word-break: break-all;
+  }
   /* v1.13.0 — sticky 헤더 우측 Settings 드롭다운 (Delete / Zip 등 Overview 액션). */
   #project-tabs-root .pt-settings {
     position: relative;
@@ -148,8 +148,8 @@ internal object ProjectTabsTemplate {
   #project-tabs-root .pt-settings[open] summary { color: var(--text, #ddd); border-color: #2a3145; }
   #project-tabs-root .pt-settings .pt-settings-menu {
     position: absolute; right: 0; top: calc(100% + 4px); background: #131722;
-    border: 1px solid #1f2330; border-radius: 4px; min-width: 220px;
-    padding: 6px 0; z-index: 100; display: flex; flex-direction: column;
+    border: 1px solid #1f2330; border-radius: 4px; min-width: 320px;
+    max-width: 480px; padding: 6px 0; z-index: 100; display: flex; flex-direction: column;
   }
   #project-tabs-root .pt-settings .pt-settings-menu .item {
     color: var(--text, #ddd); text-decoration: none; padding: 8px 14px;
@@ -226,18 +226,21 @@ internal object ProjectTabsTemplate {
   <div class="pt-header">
     <a href="/projects" style="color:var(--text-dim);text-decoration:none;font-size:12px">← ${esc(t("tabs.backToList"))}</a>
     <h1>${esc(project.name)}</h1>
-    <div class="meta-chips">
-      <span class="meta-chip"><span class="label">${esc(t("projects.detail.package"))}</span><code>${esc(project.packageName)}</code></span>
-      <span class="meta-chip"><span class="label">${esc(t("projects.detail.module"))}</span><code>${esc(project.moduleName)}</code></span>
-      <span class="meta-chip"><span class="label">${esc(t("projects.detail.source"))}</span><code title="${esc(project.sourcePath)}">${esc(shortenPath(project.sourcePath))}</code></span>
-      <span class="meta-chip"><span class="label">${esc(t("projects.detail.debugTask"))}</span><code>${esc(project.debugTask)}</code></span>
-      <span class="meta-chip"><span class="label">${esc(t("projects.lastBuild"))}</span><code>${esc(project.lastBuildStatus ?: "-")}</code></span>
-      <span class="meta-chip"><span class="label">${esc(t("projects.detail.updated"))}</span><code>${esc(project.updatedAt)}</code></span>
-    </div>
     <span class="spacer"></span>
     <details class="pt-settings">
       <summary>⚙ ${esc(t("tabs.settings.label"))}</summary>
       <div class="pt-settings-menu">
+        <!-- v1.13.1 — 메타데이터는 헤더 chip 대신 이 드롭다운 상단에. -->
+        <div class="meta-block">
+          <dl>
+            <dt>${esc(t("projects.detail.package"))}</dt><dd>${esc(project.packageName)}</dd>
+            <dt>${esc(t("projects.detail.module"))}</dt><dd>${esc(project.moduleName)}</dd>
+            <dt>${esc(t("projects.detail.source"))}</dt><dd>${esc(project.sourcePath)}</dd>
+            <dt>${esc(t("projects.detail.debugTask"))}</dt><dd>${esc(project.debugTask)}</dd>
+            <dt>${esc(t("projects.lastBuild"))}</dt><dd>${esc(project.lastBuildStatus ?: "-")}</dd>
+            <dt>${esc(t("projects.detail.updated"))}</dt><dd>${esc(project.updatedAt)}</dd>
+          </dl>
+        </div>
         <a href="/projects/${esc(project.id)}/zip" class="item">${esc(t("projects.detail.zip"))}</a>
         <a href="/projects/${esc(project.id)}/env-files" target="${esc("tab-env-files")}" class="item">${esc(t("projects.detail.envFiles"))}</a>
         <hr>
@@ -272,10 +275,6 @@ $tabPanes
     private fun escapeHtml(s: String): String =
         s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             .replace("\"", "&quot;").replace("'", "&#39;")
-
-    /** workspace root 가 매우 긴 path 인 경우 (예: `/workspace/<project>/src/...`) 보기 좋게 축약. */
-    private fun shortenPath(p: String, max: Int = 40): String =
-        if (p.length <= max) p else "…" + p.takeLast(max - 1)
 
     /** JS literal context 안전. esc 보다 더 보수적. */
     private fun jsLit(s: String): String =
