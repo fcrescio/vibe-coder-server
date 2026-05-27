@@ -1002,9 +1002,28 @@ $authBannerHtml
             style="font-size:12px;padding:3px 10px;border-radius:12px;font-weight:500;white-space:nowrap;flex-shrink:0">${esc(t("console.busy.idle"))}</span>
       <small class="dim" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(if (blocking) t("console.input.blockedHint") else t("console.input.hint"))}</small>
     </div>
+    <!-- v1.15.0 — Web Speech API 음성 입력. 미지원 브라우저는 voice-input.js 가 자동 hide. -->
+    <button type="button" id="voice-btn" hidden
+            data-title-start="${esc(t("console.voice.start"))}"
+            data-title-stop="${esc(t("console.voice.stop"))}"
+            title="${esc(t("console.voice.start"))}"
+            style="width:auto;padding:8px 12px;flex-shrink:0;background:#1a1a1a;color:var(--text);border:1px solid #2a2a2a;border-radius:6px;cursor:pointer;font-size:16px"
+            ${if (blocking) "disabled" else ""}>🎤</button>
     <button type="submit" class="primary" id="send-btn" style="width:auto;padding:8px 16px;flex-shrink:0" ${if (blocking) "disabled" else ""}>${esc(t("console.input.send"))}</button>
   </div>
 </form>
+<script src="/static/voice-input.js" defer></script>
+<style>
+  /* v1.15.0 — 음성 입력 listening 시각 강조. */
+  #voice-btn.listening {
+    background: #7f1d1d; color: #fff; border-color: #b91c1c;
+    animation: voice-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes voice-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.6); }
+    50% { box-shadow: 0 0 0 8px rgba(220,38,38,0); }
+  }
+</style>
 
 <!-- v1.6.3 — 프롬프트 템플릿 + 관리 버튼 (한 줄). 입력창 바로 아래. -->
 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px">

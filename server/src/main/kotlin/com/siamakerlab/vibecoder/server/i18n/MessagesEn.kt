@@ -371,6 +371,9 @@ internal object MessagesEn {
         "console.input.blockedHint" to "Run the command above, then reload the page.",
         "console.input.hint" to "Send: Ctrl+Enter · Newline: Enter",
         "console.input.send" to "Send",
+        // v1.15.0 — Web Speech API voice input button.
+        "console.voice.start" to "Start voice input (microphone permission required)",
+        "console.voice.stop" to "Stop voice input",
         "builds.title" to "Builds",
         "builds.empty" to "No builds yet. Start the first one with the button above.",
         "builds.summary.title" to "Build history",

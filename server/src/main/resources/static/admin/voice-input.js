@@ -1,0 +1,105 @@
+// v1.15.0 — Console prompt 음성 입력. Web Speech API (SpeechRecognition).
+//
+// 브라우저 지원: Chrome / Edge / Safari 14+. Firefox 미지원 → 버튼 자동 hidden.
+// HTTPS 또는 localhost 에서만 작동 (브라우저 정책). 마이크 권한 prompt.
+//
+// 동작:
+//   - 🎤 버튼 클릭 → SpeechRecognition 시작 → 버튼 ⏺ + listening 클래스 (CSS 강조).
+//   - 인식 중 textarea 에 final + interim 결과 append (사용자가 이미 입력해둔 부분
+//     뒤에). interim 은 마지막 final 뒤에 실시간 갱신.
+//   - 한 번 더 클릭 또는 onend → 중지 → 버튼 🎤 복원.
+//
+// 언어: document.documentElement.lang ("ko" / "en") 으로 ko-KR / en-US 자동 선택.
+
+(function () {
+  'use strict';
+
+  function init() {
+    var btn = document.getElementById('voice-btn');
+    var input = document.getElementById('prompt-input');
+    if (!btn || !input) return;
+
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      // 미지원 브라우저 — 버튼 완전 hide.
+      btn.style.display = 'none';
+      return;
+    }
+    btn.hidden = false;
+    btn.style.display = '';
+
+    var rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    var langAttr = (document.documentElement.getAttribute('lang') || 'en').toLowerCase();
+    rec.lang = langAttr.indexOf('ko') === 0 ? 'ko-KR' : 'en-US';
+
+    var listening = false;
+    var basePrefix = '';   // 인식 시작 시점의 textarea 값. 그 뒤에 결과 append.
+    var finalText = '';
+
+    function applyResult() {
+      input.value = basePrefix + finalText;
+      // textarea auto-grow / scrollIntoView 처리는 page 별 inline JS 가 input
+      // event 리스너로 이미 처리하므로 dispatchEvent 로 트리거.
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    rec.onresult = function (e) {
+      var interim = '';
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        var r = e.results[i];
+        if (r.isFinal) {
+          finalText += r[0].transcript;
+        } else {
+          interim += r[0].transcript;
+        }
+      }
+      input.value = basePrefix + finalText + interim;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    rec.onend = function () {
+      listening = false;
+      btn.classList.remove('listening');
+      btn.textContent = '🎤';
+      btn.title = btn.dataset.titleStart || '🎤';
+      applyResult();   // commit final text
+    };
+    rec.onerror = function (e) {
+      console && console.warn && console.warn('voice-input:', e.error);
+      listening = false;
+      btn.classList.remove('listening');
+      btn.textContent = '🎤';
+    };
+
+    btn.addEventListener('click', function () {
+      if (listening) {
+        try { rec.stop(); } catch (e) {}
+        return;
+      }
+      basePrefix = input.value || '';
+      // 사용자가 입력 끝에 공백이 없으면 한 칸 띄움 — 음성 결과가 기존 텍스트와
+      // 붙어 보이지 않게.
+      if (basePrefix.length > 0 && basePrefix.charAt(basePrefix.length - 1) !== ' '
+          && basePrefix.charAt(basePrefix.length - 1) !== '\n') {
+        basePrefix += ' ';
+      }
+      finalText = '';
+      try {
+        rec.start();
+        listening = true;
+        btn.classList.add('listening');
+        btn.textContent = '⏺';
+        btn.title = btn.dataset.titleStop || '⏺';
+      } catch (e) {
+        console && console.warn && console.warn('voice-input start failed:', e);
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();

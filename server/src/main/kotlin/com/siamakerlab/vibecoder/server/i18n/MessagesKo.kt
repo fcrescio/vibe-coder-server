@@ -349,6 +349,9 @@ internal object MessagesKo {
         "console.input.blockedHint" to "위쪽 안내의 명령을 실행한 뒤 페이지를 새로고침하세요.",
         "console.input.hint" to "전송: Ctrl+Enter · 줄바꿈: Enter",
         "console.input.send" to "전송",
+        // v1.15.0 — Web Speech API 음성 입력 버튼.
+        "console.voice.start" to "음성 입력 시작 (마이크 권한 필요)",
+        "console.voice.stop" to "음성 입력 중지",
         "builds.title" to "빌드",
         "builds.empty" to "아직 빌드가 없습니다. 위 버튼으로 첫 빌드를 시작하세요.",
         "builds.summary.title" to "빌드 history",
