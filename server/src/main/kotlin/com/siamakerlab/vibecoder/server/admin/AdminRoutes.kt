@@ -244,6 +244,19 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
 
     // ── Dashboard 외 페이지 ───────────────────────────────────────
 
+    // v1.22.0 — 설정 통합 탭 페이지. 사이드바의 "설정" link 가 가리키는 진입점.
+    // 8개 카테고리 (General / Security / Notifications / Build env / Prompts /
+    // Backup / Monitoring / Users) 를 iframe prerender 로 즉시 전환.
+    // 기존 `/settings` 라우트는 그대로 — General 카테고리의 iframe src 로 사용.
+    get("/settings/tabs") {
+        val sess = requireSessionOrRedirect(deps) ?: return@get
+        if (!requireAdminOrRedirect(sess)) return@get
+        call.respondText(
+            SettingsTabsTemplate.page(sess.username, csrf = sess.csrf, lang = sess.language),
+            ContentType.Text.Html,
+        )
+    }
+
     get("/settings") {
         val sess = requireSessionOrRedirect(deps) ?: return@get
         if (!requireAdminOrRedirect(sess)) return@get

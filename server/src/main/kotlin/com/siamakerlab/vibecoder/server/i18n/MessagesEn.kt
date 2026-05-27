@@ -102,6 +102,8 @@ internal object MessagesEn {
         "settings.tab.buildEnv" to "Build environment",
         "settings.tab.prompts" to "Prompts & Agents",
         "settings.tab.monitoring" to "Monitoring",
+        // v1.22.0 — Settings unified tab page title.
+        "settings.tabs.title" to "Settings",
 
         // ─────────────────────────────────────────────── settings page
         "settings.title" to "Settings",

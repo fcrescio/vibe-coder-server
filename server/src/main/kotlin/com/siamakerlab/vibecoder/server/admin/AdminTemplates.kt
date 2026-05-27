@@ -151,7 +151,7 @@ object AdminTemplates {
     ${link("/projects", t("nav.projects"), "projects", "folder")}
     ${link("/chat", "Chat", "chat", "chat")}
     ${link("/tools", t("nav.tools"), "tools", "tools")}
-    ${link("/settings", t("nav.settings"), "settings", "settings")}
+    ${link("/settings/tabs", t("nav.settings"), "settings", "settings")}
   </div>
   <!-- v1.3.2 — 전역 Claude 쿼타 pill. v1.6.2 — header 에 refresh 버튼 + 타임존 제거. -->
   <div id="quota-pill" class="quota-pill" hidden></div>
