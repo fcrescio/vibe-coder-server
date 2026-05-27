@@ -2710,9 +2710,11 @@ $toolbar
   });
   // submit 직전에 CodeMirror 의 값을 textarea 로 sync (fromTextArea 가 자동 sync 하지만
   // 명시적으로 한 번 더 — 일부 브라우저에서 안전).
+  // v1.24.0 — `initial = ...` 갱신 제거. 서버 실패 시 dirty indicator 가 잘못 사라지던
+  // 회귀. submit 후 redirect 가 페이지 reload → dirty state 자연스럽게 reset (성공 시).
+  // 실패 시엔 redirect 의 ?err 와 함께 페이지 reload — dirty 비교는 다시 fresh load 값.
   form.addEventListener('submit', function() {
     cm.save();
-    initial = cm.getValue();
   });
 
   // v0.54.0 — ?line=N 으로 들어오면 해당 라인으로 scroll + 잠시 강조.

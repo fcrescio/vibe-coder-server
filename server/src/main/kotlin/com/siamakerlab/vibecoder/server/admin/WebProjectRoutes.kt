@@ -7,7 +7,6 @@ import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.files.ProjectFileBrowser
-import com.siamakerlab.vibecoder.server.files.UploadService
 import com.siamakerlab.vibecoder.server.git.GitReader
 import com.siamakerlab.vibecoder.server.git.GitWriter
 import com.siamakerlab.vibecoder.server.i18n.Messages
@@ -55,7 +54,6 @@ fun Routing.webProjectRoutes(
     artifactRepo: ArtifactRepository,
     sessionManager: ClaudeSessionManager,
     hub: LogHub,
-    uploads: UploadService,
     gitReader: GitReader,
     gitWriter: GitWriter,
     workspace: WorkspacePath,
@@ -677,11 +675,16 @@ fun Routing.webProjectRoutes(
     }
 
     // 단일 파일 다운로드 — 이미지 외 일반 binary/text 모두. attachment disposition.
+    // v1.24.0 — MAX_DOWNLOAD_BYTES (200 MB) 사용. 기존 /raw 의 10 MB 한도가
+    // APK / AAB 다운로드 차단하던 회귀 회수.
     get("/projects/{id}/files/download") {
         requireSessionOrRedirect(authDeps) ?: return@get
         val id = call.parameters["id"]!!
         val relPath = call.request.queryParameters["path"].orEmpty()
-        val raw = runCatching { fileBrowser.resolveForRawRead(id, relPath) }.getOrElse { e ->
+        val raw = runCatching {
+            fileBrowser.resolveForRawRead(id, relPath,
+                maxBytes = com.siamakerlab.vibecoder.server.files.ProjectFileBrowser.MAX_DOWNLOAD_BYTES)
+        }.getOrElse { e ->
             val sc = (e as? ApiException)?.statusCode ?: 500
             call.respondText(e.message ?: "download failed", ContentType.Text.Plain, HttpStatusCode.fromValue(sc))
             return@get
@@ -867,6 +870,8 @@ fun Routing.webProjectRoutes(
     }
 
     // v1.17.0 — 이미지 / binary 파일 raw stream. <img src="..."> 가 직접 fetch.
+    // v1.24.0 — 보안 강화: X-Content-Type-Options: nosniff + CSP sandbox 헤더. SVG 같은
+    // active-content MIME 은 guessImageMime 에서 octet-stream 으로 downgrade (XSS 방어).
     get("/projects/{id}/raw") {
         requireSessionOrRedirect(authDeps) ?: return@get
         val id = call.parameters["id"]!!
@@ -878,6 +883,10 @@ fun Routing.webProjectRoutes(
         }
         call.response.header(HttpHeaders.CacheControl, "private, max-age=60")
         call.response.header(HttpHeaders.ContentType, raw.mime)
+        call.response.header("X-Content-Type-Options", "nosniff")
+        // CSP sandbox: 응답이 어떤 동적 코드도 실행 못 함 (이미지/바이너리 의도된 용도).
+        // 같은 origin 이라도 stored-XSS 차단.
+        call.response.header("Content-Security-Policy", "default-src 'none'; sandbox")
         call.respondFile(raw.absolutePath.toFile())
     }
 

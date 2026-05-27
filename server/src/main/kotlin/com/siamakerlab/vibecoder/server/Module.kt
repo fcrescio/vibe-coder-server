@@ -371,7 +371,6 @@ fun Application.module(ctx: ServerContext) {
             artifactRepo = ctx.artifactRepo,
             sessionManager = ctx.sessionManager,
             hub = ctx.hub,
-            uploads = ctx.uploads,
             gitReader = ctx.git,
             gitWriter = ctx.gitWriter,
             workspace = ctx.workspace,

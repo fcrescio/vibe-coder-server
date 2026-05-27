@@ -34,8 +34,13 @@ object AdminTemplates {
         showNav: Boolean = true,
         /** v0.12.4 — 인증된 페이지에서 nav 의 logout 폼 등에 박을 CSRF 토큰. */
         csrf: String? = null,
-        /** v0.77.0 — Phase 64 i18n. WebSession.language ("en"/"ko"). nav/tabBar 라벨 분기. */
-        lang: String = "en",
+        /**
+         * v0.77.0 — Phase 64 i18n. WebSession.language ("en"/"ko"). nav/tabBar 라벨 분기.
+         * v1.24.0 — default 제거. 모든 호출자가 명시적으로 sess.language 전달해야 함.
+         * 정밀 점검에서 default 가 누락 site 를 silently fall-through 시켜 14개 회귀
+         * 발견됐기에, 컴파일 단계에서 강제 노출하도록 변경.
+         */
+        lang: String,
         /**
          * v1.16.0 — `.content.fullbleed` 변형 사용. ProjectTabsTemplate 처럼 자체적으로
          * viewport 100% 안에서 layout 을 구성하는 page 가 true 로 호출. .content 의 padding

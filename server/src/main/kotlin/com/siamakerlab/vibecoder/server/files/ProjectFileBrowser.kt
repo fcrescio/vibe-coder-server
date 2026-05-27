@@ -138,10 +138,17 @@ class ProjectFileBrowser(
         if (!Files.exists(parent)) {
             throw ApiException.localized(400, "parent_missing", messageKey = "api.fileBrowser.parentMissing", args = listOf(parent.toString()))
         }
-        // atomic-ish write: tmp → move
+        // atomic-ish write: tmp → move.
+        // v1.24.0 — 실패 시 tmp 잔존하지 않게 cleanup. 이전엔 Files.move 실패 시
+        // `.editing.tmp` 가 listing 노출 + dotfile 차단 추가 후엔 invisible 잔존.
         val tmp = target.resolveSibling("${target.fileName}.editing.tmp")
-        Files.writeString(tmp, content, Charsets.UTF_8)
-        Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        try {
+            Files.writeString(tmp, content, Charsets.UTF_8)
+            Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: Throwable) {
+            runCatching { Files.deleteIfExists(tmp) }
+            throw e
+        }
         log.info { "file edited: $projectId :: $relPath (${content.length} chars)" }
     }
 
@@ -225,10 +232,21 @@ class ProjectFileBrowser(
             // 링크 자체만 unlink — 따라가지 않음 (외부 escape 방지).
             Files.delete(target)
         } else if (target.isDirectory()) {
+            // v1.24.0 — 실패 path 모아서 마지막에 throw. 이전엔 runCatching 으로 silent
+            // → 부분 삭제만 일어나도 UI 가 "삭제됨" 으로 오인. 실패 시 사용자에게 명시.
+            val failed = mutableListOf<String>()
             Files.walk(target).use { stream ->
                 stream.sorted(Comparator.reverseOrder()).forEach { p ->
-                    runCatching { Files.delete(p) }
+                    runCatching { Files.delete(p) }.onFailure {
+                        failed += p.toString()
+                        log.warn(it) { "delete failed: $p" }
+                    }
                 }
+            }
+            if (failed.isNotEmpty()) {
+                throw ApiException.localized(500, "partial_delete",
+                    messageKey = "api.fileBrowser.partialDelete",
+                    args = listOf(failed.size, failed.take(3).joinToString(", ")))
             }
         } else {
             Files.delete(target)
@@ -311,8 +329,10 @@ class ProjectFileBrowser(
     }
 
     private fun skipHidden(name: String): Boolean =
-        // .vibecoder 등 서버 내부 메타데이터, .git 등 도구 메타데이터는 listing 노출 안 함.
-        name == ".vibecoder" || name == ".gradle" || name == "build" || name == "node_modules"
+        // v1.24.0 — KDoc/일관성 fix. 이전엔 `.vibecoder/.gradle` 만 차단 → `.git`/`.env`/
+        // `.idea` 등 dotfile 노출. 단일 사용자 도구라도 secret 누설 / 시각적 노이즈
+        // 양면 해소: 점(.)으로 시작하는 모든 entry + 빌드 산출물 디렉토리 차단.
+        name.startsWith(".") || name == "build" || name == "node_modules"
 
     private fun looksBinary(bytes: ByteArray): Boolean {
         // 처음 4KB 안에 NUL(0x00) 이 있으면 이진으로 간주.
@@ -414,7 +434,8 @@ class ProjectFileBrowser(
                     if (p.isDirectory()) {
                         Files.createDirectories(target)
                     } else if (!Files.isSymbolicLink(p)) {
-                        Files.createDirectories(target.parent)
+                        // v1.24.0 — target.parent 가 null (root) 일 때 NPE 회피.
+                        target.parent?.let { Files.createDirectories(it) }
                         Files.copy(p, target)
                     } // symlink 는 skip — 외부 escape 방지.
                 }
@@ -429,8 +450,16 @@ class ProjectFileBrowser(
      * v1.17.0 — 이미지 raw stream 읽기. /raw 엔드포인트가 path traversal 검증 후
      * 직접 file 을 stream 으로 응답할 수 있도록 안전 검증된 절대 경로 + 추정 MIME
      * 만 반환. 호출자가 Files.newInputStream(path) 또는 respondFile 으로 응답.
+     *
+     * v1.24.0 — [maxBytes] 파라미터 추가. /raw 는 기존 MAX_RAW_BYTES (10MB) 유지,
+     * /files/download 같은 일반 다운로드는 MAX_DOWNLOAD_BYTES (200MB) 사용. APK /
+     * AAB 같은 큰 binary 다운로드 차단 회수.
      */
-    fun resolveForRawRead(projectId: String, relPath: String): RawFile {
+    fun resolveForRawRead(
+        projectId: String,
+        relPath: String,
+        maxBytes: Long = MAX_RAW_BYTES,
+    ): RawFile {
         if (relPath.isBlank()) throw ApiException.localized(400, "empty_path", messageKey = "api.fileBrowser.emptyPath")
         val projectRoot = workspace.projectRoot(projectId)
         if (!projectRoot.exists()) {
@@ -447,10 +476,9 @@ class ProjectFileBrowser(
             throw ApiException.localized(400, "not_a_file", messageKey = "api.fileBrowser.notAFile")
         }
         val size = Files.size(target)
-        // 이미지 raw stream 한도 — view 보다 크게 (10 MB). 일반 Android asset 충분.
-        if (size > MAX_RAW_BYTES) {
+        if (size > maxBytes) {
             throw ApiException.localized(413, "file_too_large",
-                messageKey = "api.fileBrowser.fileTooLarge", args = listOf(size, MAX_RAW_BYTES))
+                messageKey = "api.fileBrowser.fileTooLarge", args = listOf(size, maxBytes))
         }
         return RawFile(target, size, guessImageMime(relPath))
     }
@@ -469,6 +497,8 @@ class ProjectFileBrowser(
         const val MAX_UPLOAD_BYTES = 50L * 1024 * 1024
         /** v1.17.0 — /raw 엔드포인트 stream 한도 — 10 MB (이미지 viewer 용). */
         const val MAX_RAW_BYTES = 10L * 1024 * 1024
+        /** v1.24.0 — /files/download (단일 파일 attachment) 한도 — 200 MB. APK / AAB. */
+        const val MAX_DOWNLOAD_BYTES = 200L * 1024 * 1024
 
         /**
          * v1.17.0 — 파일 경로의 확장자가 image 인지 판정. /view 라우트가 image 모드
@@ -483,7 +513,17 @@ class ProjectFileBrowser(
             ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".avif", ".svg",
         )
 
-        /** v1.17.0 — 확장자 기반 MIME 추정. /raw 응답 헤더용. */
+        /**
+         * v1.17.0 — 확장자 기반 MIME 추정. /raw 응답 헤더용.
+         *
+         * v1.24.0 — SVG 는 same-origin script execution 으로 stored XSS 위험. SVG 가
+         * <img src=...> 안에선 안전하지만, /raw?path=foo.svg 직접 URL 진입 시 vibe_session
+         * 쿠키 노출 가능. workspace 에 쓸 수 있는 행위자 (Claude session / git clone /
+         * uploadStream) 가 payload 를 심을 수 있어 외부 노출 (vibe.wody.work) 환경에선
+         * 실 위험. SVG 만 generic `application/octet-stream` 으로 반환 → 브라우저가
+         * inline rendering 안 함 (download 또는 plain bytes). 이미지 viewer 의 <img>
+         * 는 여전히 동작 (브라우저가 SVG 의 stream 을 자체 검증 후 표시).
+         */
         fun guessImageMime(path: String): String {
             val lower = path.lowercase()
             return when {
@@ -494,9 +534,20 @@ class ProjectFileBrowser(
                 lower.endsWith(".bmp") -> "image/bmp"
                 lower.endsWith(".ico") -> "image/x-icon"
                 lower.endsWith(".avif") -> "image/avif"
-                lower.endsWith(".svg") -> "image/svg+xml"
+                lower.endsWith(".svg") -> "application/octet-stream"   // v1.24.0 — XSS 방어
                 else -> "application/octet-stream"
             }
         }
+
+        /** v1.24.0 — 응답 header 강화가 필요한 위험 mime. /raw 라우트가 추가 header 적용. */
+        fun isUntrustedMime(mime: String): Boolean = mime in UNTRUSTED_MIMES
+
+        private val UNTRUSTED_MIMES = setOf(
+            "image/svg+xml",
+            "text/html",
+            "application/xhtml+xml",
+            "application/javascript",
+            "text/javascript",
+        )
     }
 }
