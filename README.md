@@ -637,6 +637,9 @@ docker compose up -d            # starts postgres + vibe-coder-server
 # 2. Go to "Build environment" → click "Install/update all".
 #    (Android SDK download, 3-4GB, 5-15 min.)
 # 3. Build environment → "Claude login" card → pick option 0/1/2/3.
+# 4. Build environment → "Git Identity" card → enter user.name / user.email
+#    (v1.9.0+ — persisted at /home/vibe/.config/git/config; without it commits
+#    abort or are recorded with a blank author).
 ```
 
 > **v0.14.0+** ships a sidecar PostgreSQL container (`postgres:17-alpine`). The

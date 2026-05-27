@@ -161,6 +161,13 @@ ENV VIBECODER_DATA_DIR=/data
 # Claude CLI 인증 경로 (볼륨)
 ENV CLAUDE_CONFIG_DIR=/home/vibe/.claude
 
+# v1.9.0 — Git global config 를 영속 위치 (`/home/vibe/.config/git/config`) 로 강제.
+# `/home/vibe/.config` 는 이미 `dev-tools/config` 볼륨에 영속화돼 있어 별도 mount
+# 추가 없이 컨테이너 재시작 / 이미지 업그레이드 후에도 사용자가 입력한
+# `user.name` / `user.email` 이 유지된다. git 2.32+ 의 GIT_CONFIG_GLOBAL 사용.
+# (자식 git 프로세스 — clone / commit / log 모두 동일 파일을 global config 로 인식)
+ENV GIT_CONFIG_GLOBAL=/home/vibe/.config/git/config
+
 # v0.7.0 — vibe 사용자의 npm 글로벌 prefix 를 /home/vibe/.local 로 분리.
 # 이로써 `vibe-doctor mcp` 의 `npm install -g <pkg>` 가 시스템 디렉토리가 아닌
 # 영구 볼륨에 저장되어, 이미지 업그레이드 후에도 MCP 가 사라지지 않는다.

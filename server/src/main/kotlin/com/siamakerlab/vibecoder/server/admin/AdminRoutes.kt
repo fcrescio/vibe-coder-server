@@ -49,6 +49,8 @@ data class AdminRoutesDeps(
     val diskMonitor: com.siamakerlab.vibecoder.server.disk.DiskMonitor,
     /** v0.57.0 — Phase 36 passwordless-only 검사용 hasCredentials lookup. */
     val webauthnService: com.siamakerlab.vibecoder.server.auth.WebauthnService,
+    /** v1.9.0 — dashboard "Git Identity 미설정" banner 판정 + 빌드환경 카드 공유. */
+    val gitConfig: com.siamakerlab.vibecoder.server.env.GitConfigService,
 )
 
 /**
@@ -75,6 +77,9 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
         val claudeUsage = deps.claudeUsageMonitor.snapshot()
         // v0.29.0 — 디스크 monitor snapshot. 미측정이면 null → graceful.
         val diskSnapshot = deps.diskMonitor.snapshot()
+        // v1.9.0 — git global identity 미설정 시 dashboard 상단에 yellow banner. graceful — git
+        // CLI 호출 실패 / timeout 시 false 로 떨어뜨려 dashboard 자체가 막히지 않게.
+        val gitIdentityMissing = runCatching { !deps.gitConfig.isConfigured() }.getOrDefault(false)
         val html = AdminTemplates.dashboardPage(
             username = sess.username,
             status = status,
@@ -83,6 +88,7 @@ fun Routing.adminRoutes(deps: AdminRoutesDeps) {
             claudeAuth = claudeAuth,
             claudeUsage = claudeUsage,
             diskSnapshot = diskSnapshot,
+            gitIdentityMissing = gitIdentityMissing,
             csrf = sess.csrf,
             lang = sess.language,
         )

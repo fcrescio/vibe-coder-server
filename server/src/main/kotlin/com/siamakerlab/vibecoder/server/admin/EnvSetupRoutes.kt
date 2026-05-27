@@ -5,6 +5,7 @@ import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import com.siamakerlab.vibecoder.server.env.ClaudeAuthService
 import com.siamakerlab.vibecoder.server.env.ClaudeLoginService
 import com.siamakerlab.vibecoder.server.env.EnvSetupService
+import com.siamakerlab.vibecoder.server.env.GitConfigService
 import com.siamakerlab.vibecoder.server.env.SetupComponent
 import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.i18n.Messages
@@ -42,15 +43,54 @@ fun Routing.envSetupRoutes(
     setupService: EnvSetupService,
     claudeAuth: ClaudeAuthService,
     claudeLogin: ClaudeLoginService,
+    /** v1.9.0 — Git global identity (`user.name` / `user.email`) 입력 카드. */
+    gitConfig: GitConfigService,
 ) {
     get("/env-setup") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val states = setupService.detectAll(sess.language)
         val claudeFlash = call.request.queryParameters["claude"]
+        val gitFlash = call.request.queryParameters["git"]
+        val gitIdentity = runCatching { gitConfig.get() }
+            .getOrDefault(com.siamakerlab.vibecoder.server.env.GitIdentity(null, null))
         call.respondText(
-            EnvSetupTemplates.envSetupPage(sess.username, states, claudeFlash, csrf = sess.csrf, lang = sess.language),
+            EnvSetupTemplates.envSetupPage(
+                username = sess.username,
+                states = states,
+                claudeFlash = claudeFlash,
+                gitIdentity = gitIdentity,
+                gitFlash = gitFlash,
+                csrf = sess.csrf,
+                lang = sess.language,
+            ),
             ContentType.Text.Html,
         )
+    }
+
+    // v1.9.0 — Git global identity 등록 / 갱신. 미설정 / 빈 입력 시 ApiException → flash err.
+    post("/env-setup/git-config") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        val form = requireCsrf()
+        val name = form["name"].orEmpty()
+        val email = form["email"].orEmpty()
+        val flash = runCatching {
+            gitConfig.set(name, email)
+            "saved"
+        }.getOrElse { e ->
+            log.warn(e) { "git config set rejected" }
+            val code = (e as? ApiException)?.code ?: "save_failed"
+            "err:$code"
+        }
+        call.respondRedirect("/env-setup?git=$flash")
+    }
+
+    // 사용자가 잘못 입력 후 초기화 원할 때.
+    post("/env-setup/git-config/clear") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        requireCsrf()
+        runCatching { gitConfig.clear() }
+            .onFailure { log.warn(it) { "git config clear failed" } }
+        call.respondRedirect("/env-setup?git=cleared")
     }
 
     post("/env-setup/install-all") {

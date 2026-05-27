@@ -117,6 +117,24 @@ if [[ ! -f /home/vibe/.npmrc ]]; then
     chown vibe:vibe /home/vibe/.npmrc
 fi
 
+# ─── 2c. Git global config 영속 위치 보장 (v1.9.0) ───────────────────────────
+# Dockerfile 의 ENV GIT_CONFIG_GLOBAL=/home/vibe/.config/git/config 와 짝.
+# 디렉토리는 dev-tools/config 볼륨이 cover 하지만, 첫 부팅 시 비어 있을 수 있어
+# idempotent 생성 + ownership 정리. 파일 자체는 사용자가 /env-setup 의 "Git
+# Identity" 카드에서 입력해야 채워짐 (운영자가 직접 만들지 않음 — 자동 ID 추측
+# 금지).
+GIT_CFG_DIR=/home/vibe/.config/git
+GIT_CFG_FILE=$GIT_CFG_DIR/config
+if [[ ! -d "$GIT_CFG_DIR" ]]; then
+    mkdir -p "$GIT_CFG_DIR"
+fi
+chown vibe:vibe "$GIT_CFG_DIR" 2>/dev/null || true
+chmod 700 "$GIT_CFG_DIR" 2>/dev/null || true
+if [[ -f "$GIT_CFG_FILE" ]]; then
+    chown vibe:vibe "$GIT_CFG_FILE" 2>/dev/null || true
+    chmod 600 "$GIT_CFG_FILE" 2>/dev/null || true
+fi
+
 # ─── 3. Admin 부트스트랩 (있으면 서버 sys-prop으로 전달) ──────────────────────
 JAVA_OPTS="${JAVA_OPTS:-}"
 if [[ -n "${VIBECODER_ADMIN_USERNAME:-}" ]] && [[ -n "${VIBECODER_ADMIN_PASSWORD:-}" ]]; then

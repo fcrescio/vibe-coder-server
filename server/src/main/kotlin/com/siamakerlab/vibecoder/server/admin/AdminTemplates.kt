@@ -423,11 +423,25 @@ object AdminTemplates {
         claudeAuth: com.siamakerlab.vibecoder.shared.dto.CheckItemDto? = null,
         claudeUsage: com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto? = null,
         diskSnapshot: com.siamakerlab.vibecoder.server.disk.DiskMonitor.Snapshot? = null,
+        /** v1.9.0 — git global identity 미설정 시 dashboard 상단에 yellow banner. */
+        gitIdentityMissing: Boolean = false,
         csrf: String? = null,
         lang: String = "en",
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val tArgs = { key: String, args: Array<Any?> -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key, *args) }
+        // v1.9.0 — git identity 미설정 banner. 사용자가 첫 빌드 / 첫 commit 전에 입력하지
+        // 않으면 의도와 다른 author 로 commit 되어 GitHub 매칭 누락. dashboard 가 첫 진입
+        // 페이지라 여기에 노출.
+        val gitIdentityBanner = if (gitIdentityMissing) """
+<div class="card" style="margin-bottom:16px;border-color:var(--warn);background:rgba(255,200,0,0.06)">
+  <h2 style="margin:0 0 6px;color:var(--warn)">⚠ ${esc(t("dashboard.gitIdentity.title"))}</h2>
+  <p style="margin:0 0 8px;font-size:13px;line-height:1.5">${esc(t("dashboard.gitIdentity.body"))}</p>
+  <a href="/env-setup#git-identity" class="primary chip" style="display:inline-block;padding:8px 16px">
+    ${esc(t("dashboard.gitIdentity.cta"))}
+  </a>
+</div>
+""" else ""
         val claudeBadge = if (status.claudeAvailable) "<span class=\"ok\">${esc(t("dashboard.claudeOk"))}</span>" else "<span class=\"warn\">${esc(t("dashboard.claudeMissing"))}</span>"
         val sdkBadge = if (status.androidSdkAvailable) "<span class=\"ok\">${esc(t("dashboard.sdkOk"))}</span>" else "<span class=\"warn\">${esc(t("dashboard.sdkMissing"))}</span>"
         // v1.7.8 — WARNING 의 본 의미가 "Claude 비활성" 이 아니라 "만료 임박 / 형식 확인 불가"
@@ -451,7 +465,7 @@ object AdminTemplates {
             lang = lang,
             body = """
 <header><h1>${esc(t("dashboard.heading"))}</h1></header>
-
+$gitIdentityBanner
 <section class="grid">
   <div class="card">
     <h2>${esc(t("dashboard.card.server"))}</h2>

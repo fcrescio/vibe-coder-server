@@ -229,6 +229,11 @@ data class ServerContext(
      * signing inject. [BuildService] 와 [keystoreRoutes] 가 같은 인스턴스 공유.
      */
     val keystoreService: KeystoreService,
+    /**
+     * v1.9.0 — Git global identity (`user.name` / `user.email`). 컨테이너 안
+     * GIT_CONFIG_GLOBAL=/home/vibe/.config/git/config 파일을 통해 영속화.
+     */
+    val gitConfig: com.siamakerlab.vibecoder.server.env.GitConfigService,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -330,11 +335,12 @@ fun Application.module(ctx: ServerContext) {
             claudeUsageMonitor = ctx.claudeUsageMonitor,
             diskMonitor = ctx.diskMonitor,
             webauthnService = ctx.webauthnService,
+            gitConfig = ctx.gitConfig,
         )
         adminRoutes(adminDeps)
         // v0.26.0 — 2FA SSR routes.
         twoFactorRoutes(adminDeps, ctx.adminUserRepo)
-        envSetupRoutes(adminDeps, ctx.envSetup, ctx.claudeAuth, ctx.claudeLogin)
+        envSetupRoutes(adminDeps, ctx.envSetup, ctx.claudeAuth, ctx.claudeLogin, ctx.gitConfig)
         mcpRoutes(adminDeps, ctx.mcp)
         gitIntegrationsRoutes(adminDeps, ctx.gitCredentials, ctx.gitClone, ctx.clock)
         corsSettingsRoutes(adminDeps)

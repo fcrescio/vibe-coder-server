@@ -31,12 +31,18 @@ object EnvSetupTemplates {
         username: String,
         states: List<ComponentState>,
         claudeFlash: String? = null,
+        /** v1.9.0 — 현재 git global identity (둘 다 null 가능). */
+        gitIdentity: com.siamakerlab.vibecoder.server.env.GitIdentity =
+            com.siamakerlab.vibecoder.server.env.GitIdentity(null, null),
+        /** v1.9.0 — `?git=saved|cleared|err:<code>` flash. */
+        gitFlash: String? = null,
         csrf: String? = null,
         lang: String = "en",
     ): String {
         val t = { key: String -> Messages.t(lang, key) }
         val cards = states.joinToString("\n") { renderCard(it, csrf, lang) }
-        val flashHtml = claudeFlashBlurb(claudeFlash, lang)
+        val flashHtml = claudeFlashBlurb(claudeFlash, lang) + gitFlashBlurb(gitFlash, lang)
+        val gitCard = renderGitIdentityCard(gitIdentity, csrf, lang)
         return AdminTemplates.shell(
             title = t("env.heading"),
             username = username,
@@ -92,11 +98,98 @@ docker compose up -d --force-recreate</pre>
   <p class="hint">${t("env.preserved.warn")}</p>
 </div>
 
+$gitCard
+
 <section class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
   $cards
 </section>
 """
         )
+    }
+
+    /**
+     * v1.9.0 — Git global identity 카드. 빌드환경 page 의 상단 (welcome / preserved 뒤,
+     * 컴포넌트 grid 앞) 에 두어 첫 진입 사용자 시선에 닿게 한다.
+     *
+     * 미설정 상태면 카드 헤더에 경고 배지. 입력은 name + email 2-field form +
+     * 저장 / 초기화 두 버튼. JS 없이 SSR + CSRF.
+     */
+    private fun renderGitIdentityCard(
+        identity: com.siamakerlab.vibecoder.server.env.GitIdentity,
+        csrf: String?,
+        lang: String,
+    ): String {
+        val t = { key: String -> Messages.t(lang, key) }
+        val configured = identity.isConfigured
+        val badge = if (configured)
+            """<span class="ok" style="font-size:12px;white-space:nowrap">${esc(t("git.id.badge.configured"))}</span>"""
+        else
+            """<span class="warn" style="font-size:12px;white-space:nowrap">${esc(t("git.id.badge.unset"))}</span>"""
+        val border = if (configured) "" else "border-color:var(--warn)"
+        return """<div class="card" id="git-identity" style="margin-bottom:16px;$border">
+  <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+    <h2 style="margin:0">${esc(t("git.id.title"))}</h2>
+    $badge
+  </div>
+  <p class="dim" style="font-size:13px;margin:6px 0 12px;line-height:1.5">${esc(t("git.id.intro"))}</p>
+  <form method="post" action="/env-setup/git-config"
+        style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+    ${CsrfTokens.hiddenInput(csrf)}
+    <label>
+      <div style="font-size:12px;color:#aaa;margin-bottom:4px">${esc(t("git.id.field.name"))}</div>
+      <input name="name" required maxlength="100"
+             placeholder="${esc(t("git.id.placeholder.name"))}"
+             value="${esc(identity.name.orEmpty())}"
+             style="width:100%;padding:8px;font-family:ui-monospace,Menlo,monospace">
+    </label>
+    <label>
+      <div style="font-size:12px;color:#aaa;margin-bottom:4px">${esc(t("git.id.field.email"))}</div>
+      <input name="email" type="email" required maxlength="200"
+             placeholder="${esc(t("git.id.placeholder.email"))}"
+             value="${esc(identity.email.orEmpty())}"
+             style="width:100%;padding:8px;font-family:ui-monospace,Menlo,monospace">
+    </label>
+    <div style="grid-column:1/3;display:flex;gap:8px;align-items:center;margin-top:4px">
+      <button type="submit" class="primary" style="padding:8px 18px;width:auto">${esc(t("git.id.saveBtn"))}</button>
+      ${if (configured) """<button type="submit" formaction="/env-setup/git-config/clear"
+            class="chip chip-action" style="background:#7f1d1d;color:#fff;padding:8px 14px"
+            onclick="return confirm(${jsLit(t("git.id.clearConfirm"))})">${esc(t("git.id.clearBtn"))}</button>""" else ""}
+    </div>
+  </form>
+  <details style="margin-top:6px">
+    <summary class="dim" style="cursor:pointer;font-size:12px">${esc(t("git.id.advanced"))}</summary>
+    <div style="margin-top:8px;font-size:12px;line-height:1.5">
+      <p class="dim" style="margin:0 0 6px">${esc(t("git.id.advanced.body"))}</p>
+      <pre class="diff-block" style="font-size:11px">git config --global user.name "&lt;name&gt;"
+git config --global user.email "&lt;email&gt;"
+# v1.9.0+ — 영속 위치: /home/vibe/.config/git/config (GIT_CONFIG_GLOBAL env)</pre>
+    </div>
+  </details>
+</div>"""
+    }
+
+    private fun gitFlashBlurb(code: String?, lang: String): String {
+        val t = { key: String -> Messages.t(lang, key) }
+        return when {
+            code == null -> ""
+            code == "saved" -> blurb("ok", t("git.id.flash.saved"))
+            code == "cleared" -> blurb("warn", t("git.id.flash.cleared"))
+            code.startsWith("err:") -> {
+                val errCode = code.removePrefix("err:")
+                // 메시지 lookup: api.gitConfig.<errCode> 우선, 없으면 raw code 표시.
+                val key = "api.gitConfig.${camelize(errCode)}"
+                val msg = Messages.t(lang, key).takeIf { it != key } ?: errCode
+                blurb("err", "${t("git.id.flash.err")}: $msg")
+            }
+            else -> ""
+        }
+    }
+
+    private fun camelize(s: String): String {
+        // git_failed → gitFailed, name_required → nameRequired
+        val parts = s.split("_")
+        if (parts.size <= 1) return s
+        return parts.first() + parts.drop(1).joinToString("") { it.replaceFirstChar { c -> c.uppercase() } }
     }
 
     private fun renderCard(s: ComponentState, csrf: String?, lang: String): String {

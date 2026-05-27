@@ -234,6 +234,10 @@ fun main(args: Array<String>) {
     val envSetup = EnvSetupService(config, queue, hub, clock)
     val claudeAuth = ClaudeAuthService(clock)
     val claudeLogin = ClaudeLoginService(clock, claudeAuth)
+    // v1.9.0 — git global user.name/user.email 영속화. 컨테이너 안 git 자식 프로세스
+    // (clone / commit / log) 가 GIT_CONFIG_GLOBAL=/home/vibe/.config/git/config 를
+    // 자동 인식. 본 service 는 그 파일을 `git config --global` CLI 로 read/write.
+    val gitConfig = com.siamakerlab.vibecoder.server.env.GitConfigService()
     val mcp = McpService(clock, queue, hub)
     val status = StatusService(config, projectRepo, buildRepo, env)
     val actionRegistry = ProjectActionRegistry(workspace)
@@ -457,6 +461,7 @@ fun main(args: Array<String>) {
         fcmSender = fcmSender,
         kotlinLspService = kotlinLspService,
         keystoreService = keystoreService,
+        gitConfig = gitConfig,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {
