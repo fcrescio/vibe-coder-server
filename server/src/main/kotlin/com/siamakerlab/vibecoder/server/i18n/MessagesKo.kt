@@ -496,6 +496,17 @@ internal object MessagesKo {
         "fileTree.back" to "← 프로젝트로",
         "fileTree.toConsole" to "콘솔로",
         "fileTree.hint" to "읽기 + 가벼운 편집만 지원. 이진 파일/1MB 초과/심볼릭 링크는 차단. .vibecoder / .gradle / build / node_modules 는 숨김.",
+        // v1.14.0 — 파일 탐색기 액션.
+        "fileTree.upload" to "업로드",
+        "fileTree.newFile" to "새 파일",
+        "fileTree.newFolder" to "새 폴더",
+        "fileTree.rename" to "이름 변경",
+        "fileTree.delete" to "삭제",
+        "fileTree.hint.toolbar" to "현재 디렉토리에 작업. 단일 파일 최대 50MB. 이름변경은 같은 폴더 안에서만.",
+        "fileTree.prompt.newFile" to "새 파일 이름 (확장자 포함):",
+        "fileTree.prompt.newFolder" to "새 폴더 이름:",
+        "fileTree.prompt.rename" to "새 이름:",
+        "fileTree.confirm.delete" to "{0} 을(를) 삭제합니다. 디렉토리는 재귀 삭제됩니다. 진행할까요?",
 
         // ── file view page extras ────────────────────────────────────
         "fileView.heading" to "파일 보기 / 편집",
@@ -684,6 +695,8 @@ internal object MessagesKo {
         "flash.file.uploaded" to "'%s' 업로드 완료.",
         "flash.file.deleteFailed" to "파일 삭제 실패",
         "flash.file.deleted" to "파일이 삭제되었습니다.",
+        "flash.file.folderCreated" to "폴더 '%s' 생성됨.",
+        "flash.file.renamed" to "이름이 '%s' (으)로 변경됨.",
         "flash.file.listFailed" to "listing 실패",
         "flash.file.openFailed" to "파일 열기 실패",
         "flash.file.saveFailed" to "저장 실패",
@@ -1049,6 +1062,10 @@ internal object MessagesKo {
         "api.fileBrowser.symlinkBlockedEdit" to "심볼릭 링크는 편집 불가입니다.",
         "api.fileBrowser.badPath" to "부모 경로가 없습니다.",
         "api.fileBrowser.parentMissing" to "상위 디렉토리가 존재하지 않습니다: %s",
+        // v1.14.0 — 파일 탐색기 write 액션 에러 메시지.
+        "api.fileBrowser.alreadyExists" to "이미 존재합니다: %s",
+        "api.fileBrowser.emptyName" to "이름이 비어 있습니다.",
+        "api.fileBrowser.invalidName" to "이름에 슬래시 또는 . / .. 사용 불가.",
         // GitCloneService
         "api.gitClone.sshDir" to "~/.ssh 디렉토리 생성 실패: %s",
         "api.gitClone.sshKeygen" to "ssh-keygen 실행 실패: %s",

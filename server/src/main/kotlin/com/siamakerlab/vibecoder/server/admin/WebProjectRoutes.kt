@@ -489,107 +489,11 @@ fun Routing.webProjectRoutes(
         call.respondRedirect("/projects/$id/builds/$buildId")
     }
 
-    // ── 파일 ──────────────────────────────────────────────────────────
-    get("/projects/{id}/files") {
-        val sess = requireSessionOrRedirect(authDeps) ?: return@get
-        val id = call.parameters["id"]!!
-        val p = runCatching { projects.get(id) }.getOrElse {
-            call.respondRedirect("/projects?err=${Messages.t(sess.language, "flash.project.notFound", id).encodeUrl()}")
-            return@get
-        }
-        val files = uploads.list(id)
-        val err = call.request.queryParameters["err"]
-        val ok = call.request.queryParameters["ok"]
-        call.respondText(
-            WebProjectTemplates.filesPage(
-                sess.username, p, files, flashErr = err, flashOk = ok, csrf = sess.csrf,
-                lang = sess.language,
-            ),
-            ContentType.Text.Html,
-        )
-    }
-
-    post("/projects/{id}/files/upload") {
-        val sess = requireSessionOrRedirect(authDeps) ?: return@post
-        if (!requireWriteAccessOrRedirect(sess)) return@post
-        // multipart 라 receiveParameters 못 씀 → query string `?_csrf=...` 또는 헤더로 받음.
-        CsrfTokens.verifyCsrfFromQueryOrHeader(call)
-        val id = call.parameters["id"]!!
-        val multipart = call.receiveMultipart()
-        var saved: String? = null
-        var fail: String? = null
-
-        while (true) {
-            val part = multipart.readPart() ?: break
-            try {
-                if (part is PartData.FileItem) {
-                    val name = part.originalFileName ?: "upload"
-                    val mime = part.contentType?.toString()
-                    val row = runCatching {
-                        part.provider().toInputStream().use { stream ->
-                            uploads.upload(id, name, mime, stream, sizeHint = null)
-                        }
-                    }
-                    if (row.isFailure) {
-                        val e = row.exceptionOrNull()!!
-                        fail = (e as? ApiException)?.message ?: e.message ?: Messages.t(sess.language, "flash.file.uploadFailed")
-                        log.warn(e) { "upload failed: project=$id file=$name" }
-                    } else {
-                        saved = row.getOrNull()?.originalName
-                    }
-                }
-            } finally {
-                part.dispose()
-            }
-        }
-
-        if (fail != null) {
-            call.respondRedirect("/projects/$id/files?err=${fail.encodeUrl()}")
-            return@post
-        }
-        if (saved == null) {
-            call.respondRedirect("/projects/$id/files?err=${Messages.t(sess.language, "flash.file.noFileSelected").encodeUrl()}")
-            return@post
-        }
-        log.info { "upload ok: project=$id file=$saved by ${sess.username}" }
-        call.respondRedirect("/projects/$id/files?ok=${Messages.t(sess.language, "flash.file.uploaded", saved ?: "").encodeUrl()}")
-    }
-
-    get("/projects/{id}/files/{fileId}/download") {
-        // 세션 확인은 하지만 redirect 가 아닌 401 로 응답해야 다운로드 도중 페이지 점프가 안 일어남.
-        requireSessionOrRedirect(authDeps) ?: return@get
-        val id = call.parameters["id"]!!
-        val fileId = call.parameters["fileId"]!!
-        val row = runCatching { uploads.resolveForDownload(id, fileId) }.getOrElse {
-            call.respondText("file not found", ContentType.Text.Plain, HttpStatusCode.NotFound)
-            return@get
-        }
-        call.response.header(
-            HttpHeaders.ContentDisposition,
-            ContentDisposition.Attachment.withParameter(
-                ContentDisposition.Parameters.FileName, row.originalName,
-            ).toString(),
-        )
-        call.respondFile(Path.of(row.filePath).toFile())
-    }
-
-    post("/projects/{id}/files/{fileId}/delete") {
-        val sess = requireSessionOrRedirect(authDeps) ?: return@post
-        requireCsrf()
-        val id = call.parameters["id"]!!
-        val fileId = call.parameters["fileId"]!!
-        val result = runCatching { uploads.delete(id, fileId) }
-        if (result.isFailure) {
-            val e = result.exceptionOrNull()!!
-            val msg = (e as? ApiException)?.message ?: e.message ?: Messages.t(sess.language, "flash.file.deleteFailed")
-            call.respondRedirect("/projects/$id/files?err=${msg.encodeUrl()}")
-            return@post
-        }
-        log.info { "file deleted: $fileId project=$id by ${sess.username}" }
-        call.respondRedirect("/projects/$id/files?ok=${Messages.t(sess.language, "flash.file.deleted").encodeUrl()}")
-    }
-
-    // ── 파일 트리 / 보기 / 편집 (v0.13.0) ─────────────────────────────
+    // ── 파일 트리 / 보기 / 편집 (v0.13.0)
+    // v1.14.0 — 기존 /projects/{id}/files (uploads 카탈로그) UI/라우트 제거. 그 자리에
+    // 파일 탐색기 (mkdir / createFile / rename / delete / upload) 액션을 /tree 페이지에
+    // 직접 통합. uploads 테이블 자체는 보존 — 다른 곳에서 사용 가능.
+    // ─────────────────────────────────────────────────────────────────
     get("/projects/{id}/tree") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         val id = call.parameters["id"]!!
@@ -598,6 +502,8 @@ fun Routing.webProjectRoutes(
             return@get
         }
         val subPath = call.request.queryParameters["path"].orEmpty()
+        val err = call.request.queryParameters["err"]
+        val ok = call.request.queryParameters["ok"]
         val entries = runCatching { fileBrowser.list(id, subPath) }.getOrElse {
             val msg = (it as? ApiException)?.message ?: it.message ?: Messages.t(sess.language, "flash.file.listFailed")
             call.respondText(
@@ -612,11 +518,139 @@ fun Routing.webProjectRoutes(
         }
         call.respondText(
             WebProjectTemplates.fileTreePage(
-                sess.username, p, subPath, entries, csrf = sess.csrf,
+                sess.username, p, subPath, entries,
+                flashErr = err, flashOk = ok, csrf = sess.csrf,
                 lang = sess.language,
             ),
             ContentType.Text.Html,
         )
+    }
+
+    // v1.14.0 — 파일 탐색기 액션 (mkdir / createFile / rename / delete / upload).
+    // 모두 form POST + redirect → /tree?path=<현재 디렉토리>. parent 는 form 의 hidden
+    // input "parent" (현재 사용자가 보고 있던 subPath) 로부터.
+
+    post("/projects/{id}/files/new-folder") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
+        val params = requireCsrf()
+        val id = call.parameters["id"]!!
+        val parent = params["parent"].orEmpty()
+        val name = params["name"].orEmpty().trim()
+        val relPath = if (parent.isBlank()) name else "$parent/$name"
+        val result = runCatching { fileBrowser.mkdir(id, relPath) }
+        if (result.isFailure) {
+            val e = result.exceptionOrNull()!!
+            val msg = (e as? ApiException)?.message ?: e.message ?: "mkdir failed"
+            call.respondRedirect("/projects/$id/tree?path=${parent.encodeUrl()}&err=${msg.encodeUrl()}")
+            return@post
+        }
+        call.respondRedirect("/projects/$id/tree?path=${parent.encodeUrl()}&ok=${Messages.t(sess.language, "flash.file.folderCreated", name).encodeUrl()}")
+    }
+
+    post("/projects/{id}/files/new-file") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
+        val params = requireCsrf()
+        val id = call.parameters["id"]!!
+        val parent = params["parent"].orEmpty()
+        val name = params["name"].orEmpty().trim()
+        val relPath = if (parent.isBlank()) name else "$parent/$name"
+        val result = runCatching { fileBrowser.createFile(id, relPath) }
+        if (result.isFailure) {
+            val e = result.exceptionOrNull()!!
+            val msg = (e as? ApiException)?.message ?: e.message ?: "create failed"
+            call.respondRedirect("/projects/$id/tree?path=${parent.encodeUrl()}&err=${msg.encodeUrl()}")
+            return@post
+        }
+        // 신규 파일은 바로 편집 페이지로 — 사용자가 즉시 내용 입력.
+        call.respondRedirect("/projects/$id/view?path=${relPath.encodeUrl()}&ok=created")
+    }
+
+    post("/projects/{id}/files/rename") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
+        val params = requireCsrf()
+        val id = call.parameters["id"]!!
+        val relPath = params["path"].orEmpty()
+        val newName = params["newName"].orEmpty().trim()
+        // parent 추출 — relPath 의 마지막 / 앞.
+        val parent = relPath.substringBeforeLast('/', "")
+        val result = runCatching { fileBrowser.rename(id, relPath, newName) }
+        if (result.isFailure) {
+            val e = result.exceptionOrNull()!!
+            val msg = (e as? ApiException)?.message ?: e.message ?: "rename failed"
+            call.respondRedirect("/projects/$id/tree?path=${parent.encodeUrl()}&err=${msg.encodeUrl()}")
+            return@post
+        }
+        call.respondRedirect("/projects/$id/tree?path=${parent.encodeUrl()}&ok=${Messages.t(sess.language, "flash.file.renamed", newName).encodeUrl()}")
+    }
+
+    post("/projects/{id}/files/delete") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
+        val params = requireCsrf()
+        val id = call.parameters["id"]!!
+        val relPath = params["path"].orEmpty()
+        val parent = relPath.substringBeforeLast('/', "")
+        val result = runCatching { fileBrowser.delete(id, relPath) }
+        if (result.isFailure) {
+            val e = result.exceptionOrNull()!!
+            val msg = (e as? ApiException)?.message ?: e.message ?: "delete failed"
+            call.respondRedirect("/projects/$id/tree?path=${parent.encodeUrl()}&err=${msg.encodeUrl()}")
+            return@post
+        }
+        call.respondRedirect("/projects/$id/tree?path=${parent.encodeUrl()}&ok=${Messages.t(sess.language, "flash.file.deleted").encodeUrl()}")
+    }
+
+    post("/projects/{id}/files/upload") {
+        val sess = requireSessionOrRedirect(authDeps) ?: return@post
+        if (!requireWriteAccessOrRedirect(sess)) return@post
+        // multipart 라 requireCsrf 못 씀 → query string `?_csrf=...` 또는 헤더 검증.
+        CsrfTokens.verifyCsrfFromQueryOrHeader(call)
+        val id = call.parameters["id"]!!
+        val multipart = call.receiveMultipart()
+        var parentRel = ""
+        var fileName: String? = null
+        var stream: java.io.InputStream? = null
+        var failMsg: String? = null
+        try {
+            while (true) {
+                val part = multipart.readPart() ?: break
+                try {
+                    when (part) {
+                        is PartData.FormItem -> {
+                            if (part.name == "parent") parentRel = part.value
+                        }
+                        is PartData.FileItem -> {
+                            if (fileName == null) {
+                                fileName = part.originalFileName?.takeIf { it.isNotBlank() } ?: "upload"
+                                // stream 을 즉시 소비 — provider 가 close 후엔 사용 불가.
+                                part.provider().toInputStream().use { input ->
+                                    fileBrowser.uploadStream(id, parentRel, fileName!!, input, overwrite = false)
+                                }
+                            }
+                        }
+                        else -> {}
+                    }
+                } catch (e: Throwable) {
+                    failMsg = (e as? ApiException)?.message ?: e.message ?: Messages.t(sess.language, "flash.file.uploadFailed")
+                } finally {
+                    part.dispose()
+                }
+            }
+        } catch (e: Throwable) {
+            failMsg = (e as? ApiException)?.message ?: e.message ?: Messages.t(sess.language, "flash.file.uploadFailed")
+        }
+        if (failMsg != null) {
+            call.respondRedirect("/projects/$id/tree?path=${parentRel.encodeUrl()}&err=${failMsg.encodeUrl()}")
+            return@post
+        }
+        if (fileName == null) {
+            call.respondRedirect("/projects/$id/tree?path=${parentRel.encodeUrl()}&err=${Messages.t(sess.language, "flash.file.noFileSelected").encodeUrl()}")
+            return@post
+        }
+        call.respondRedirect("/projects/$id/tree?path=${parentRel.encodeUrl()}&ok=${Messages.t(sess.language, "flash.file.uploaded", fileName!!).encodeUrl()}")
     }
 
     get("/projects/{id}/view") {

@@ -755,7 +755,6 @@ $errHtml
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/builds" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px">${esc(t("projects.detail.builds"))}</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/history" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)">${esc(t("projects.detail.history"))}</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/tree" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)">${esc(t("projects.detail.tree"))}</a></p>
-    <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/files" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)">${esc(t("projects.detail.files"))}</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/zip" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)" title="${esc(t("projects.detail.zip.title"))}">${esc(t("projects.detail.zip"))}</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/env-files" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)" title="${esc(t("projects.detail.envFiles.title"))}">${esc(t("projects.detail.envFiles"))}</a></p>
     <p style="margin-top:12px"><a href="/projects/${esc(p.id)}/deps" class="primary-link" style="width:auto;display:inline-block;padding:8px 16px;background:transparent;border:1px solid var(--border);color:var(--text)" title="${esc(t("projects.detail.deps.title"))}">${esc(t("projects.detail.deps"))}</a></p>
@@ -845,7 +844,7 @@ $errHtml
         else """
       <a href="/projects/${esc(p.id)}/builds" class="chip chip-link">${esc(t("projects.detail.builds"))}</a>
       <a href="/projects/${esc(p.id)}/history" class="chip chip-link">${esc(t("console.nav.history"))}</a>
-      <a href="/projects/${esc(p.id)}/files" class="chip chip-link">${esc(t("console.nav.files"))}</a>
+      <a href="/projects/${esc(p.id)}/tree" class="chip chip-link">${esc(t("console.nav.files"))}</a>
       <a href="/projects/${esc(p.id)}/git" class="chip chip-link">${esc(t("console.nav.git"))}</a>
       <a href="/projects/${esc(p.id)}/symbols" class="chip chip-link" title="${esc(t("console.nav.symbols.title"))}">${esc(t("console.nav.symbols"))}</a>
       <a href="/projects/${esc(p.id)}/agents" class="chip chip-link" title="${esc(t("console.nav.agents.title"))}">${esc(t("console.nav.agents"))}</a>"""
@@ -2335,14 +2334,21 @@ ${if (status != null && !unavailable) """
         subPath: String,
         entries: List<ProjectFileBrowser.Entry>,
         flashErr: String? = null,
+        flashOk: String? = null,
         csrf: String? = null,
         lang: String = "en",
     ): String {
         val t = { key: String -> com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, key) }
         val errHtml = if (flashErr != null) """<div class="error">${esc(flashErr)}</div>""" else ""
+        val okHtml = if (flashOk != null) """<div class="ok-banner">${esc(flashOk)}</div>""" else ""
         val crumbs = renderBreadcrumbs(p.id, subPath)
+        // v1.14.0 — toolbar / per-row actions 가 form POST 로 작동. 모든 path 는 subPath
+        // (현재 디렉토리) 기준 상대명만 사용 — 서버에서 PathSafety + projectRoot 검증.
+        val csrfHidden = com.siamakerlab.vibecoder.server.auth.CsrfTokens.hiddenInput(csrf)
+        val parentEnc = subPath.encodeUrl()
+
         val rowsHtml = if (entries.isEmpty()) {
-            """<tr><td colspan="3" class="dim">${esc(t("fileTree.empty"))}</td></tr>"""
+            """<tr><td colspan="4" class="dim">${esc(t("fileTree.empty"))}</td></tr>"""
         } else {
             entries.joinToString("\n") { e ->
                 val sizeKb = if (e.isDirectory) "-" else "${(e.sizeBytes + 512L) / 1024L}KB"
@@ -2351,13 +2357,60 @@ ${if (status != null && !unavailable) """
                     "/projects/${esc(p.id)}/tree?path=${e.relPath.encodeUrl()}"
                 else
                     "/projects/${esc(p.id)}/view?path=${e.relPath.encodeUrl()}"
+                // v1.14.0 — row 우측에 Rename / Delete inline form.
+                val renameJsLit = "'" + e.name.replace("\\", "\\\\").replace("'", "\\'") + "'"
+                val confirmDelete = t("fileTree.confirm.delete").replace("{0}", e.name)
+                val renamePrompt = t("fileTree.prompt.rename")
+                val actions = """<form method="post" action="/projects/${esc(p.id)}/files/rename"
+                          style="display:inline" onsubmit="var v=prompt('${esc(renamePrompt)}',$renameJsLit); if(!v||v===$renameJsLit){return false;} this.newName.value=v;">
+                      $csrfHidden
+                      <input type="hidden" name="path" value="${esc(e.relPath)}">
+                      <input type="hidden" name="newName" value="">
+                      <button type="submit" class="chip chip-link" title="${esc(t("fileTree.rename"))}">✎</button>
+                    </form>
+                    <form method="post" action="/projects/${esc(p.id)}/files/delete"
+                          style="display:inline" onsubmit="return confirm('${esc(confirmDelete)}')">
+                      $csrfHidden
+                      <input type="hidden" name="path" value="${esc(e.relPath)}">
+                      <button type="submit" class="chip chip-link" style="color:#ff9e9e" title="${esc(t("fileTree.delete"))}">🗑</button>
+                    </form>"""
                 """<tr>
                     <td><a href="$href">$icon ${esc(e.name)}</a></td>
                     <td class="dim">$sizeKb</td>
                     <td class="dim" style="font-size:11px">${esc(e.modifiedAt)}</td>
+                    <td style="text-align:right;white-space:nowrap">$actions</td>
                   </tr>"""
             }
         }
+        // v1.14.0 — 상단 toolbar: Upload / New file / New folder. 모두 prompt 기반 단순 UI.
+        val newFilePrompt = t("fileTree.prompt.newFile")
+        val newFolderPrompt = t("fileTree.prompt.newFolder")
+        val toolbar = """<div class="card" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+  <form method="post" action="/projects/${esc(p.id)}/files/upload?_csrf=${csrf?.encodeUrl() ?: ""}"
+        enctype="multipart/form-data" style="display:inline-flex;gap:6px;align-items:center">
+    <input type="hidden" name="parent" value="${esc(subPath)}">
+    <label class="chip chip-link" style="cursor:pointer">
+      ⬆ ${esc(t("fileTree.upload"))}
+      <input type="file" name="file" style="display:none" onchange="this.form.submit()">
+    </label>
+  </form>
+  <form method="post" action="/projects/${esc(p.id)}/files/new-file"
+        style="display:inline" onsubmit="var v=prompt('${esc(newFilePrompt)}',''); if(!v){return false;} this.name.value=v;">
+    $csrfHidden
+    <input type="hidden" name="parent" value="${esc(subPath)}">
+    <input type="hidden" name="name" value="">
+    <button type="submit" class="chip chip-link">＋ ${esc(t("fileTree.newFile"))}</button>
+  </form>
+  <form method="post" action="/projects/${esc(p.id)}/files/new-folder"
+        style="display:inline" onsubmit="var v=prompt('${esc(newFolderPrompt)}',''); if(!v){return false;} this.name.value=v;">
+    $csrfHidden
+    <input type="hidden" name="parent" value="${esc(subPath)}">
+    <input type="hidden" name="name" value="">
+    <button type="submit" class="chip chip-link">📁＋ ${esc(t("fileTree.newFolder"))}</button>
+  </form>
+  <span class="dim" style="font-size:12px;margin-left:auto">${esc(t("fileTree.hint.toolbar"))}</span>
+</div>"""
+
         return AdminTemplates.shell(
             title = "${esc(p.name)} · ${esc(t("fileTree.heading"))}",
             username = username,
@@ -2370,21 +2423,25 @@ ${if (status != null && !unavailable) """
     <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)})</small>
   </h1>
 </header>
+$okHtml
 $errHtml
 
 <div class="card" style="margin-bottom:14px">
   <div style="font-size:13px">$crumbs</div>
 </div>
 
+$toolbar
+
 <table class="devices">
-  <thead><tr><th>${esc(t("fileTree.col.name"))}</th><th>${esc(t("fileTree.col.size"))}</th><th>${esc(t("fileTree.col.modified"))}</th></tr></thead>
+  <thead><tr>
+    <th>${esc(t("fileTree.col.name"))}</th>
+    <th>${esc(t("fileTree.col.size"))}</th>
+    <th>${esc(t("fileTree.col.modified"))}</th>
+    <th></th>
+  </tr></thead>
   <tbody>$rowsHtml</tbody>
 </table>
 
-<p class="hint" style="margin-top:16px">
-  <a href="/projects/${esc(p.id)}" class="chip chip-link">${esc(t("fileTree.back"))}</a>
-  <a href="/projects/${esc(p.id)}/console" class="chip chip-link">${esc(t("fileTree.toConsole"))}</a>
-</p>
 <p class="hint" style="font-size:12px">${esc(t("fileTree.hint"))}</p>
 """
         )

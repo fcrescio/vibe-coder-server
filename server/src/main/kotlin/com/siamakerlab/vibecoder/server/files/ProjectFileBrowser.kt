@@ -145,6 +145,171 @@ class ProjectFileBrowser(
         log.info { "file edited: $projectId :: $relPath (${content.length} chars)" }
     }
 
+    /**
+     * v1.14.0 — 신규 폴더 생성. 부모 디렉토리 존재해야 함. 동명 entry 있으면 거부.
+     */
+    fun mkdir(projectId: String, relPath: String) {
+        val (projectRoot, target) = safeWriteTarget(projectId, relPath)
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw ApiException.localized(409, "already_exists",
+                messageKey = "api.fileBrowser.alreadyExists", args = listOf(relPath))
+        }
+        val parent = target.parent ?: throw ApiException.localized(400, "bad_path", messageKey = "api.fileBrowser.badPath")
+        if (!Files.exists(parent) || !parent.isDirectory()) {
+            throw ApiException.localized(400, "parent_missing",
+                messageKey = "api.fileBrowser.parentMissing", args = listOf(parent.toString()))
+        }
+        Files.createDirectories(target)
+        log.info { "mkdir: $projectId :: $relPath" }
+    }
+
+    /**
+     * v1.14.0 — 신규 빈 텍스트 파일 생성. 동명 entry 있으면 거부. 사용자가 그 후
+     * /view 에서 편집.
+     */
+    fun createFile(projectId: String, relPath: String) {
+        val (projectRoot, target) = safeWriteTarget(projectId, relPath)
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw ApiException.localized(409, "already_exists",
+                messageKey = "api.fileBrowser.alreadyExists", args = listOf(relPath))
+        }
+        val parent = target.parent ?: throw ApiException.localized(400, "bad_path", messageKey = "api.fileBrowser.badPath")
+        if (!Files.exists(parent) || !parent.isDirectory()) {
+            throw ApiException.localized(400, "parent_missing",
+                messageKey = "api.fileBrowser.parentMissing", args = listOf(parent.toString()))
+        }
+        Files.createFile(target)
+        log.info { "createFile: $projectId :: $relPath" }
+    }
+
+    /**
+     * v1.14.0 — 파일 또는 디렉토리 rename. 같은 부모 디렉토리 안에서만 — name 변경.
+     * 다른 디렉토리로의 이동은 본 메서드 범위 아님 (사용자가 명시적 move 요청 시 별도
+     * endpoint 추가). 동명 entry 있으면 거부.
+     */
+    fun rename(projectId: String, relPath: String, newName: String) {
+        if (newName.isBlank()) throw ApiException.localized(400, "empty_name", messageKey = "api.fileBrowser.emptyName")
+        if (newName.contains('/') || newName.contains('\\') || newName == "." || newName == "..") {
+            throw ApiException.localized(400, "invalid_name", messageKey = "api.fileBrowser.invalidName")
+        }
+        val (projectRoot, target) = safeWriteTarget(projectId, relPath)
+        if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw ApiException.localized(404, "path_not_found", messageKey = "api.fileBrowser.pathNotFound", args = listOf(relPath))
+        }
+        if (Files.isSymbolicLink(target)) {
+            throw ApiException.localized(403, "symlink_blocked", messageKey = "api.fileBrowser.symlinkBlockedEdit")
+        }
+        val dest = target.resolveSibling(newName)
+        // dest 도 같은 projectRoot 안에 있음을 PathSafety 로 재확인.
+        val destRel = projectRoot.relativize(dest).toString().replace('\\', '/')
+        val destChecked = PathSafety.normalizeAndCheck(projectRoot, destRel)
+        if (Files.exists(destChecked, LinkOption.NOFOLLOW_LINKS)) {
+            throw ApiException.localized(409, "already_exists",
+                messageKey = "api.fileBrowser.alreadyExists", args = listOf(newName))
+        }
+        Files.move(target, destChecked)
+        log.info { "rename: $projectId :: $relPath → $newName" }
+    }
+
+    /**
+     * v1.14.0 — 파일 또는 빈 디렉토리 삭제. 비어있지 않은 디렉토리는 재귀 삭제 (사용자가
+     * 명시 confirm 후 호출하므로 의도된 행동). 심볼릭 링크는 link 자체만 삭제.
+     */
+    fun delete(projectId: String, relPath: String) {
+        if (relPath.isBlank()) throw ApiException.localized(400, "empty_path", messageKey = "api.fileBrowser.emptyPath")
+        val (_, target) = safeWriteTarget(projectId, relPath)
+        if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw ApiException.localized(404, "path_not_found", messageKey = "api.fileBrowser.pathNotFound", args = listOf(relPath))
+        }
+        if (Files.isSymbolicLink(target)) {
+            // 링크 자체만 unlink — 따라가지 않음 (외부 escape 방지).
+            Files.delete(target)
+        } else if (target.isDirectory()) {
+            Files.walk(target).use { stream ->
+                stream.sorted(Comparator.reverseOrder()).forEach { p ->
+                    runCatching { Files.delete(p) }
+                }
+            }
+        } else {
+            Files.delete(target)
+        }
+        log.info { "delete: $projectId :: $relPath" }
+    }
+
+    /**
+     * v1.14.0 — 신규 파일 upload (multipart stream → tree 내 파일). 동명 파일이 있으면
+     * `[overwrite]=true` 이면 덮어쓰기, 아니면 [ApiException]. 부모 디렉토리는 사전 존재.
+     */
+    fun uploadStream(
+        projectId: String,
+        parentRelPath: String,
+        fileName: String,
+        input: java.io.InputStream,
+        overwrite: Boolean = false,
+        maxBytes: Long = MAX_UPLOAD_BYTES,
+    ) {
+        if (fileName.isBlank()) throw ApiException.localized(400, "empty_name", messageKey = "api.fileBrowser.emptyName")
+        if (fileName.contains('/') || fileName.contains('\\') || fileName == "." || fileName == "..") {
+            throw ApiException.localized(400, "invalid_name", messageKey = "api.fileBrowser.invalidName")
+        }
+        val projectRoot = workspace.projectRoot(projectId)
+        if (!projectRoot.exists()) {
+            throw ApiException.localized(404, "project_root_not_found", messageKey = "api.fileBrowser.projectRootNotFound")
+        }
+        // 부모 디렉토리 검증.
+        val parent = if (parentRelPath.isBlank()) projectRoot
+            else PathSafety.normalizeAndCheck(projectRoot, parentRelPath)
+        if (!Files.exists(parent) || !parent.isDirectory()) {
+            throw ApiException.localized(400, "parent_missing",
+                messageKey = "api.fileBrowser.parentMissing", args = listOf(parentRelPath))
+        }
+        // 합쳐서 target.
+        val targetRel = (if (parentRelPath.isBlank()) fileName else "$parentRelPath/$fileName")
+        val target = PathSafety.normalizeAndCheck(projectRoot, targetRel)
+        if (Files.isSymbolicLink(target)) {
+            throw ApiException.localized(403, "symlink_blocked", messageKey = "api.fileBrowser.symlinkBlockedEdit")
+        }
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS) && !overwrite) {
+            throw ApiException.localized(409, "already_exists",
+                messageKey = "api.fileBrowser.alreadyExists", args = listOf(fileName))
+        }
+        // 크기 제한 — 자체 카운터로 stream 소비량 추적.
+        val tmp = target.resolveSibling("${target.fileName}.upload.tmp")
+        var total = 0L
+        try {
+            Files.newOutputStream(tmp).use { out ->
+                val buf = ByteArray(8 * 1024)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    total += n
+                    if (total > maxBytes) {
+                        runCatching { Files.deleteIfExists(tmp) }
+                        throw ApiException.localized(413, "file_too_large",
+                            messageKey = "api.fileBrowser.fileTooLarge", args = listOf(total, maxBytes))
+                    }
+                    out.write(buf, 0, n)
+                }
+            }
+            Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: Throwable) {
+            runCatching { Files.deleteIfExists(tmp) }
+            throw e
+        }
+        log.info { "uploadStream: $projectId :: $targetRel ($total bytes)" }
+    }
+
+    /** 공통: 쓰기 작업용 path 검증 + projectRoot/target pair 반환. */
+    private fun safeWriteTarget(projectId: String, relPath: String): Pair<Path, Path> {
+        if (relPath.isBlank()) throw ApiException.localized(400, "empty_path", messageKey = "api.fileBrowser.emptyPath")
+        val projectRoot = workspace.projectRoot(projectId)
+        if (!projectRoot.exists()) {
+            throw ApiException.localized(404, "project_root_not_found", messageKey = "api.fileBrowser.projectRootNotFound")
+        }
+        val target = PathSafety.normalizeAndCheck(projectRoot, relPath)
+        return projectRoot to target
+    }
+
     private fun skipHidden(name: String): Boolean =
         // .vibecoder 등 서버 내부 메타데이터, .git 등 도구 메타데이터는 listing 노출 안 함.
         name == ".vibecoder" || name == ".gradle" || name == "build" || name == "node_modules"
@@ -172,5 +337,7 @@ class ProjectFileBrowser(
     companion object {
         /** UI 에서 열거 가능한 최대 텍스트 파일 크기 — 1 MB. */
         const val MAX_VIEW_BYTES = 1024L * 1024
+        /** v1.14.0 — 파일 탐색기 업로드 단일 파일 한도 — 50 MB. workspace 안 source asset 가정. */
+        const val MAX_UPLOAD_BYTES = 50L * 1024 * 1024
     }
 }

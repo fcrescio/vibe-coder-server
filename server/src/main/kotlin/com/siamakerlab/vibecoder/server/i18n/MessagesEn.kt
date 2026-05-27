@@ -518,6 +518,17 @@ internal object MessagesEn {
         "fileTree.back" to "← Back to project",
         "fileTree.toConsole" to "Console",
         "fileTree.hint" to "Read + light edit only. Binary files / over 1MB / symlinks are blocked. .vibecoder / .gradle / build / node_modules are hidden.",
+        // v1.14.0 — file explorer actions.
+        "fileTree.upload" to "Upload",
+        "fileTree.newFile" to "New file",
+        "fileTree.newFolder" to "New folder",
+        "fileTree.rename" to "Rename",
+        "fileTree.delete" to "Delete",
+        "fileTree.hint.toolbar" to "Actions apply to the current directory. Max upload 50MB. Rename keeps the file in the same folder.",
+        "fileTree.prompt.newFile" to "New file name (with extension):",
+        "fileTree.prompt.newFolder" to "New folder name:",
+        "fileTree.prompt.rename" to "New name:",
+        "fileTree.confirm.delete" to "Delete '{0}'? Directories are removed recursively. Continue?",
 
         // ── file view page extras ────────────────────────────────────
         "fileView.heading" to "File view / edit",
@@ -706,6 +717,8 @@ internal object MessagesEn {
         "flash.file.uploaded" to "'%s' uploaded.",
         "flash.file.deleteFailed" to "File deletion failed",
         "flash.file.deleted" to "File deleted.",
+        "flash.file.folderCreated" to "Folder '%s' created.",
+        "flash.file.renamed" to "Renamed to '%s'.",
         "flash.file.listFailed" to "Listing failed",
         "flash.file.openFailed" to "Could not open the file",
         "flash.file.saveFailed" to "Save failed",
@@ -1072,6 +1085,10 @@ internal object MessagesEn {
         "api.fileBrowser.symlinkBlockedEdit" to "Symbolic links cannot be edited.",
         "api.fileBrowser.badPath" to "Parent path missing.",
         "api.fileBrowser.parentMissing" to "Parent directory does not exist: %s",
+        // v1.14.0 — file explorer write action error messages.
+        "api.fileBrowser.alreadyExists" to "Already exists: %s",
+        "api.fileBrowser.emptyName" to "Name is empty.",
+        "api.fileBrowser.invalidName" to "Name cannot contain slashes or . / ..",
         // GitCloneService
         "api.gitClone.sshDir" to "Failed to create ~/.ssh directory: %s",
         "api.gitClone.sshKeygen" to "ssh-keygen execution failed: %s",
