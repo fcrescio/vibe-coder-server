@@ -9,10 +9,16 @@ object ApkFinder {
 
     /**
      * Returns the most-recently-modified `.apk` file located in
-     * `{source}/{module}/build/outputs/apk/debug/`.
+     * the module's debug output directory.
+     *
+     * v1.7.24 — moduleName 의 Gradle path separator `:` 를 filesystem 의 `/`
+     * 로 변환. multi-module 프로젝트 (예: `android-app:app`) 에서
+     * `source.resolve("android-app:app")` 가 잘못된 path 를 만들어 APK 미발견
+     * → BUILD SUCCESSFUL 인데 "apk not found" FAILED 처리되던 회귀 fix.
      */
     fun findLatestDebug(source: Path, moduleName: String): Path? {
-        val dir = source.resolve(moduleName).resolve("build/outputs/apk/debug")
+        val modulePath = moduleName.replace(':', '/')
+        val dir = source.resolve(modulePath).resolve("build/outputs/apk/debug")
         if (!dir.exists()) return null
         return Files.list(dir).use { stream ->
             stream
