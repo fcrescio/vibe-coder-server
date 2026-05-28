@@ -40,8 +40,12 @@ class BuildService(
 
     /**
      * v1.26.1 — 운영 정책 "키스토어 임의 생성 금지" SSOT 가드. SSR / JSON API / WS
-     * action / cron / Claude autoBuild 어느 경로든 본 service 를 거치므로 단일
+     * action / Cron / Webhook 5개 외부 진입 모두 `enqueueDebug` 를 거치므로 단일
      * enforcement point. 매칭 keystore set 없으면 즉시 [ApiException] 으로 거부.
+     *
+     * v1.26.2 — KDoc 정정. v1.26.1 의 "Claude autoBuild" 표기는 narrative drift
+     * (runDebug 가 dead code 라 미발화), 실제 5번째는 `BuildAutomationRoutes` 의
+     * Webhook fire. runDebug 함수 자체는 v1.26.2 에서 제거됨.
      *
      * UI 사전 disable (`/projects/X/builds` 페이지) 은 UX 안내용으로 유지.
      */
@@ -111,47 +115,11 @@ class BuildService(
         return build
     }
 
-    /**
-     * Inline build used by Claude task's autoBuild option (already inside a queued task).
-     * Not enqueued — runs in-place.
-     */
-    suspend fun runDebug(projectId: String, hub: LogHub) {
-        val row = projects.rowOrThrow(projectId)
-        requireKeystoreOrThrow(row)   // v1.26.1 — SSOT 가드
-        val buildId = Ids.buildId()
-        val logFile = workspace.buildLogFile(projectId, buildId)
-        val (branch, sha) = collectGitMetadata(java.nio.file.Path.of(row.sourcePath))
-        val build = buildRepo.create(buildId, projectId, "debug", logFile.toString(),
-            gitBranch = branch, gitSha = sha)
-        buildRepo.setStatus(buildId, TaskStatus.RUNNING)
-        val signing = resolveSigning(row, hub, buildId)
-        val logger = TaskLogger(buildId, logFile, hub, clock)
-        try {
-            val cancel = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-            val exit = builder.runAssembleDebug(
-                source = java.nio.file.Path.of(row.sourcePath),
-                moduleName = row.moduleName, debugTask = row.debugTask,
-                logger = logger, cancellation = cancel, signing = signing,
-            )
-            if (exit != 0) {
-                buildRepo.setStatus(buildId, TaskStatus.FAILED, "gradle exit $exit")
-                hub.publisher(buildId).emit(WsFrame.Done(buildId, TaskStatus.FAILED.name, "gradle exit $exit"))
-                return
-            }
-            val apk = ApkFinder.findLatestDebug(java.nio.file.Path.of(row.sourcePath), row.moduleName)
-            if (apk == null) {
-                buildRepo.setStatus(buildId, TaskStatus.FAILED, "apk not found")
-                hub.publisher(buildId).emit(WsFrame.Done(buildId, TaskStatus.FAILED.name, "apk not found"))
-                return
-            }
-            val artifact = artifactService.storeDebugApk(projectId, buildId, apk)
-            buildRepo.attachArtifact(buildId, artifact.id)
-            buildRepo.setStatus(buildId, TaskStatus.SUCCESS)
-            hub.publisher(buildId).emit(WsFrame.Done(buildId, TaskStatus.SUCCESS.name))
-        } finally {
-            logger.close()
-        }
-    }
+    // v1.26.2 — 이전 `runDebug` (Claude task autoBuild 용 inline build) 함수 제거.
+    // grep 결과 caller 0건 dead code 였음. autoBuild 기능 자체가 config flag
+    // (`config.tasks.autoBuildAfterTask`) 만 정의됐고 실 호출 path 미구현. 향후
+    // autoBuild 가 실제로 wire-up 될 때 enqueueDebug 를 호출하도록 — SSOT 가드
+    // 자동 적용. 7차 점검 Bug-2 회수.
 
     /**
      * v0.12.4 — 이전엔 `runBlocking` 으로 큐 cancel 을 호출해 Ktor 요청 스레드가

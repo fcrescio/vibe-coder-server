@@ -12,7 +12,19 @@ class StatusService(
     private val buildRepo: BuildRepository,
     private val env: EnvDiagnostics,
 ) {
-    /** v1.25.2 — Q4 회수: service-to-service / API entry 가 사용자 lang 모를 때 사용. */
+    /**
+     * v1.25.2 — service-to-service 호출자 (사용자 lang 모를 때) 용. config.i18n.defaultLanguage
+     * 로 fall-through. 외부에 노출되는 JSON API 는 직접 `snapshot(lang)` 호출해야 함.
+     *
+     * v1.26.2 — Q-3 회수: deprecation 경고. 호출자가 무심코 이 overload 를 쓰면
+     * 사용자 lang 가정이 깨질 수 있음 (Android client 가 ko Accept-Language 보낸
+     * 경우 server default 가 "ko" 면 영문 가정 깨짐). EnvRoutes 처럼 명시적 lang
+     * 전달 권장. service-to-service (CapabilityService 등) 외엔 사용 자제.
+     */
+    @Deprecated(
+        message = "Prefer snapshot(lang) — no-arg may fall back to server default that differs from client expectation.",
+        replaceWith = ReplaceWith("snapshot(\"en\")"),
+    )
     fun snapshot(): ServerStatusDto = snapshot(env.run())
 
     /**

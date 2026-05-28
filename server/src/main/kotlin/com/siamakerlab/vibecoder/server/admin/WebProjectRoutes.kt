@@ -326,10 +326,16 @@ fun Routing.webProjectRoutes(
         val id = call.parameters["id"]!!
         // v1.26.0 — keystore 가드 (운영 정책: 키스토어 임의 생성 금지). UI 가 이미 비활성화
         // 했지만 직접 POST 우회 차단. project.packageName 매칭 keystore 가 있어야만 진행.
+        // v1.26.2 — Q-2 명시: 실제 enforcement 는 v1.26.1 의 `BuildService.requireKeystoreOrThrow`
+        // SSOT 가 담당. 본 SSR pre-check 는 사용자 친화 flash redirect 위함 — service
+        // layer 가 던지는 409 ApiException 보다 ko-localized 메시지로 자연. 가드 로직
+        // 변경 시 두 곳 (이 블록 + BuildService.requireKeystoreOrThrow) 같이 봐야 함.
+        // Q-5: onFailure log.warn — GET path 와 일관 (silent IO failure 진단).
         val pkgOk = runCatching {
             val proj = projects.get(id)
             keystoreService.get(proj.packageName) != null
-        }.getOrDefault(false)
+        }.onFailure { log.warn(it) { "keystore probe failed (POST /builds): project=$id" } }
+            .getOrDefault(false)
         if (!pkgOk) {
             val msg = Messages.t(sess.language, "flash.build.keystoreRequired")
             call.respondRedirect("/projects/$id/builds?err=${msg.encodeUrl()}")

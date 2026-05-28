@@ -1,7 +1,9 @@
 package com.siamakerlab.vibecoder.server.env
 
 import com.siamakerlab.vibecoder.server.auth.AUTH_BEARER
+import com.siamakerlab.vibecoder.server.i18n.Messages
 import com.siamakerlab.vibecoder.shared.ApiPath
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
 import io.ktor.server.response.respond
@@ -21,11 +23,10 @@ fun Routing.envRoutes(status: StatusService, env: EnvDiagnostics) {
 }
 
 /**
- * v1.26.1 — Bearer 토큰 caller 의 응답 언어 선택. Accept-Language 헤더의 첫 토큰
- * (e.g. "ko-KR,ko;q=0.9" → "ko") 이 지원 lang ("en"/"ko") 에 매치되면 사용, 아니면
- * default "en" (영문 기대 client 호환).
+ * v1.26.1 — Bearer 토큰 caller 의 응답 언어 선택.
+ * v1.26.2 — Bug-1 회수: RFC 7231 §5.3.5 q-value weighting 을 무시하던 자체 구현
+ * → 기존 [Messages.fromAcceptLanguage] (q-sort + region strip + supported 매치
+ * 완전 구현) 재사용. 매치 안 되면 "en" (Android client / Bearer caller 영문 기대).
  */
-private fun resolveLang(call: io.ktor.server.application.ApplicationCall): String {
-    val raw = call.request.headers["Accept-Language"]?.substringBefore(',')?.substringBefore('-')?.trim()?.lowercase()
-    return if (raw == "ko") "ko" else "en"
-}
+private fun resolveLang(call: ApplicationCall): String =
+    Messages.fromAcceptLanguage(call.request.headers["Accept-Language"]) ?: "en"
