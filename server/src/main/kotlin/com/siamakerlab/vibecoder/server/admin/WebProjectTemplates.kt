@@ -1838,8 +1838,9 @@ $authBannerHtml
         artifactsByBuild: Map<String, ArtifactRow>,
         /** v0.59.0 — Phase 38 통계 카드 (null = repo / artifact 조회 실패). */
         stats: com.siamakerlab.vibecoder.server.build.BuildService.BuildStatistics? = null,
-        /** v1.26.0 — packageName 매칭 키스토어 존재 여부. false 면 빌드 버튼 비활성화 + 안내. */
-        keystoreReady: Boolean = true,
+        /** v1.26.0 — packageName 매칭 키스토어 존재 여부. false 면 빌드 버튼 비활성화 + 안내.
+         *  v1.26.1 — fail-secure default false. 호출자가 명시 안 하면 안전한 쪽 (차단). */
+        keystoreReady: Boolean = false,
         flashErr: String? = null,
         flashOk: String? = null,
         csrf: String? = null,

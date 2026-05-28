@@ -1074,6 +1074,7 @@ internal object MessagesKo {
         "api.project.scratchProtected" to "General Chat 워크스페이스는 삭제할 수 없습니다.",
         "api.build.gradleExit" to "gradle 종료 코드 %d.",
         "api.build.apkNotFound" to "build/outputs/apk/debug 아래에 APK 가 없습니다.",
+        "api.build.keystoreRequired" to "packageName '%s' 에 매칭되는 키스토어가 없어 빌드를 시작할 수 없습니다 (정책: 임의 생성 금지). 설정 → 키스토어 에서 먼저 등록하세요.",
         "api.build.notFound" to "빌드 '%s' 를 찾을 수 없습니다.",
         "api.claudeAuth.empty" to "빈 파일입니다.",
         "api.claudeAuth.tooLarge" to ".credentials.json 이 비정상적으로 큽니다 (%d bytes). 올바른 파일인지 확인하세요.",

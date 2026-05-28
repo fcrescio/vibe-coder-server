@@ -39,10 +39,26 @@ class BuildService(
 ) {
 
     /**
+     * v1.26.1 — 운영 정책 "키스토어 임의 생성 금지" SSOT 가드. SSR / JSON API / WS
+     * action / cron / Claude autoBuild 어느 경로든 본 service 를 거치므로 단일
+     * enforcement point. 매칭 keystore set 없으면 즉시 [ApiException] 으로 거부.
+     *
+     * UI 사전 disable (`/projects/X/builds` 페이지) 은 UX 안내용으로 유지.
+     */
+    private fun requireKeystoreOrThrow(row: com.siamakerlab.vibecoder.server.repo.ProjectRow) {
+        val ks = keystores ?: return   // null 이면 단위 테스트 컨텍스트 — skip
+        if (ks.get(row.packageName) == null) {
+            throw ApiException.localized(409, "keystore_required",
+                messageKey = "api.build.keystoreRequired", args = listOf(row.packageName))
+        }
+    }
+
+    /**
      * Enqueue a debug build. Returns the BuildRow immediately (status=PENDING).
      */
     fun enqueueDebug(projectId: String, hub: LogHub): BuildRow {
         val row = projects.rowOrThrow(projectId)
+        requireKeystoreOrThrow(row)   // v1.26.1 — SSOT 가드
         val buildId = Ids.buildId()
         val logFile = workspace.buildLogFile(projectId, buildId)
         // v0.71.0 — Phase 51 #9: git 메타데이터 수집 (실패 시 graceful — null).
@@ -101,6 +117,7 @@ class BuildService(
      */
     suspend fun runDebug(projectId: String, hub: LogHub) {
         val row = projects.rowOrThrow(projectId)
+        requireKeystoreOrThrow(row)   // v1.26.1 — SSOT 가드
         val buildId = Ids.buildId()
         val logFile = workspace.buildLogFile(projectId, buildId)
         val (branch, sha) = collectGitMetadata(java.nio.file.Path.of(row.sourcePath))

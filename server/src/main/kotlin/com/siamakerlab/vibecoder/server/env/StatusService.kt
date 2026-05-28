@@ -15,6 +15,11 @@ class StatusService(
     /** v1.25.2 — Q4 회수: service-to-service / API entry 가 사용자 lang 모를 때 사용. */
     fun snapshot(): ServerStatusDto = snapshot(env.run())
 
+    /**
+     * v1.25.0 — caller 가 lang 명시 (사용자 세션 언어).
+     * v1.26.1 — Q5: AdminRoutes dashboard 가 envSnap fetch 실패 시 fallback path 로
+     * 사용. envSnap 있을 땐 직접 [snapshot(envSnap)] overload 사용 (spawn 절약).
+     */
     fun snapshot(lang: String): ServerStatusDto = snapshot(env.run(lang))
 
     /**

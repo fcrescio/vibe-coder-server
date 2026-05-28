@@ -303,7 +303,10 @@ fun Routing.webProjectRoutes(
         // v0.59.0 — Phase 38 통계 카드.
         val stats = runCatching { builds.statistics(id, artifactRepo) }.getOrNull()
         // v1.26.0 — keystore readiness (운영 정책: 임의 생성 금지). false 면 빌드 버튼 disabled.
-        val keystoreReady = runCatching { keystoreService.get(p.packageName) != null }.getOrDefault(false)
+        // v1.26.1 — onFailure 로 silent failure 진단 가능하게 (이전엔 IO 에러 silently false 반환).
+        val keystoreReady = runCatching { keystoreService.get(p.packageName) != null }
+            .onFailure { log.warn(it) { "keystore probe failed for package=${p.packageName}" } }
+            .getOrDefault(false)
         call.respondText(
             WebProjectTemplates.buildsPage(
                 sess.username, p, buildDtos, artifacts,

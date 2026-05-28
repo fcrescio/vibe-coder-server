@@ -1096,6 +1096,7 @@ internal object MessagesEn {
         "api.project.scratchProtected" to "General Chat workspace cannot be deleted.",
         "api.build.gradleExit" to "gradle exited with code %d.",
         "api.build.apkNotFound" to "No APK under build/outputs/apk/debug.",
+        "api.build.keystoreRequired" to "No keystore matches packageName '%s'; build cannot start (policy: no auto-generation). Register one via Settings → Keystores first.",
         "api.build.notFound" to "Build '%s' not found.",
         "api.claudeAuth.empty" to "Empty file.",
         "api.claudeAuth.tooLarge" to ".credentials.json is abnormally large (%d bytes). Verify the file.",

@@ -276,11 +276,11 @@ fun Application.module(ctx: ServerContext) {
         // v1.25.0 — 이전엔 Long.MAX_VALUE 라 단일 frame 으로 메모리 고갈 DoS surface.
         // 인증된 사용자만 도달하므로 실 위험 낮으나 외부 노출 (vibe.wody.work) 환경에서
         // 잘못 만든 클라이언트의 무한 buffer 차단.
-        // v1.25.2 — 글로벌 8MB 환원. 32MB 가 필요한 곳은 VNC framebuffer 만 — 그 라우트
-        // (VncProxyRoutes) 가 자체 webSocketRaw 옵션으로 override (필요 시). Claude
-        // stream / 콘솔 / 빌드 로그 는 8MB 이내라 영향 없음. 단일 사용자 가정. 멀티
-        // role 도입 시 재검토.
-        maxFrameSize = 8L * 1024 * 1024
+        // v1.26.1 — 8MB → 16MB 절충. v1.25.2 의 8MB 환원이 noVNC 풀-HD AVD 첫 framebuffer
+        // (RAW encoding ~8.3MB) 를 차단할 수 있어 16MB 로 여유. Claude stream / 콘솔 /
+        // 빌드 로그 는 그대로 8MB 이내라 영향 없음. ktor 3.x 가 per-route maxFrameSize
+        // override 를 직접 지원 안 함 → 글로벌 절충이 가장 단순. 단일 사용자 가정.
+        maxFrameSize = 16L * 1024 * 1024
         masking = false
         contentConverter = KotlinxWebsocketSerializationConverter(jsonCfg)
     }
