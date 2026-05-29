@@ -1,6 +1,7 @@
 package com.siamakerlab.vibecoder.server.admin
 
 import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
+import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import com.siamakerlab.vibecoder.server.config.KeystoreDefaults
 import com.siamakerlab.vibecoder.server.i18n.Messages
 import com.siamakerlab.vibecoder.server.repo.ProjectRepository
@@ -8,7 +9,6 @@ import com.siamakerlab.vibecoder.server.repo.ProjectRow
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.server.application.call
-import io.ktor.server.request.receiveParameters
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
@@ -58,8 +58,7 @@ fun Routing.keystoreRoutes(
     post("/settings/keystores") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
         if (!requireAdminOrRedirect(sess)) return@post
-        com.siamakerlab.vibecoder.server.auth.CsrfTokens.verifyCsrfFromQueryOrHeader(call)
-        val form = call.receiveParameters()
+        val form = requireCsrf()
         val pkg = form["packageName"]?.trim().orEmpty()
         val req = CreateKeystoreRequest(
             packageName = pkg,
@@ -90,7 +89,7 @@ fun Routing.keystoreRoutes(
     post("/settings/keystores/{pkg}/delete") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
         if (!requireAdminOrRedirect(sess)) return@post
-        com.siamakerlab.vibecoder.server.auth.CsrfTokens.verifyCsrfFromQueryOrHeader(call)
+        requireCsrf()
         val pkg = call.parameters["pkg"].orEmpty()
         runCatching { service.delete(pkg) }
             .onFailure { log.warn(it) { "keystore delete failed for $pkg" } }
@@ -111,7 +110,7 @@ fun Routing.keystoreRoutes(
     post("/settings/keystores/{pkg}/apply/{projectId}") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
         if (!requireAdminOrRedirect(sess)) return@post
-        com.siamakerlab.vibecoder.server.auth.CsrfTokens.verifyCsrfFromQueryOrHeader(call)
+        requireCsrf()
         val pkg = call.parameters["pkg"].orEmpty()
         val projectId = call.parameters["projectId"].orEmpty()
 
