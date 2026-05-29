@@ -51,6 +51,14 @@ claude:
     criticalThresholdPercent: 95
     scratchOnly: true
 
+agent:
+  # claude-cli keeps the historical behavior. Set VIBECODER_AGENT_PROVIDER=mistral-vibe-acp
+  # to drive Mistral Vibe through Agent Client Protocol without Claude Code/Anthropic.
+  provider: claude-cli
+  command: vibe-acp
+  home: /home/vibe/.vibe
+  timeoutMinutes: 60
+
 build:
   timeoutMinutes: 30
   defaultDebugTask: assembleDebug

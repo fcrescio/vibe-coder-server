@@ -8,6 +8,7 @@ data class ServerConfig(
     val workspace: WorkspaceSection,
     val security: SecuritySection,
     val claude: ClaudeSection,
+    val agent: AgentSection = AgentSection(),
     val build: BuildSection,
     val git: GitSection,
     val cors: CorsSection = CorsSection(),
@@ -20,6 +21,15 @@ data class ServerConfig(
     val i18n: I18nSection = I18nSection(),
     /** v1.5.0 — Android 키스토어 관리. defaults 가 UI form prefill 값. */
     val keystore: KeystoreSection = KeystoreSection(),
+)
+
+@Serializable
+data class AgentSection(
+    /** claude-cli keeps the historical runtime; mistral-vibe-acp drives vibe-acp over ACP stdio. */
+    val provider: String = "claude-cli",
+    val command: String = "vibe-acp",
+    val home: String = "/home/vibe/.vibe",
+    val timeoutMinutes: Int = 60,
 )
 
 /**

@@ -57,6 +57,8 @@ object ConfigLoader {
         // v0.14.0 — Database 설정 env override
         current = current.copy(database = applyDatabaseEnvOverrides(current.database))
 
+        current = current.copy(agent = applyAgentEnvOverrides(current.agent))
+
         // v0.17.0 — Email/SMTP env override
         current = current.copy(email = applyEmailEnvOverrides(current.email))
 
@@ -67,6 +69,17 @@ object ConfigLoader {
             ?.let { current = current.copy(i18n = current.i18n.copy(defaultLanguage = it)) }
 
         return current
+    }
+
+    private fun applyAgentEnvOverrides(agent: AgentSection): AgentSection {
+        var a = agent
+        System.getenv("VIBECODER_AGENT_PROVIDER")?.takeIf { it.isNotBlank() }?.let { a = a.copy(provider = it) }
+        System.getenv("VIBECODER_AGENT_COMMAND")?.takeIf { it.isNotBlank() }?.let { a = a.copy(command = it) }
+        System.getenv("VIBECODER_AGENT_HOME")?.takeIf { it.isNotBlank() }?.let { a = a.copy(home = it) }
+        System.getenv("VIBECODER_AGENT_TIMEOUT_MINUTES")?.takeIf { it.isNotBlank() }?.toIntOrNull()?.let {
+            a = a.copy(timeoutMinutes = it)
+        }
+        return a
     }
 
     private fun applyEmailEnvOverrides(e: EmailSection): EmailSection {
