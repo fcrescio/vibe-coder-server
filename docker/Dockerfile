@@ -74,6 +74,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         jq \
         openssh-client \
         openssl \
+        pipx \
+        python3-venv \
         sudo \
         tini \
         tzdata \
@@ -96,6 +98,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && npm install -g @anthropic-ai/claude-code \
     && npm cache clean --force
 
+# ---- Mistral Vibe CLI / ACP runtime -----------------------------------------
+# Optional runtime used when VIBECODER_AGENT_PROVIDER=mistral-vibe-acp. It talks
+# to OpenAI-compatible providers such as llama.cpp through ~/.vibe/config.toml.
+ENV PIPX_HOME=/opt/pipx
+ENV PIPX_BIN_DIR=/usr/local/bin
+RUN pipx install mistral-vibe
+
 # ---- 사용자 / 디렉토리 -------------------------------------------------------
 # entrypoint에서 호스트 UID에 맞춰 재조정한다. 여기는 기본값.
 ARG VIBE_UID=1000
@@ -112,6 +121,7 @@ RUN userdel -r ubuntu 2>/dev/null || true \
         /workspace \
         /data \
         /home/vibe/.claude \
+        /home/vibe/.vibe \
         /home/vibe/.gradle \
         /home/vibe/.config \
         /home/vibe/.npm \
@@ -160,6 +170,7 @@ ENV VIBECODER_DATA_DIR=/data
 
 # Claude CLI 인증 경로 (볼륨)
 ENV CLAUDE_CONFIG_DIR=/home/vibe/.claude
+ENV VIBE_HOME=/home/vibe/.vibe
 
 # v1.9.0 — Git global config 를 영속 위치 (`/home/vibe/.config/git/config`) 로 강제.
 # `/home/vibe/.config` 는 이미 `dev-tools/config` 볼륨에 영속화돼 있어 별도 mount
