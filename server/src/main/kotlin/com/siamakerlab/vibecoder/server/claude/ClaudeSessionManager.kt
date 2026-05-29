@@ -1,6 +1,7 @@
 package com.siamakerlab.vibecoder.server.claude
 
 import com.siamakerlab.vibecoder.server.config.ServerConfig
+import com.siamakerlab.vibecoder.server.agent.AgentRuntime
 import com.siamakerlab.vibecoder.server.core.OsType
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.ws.LogHub
@@ -59,7 +60,7 @@ class ClaudeSessionManager(
     private val idleTimeout: Duration = Duration.ofMinutes(30),
     /** v0.16.0 — turn 영구 적재. null 이면 history persistence 비활성 (테스트). */
     private val history: ConversationHistoryService? = null,
-) {
+) : AgentRuntime {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessions = ConcurrentHashMap<String, ProjectSession>()
@@ -86,7 +87,7 @@ class ClaudeSessionManager(
     }
 
     /** Send [text] as a user turn. Spawns the session if necessary. */
-    suspend fun sendPrompt(projectId: String, text: String) {
+    override suspend fun sendPrompt(projectId: String, text: String) {
         require(text.isNotBlank()) { "prompt text is required" }
         // 실제 stdin 으로 흘러갈 UTF-8 byte size 기준으로 검증. v0.12.3 까지는
         // text.length (char count) 였는데 한국어 등 multi-byte 문자에서는 의도와
@@ -132,7 +133,7 @@ class ClaudeSessionManager(
     }
 
     /** Stop the current process (if any), forget its session-id, clear replay ring. */
-    suspend fun startNew(projectId: String) {
+    override suspend fun startNew(projectId: String) {
         terminateSession(projectId)
         runCatching { sessionIdFile(projectId).deleteIfExists() }
         hub.resetConsole(topic(projectId))
@@ -148,7 +149,7 @@ class ClaudeSessionManager(
      *
      * startNew 와 다른 점: startNew 는 session-id 삭제 → 완전 새 대화. cancel 은 그대로 이어감.
      */
-    suspend fun cancelTurn(projectId: String) {
+    override suspend fun cancelTurn(projectId: String) {
         val existed = sessions[projectId]?.process?.isAlive == true
         if (!existed) {
             emitSystem(projectId, "cancel_noop", "진행 중인 Claude turn 이 없습니다.")
@@ -161,7 +162,7 @@ class ClaudeSessionManager(
         )
     }
 
-    fun isAlive(projectId: String): Boolean =
+    override fun isAlive(projectId: String): Boolean =
         sessions[projectId]?.process?.isAlive == true
 
     /**
@@ -170,11 +171,11 @@ class ClaudeSessionManager(
      * 표시 + status pill empty. 실제로는 file 에 last sessionId 가 영속되어 있고 다음
      * prompt 시점에 `--resume` 으로 spawn 되므로, 라벨도 "idle (will resume)" 로 일관되게.
      */
-    fun currentSessionId(projectId: String): String? =
+    override fun currentSessionId(projectId: String): String? =
         sessions[projectId]?.sessionId ?: readSessionId(projectId)
 
     /** v0.98.0 — 해당 프로젝트가 현재 응답 중인지. 프로젝트별 독립 상태. */
-    fun isBusy(projectId: String): Boolean = busy[projectId] == true
+    override fun isBusy(projectId: String): Boolean = busy[projectId] == true
 
     /**
      * v0.98.0 — busy 상태 전이. 값이 실제 변경됐을 때만 ConsoleBusyState WS frame emit
@@ -192,7 +193,7 @@ class ClaudeSessionManager(
         }
     }
 
-    suspend fun shutdown() {
+    override suspend fun shutdown() {
         log.info { "shutting down ${sessions.size} Claude session(s)" }
         sessions.keys.toList().forEach { terminateSession(it) }
         scope.cancel()
