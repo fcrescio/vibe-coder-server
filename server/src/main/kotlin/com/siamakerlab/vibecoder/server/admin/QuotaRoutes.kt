@@ -1,8 +1,10 @@
 package com.siamakerlab.vibecoder.server.admin
 
 import com.siamakerlab.vibecoder.server.claude.ClaudeStatusService
+import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.projects.ProjectService
 import com.siamakerlab.vibecoder.shared.ApiPath
+import com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.application.call
 import io.ktor.server.response.respond
@@ -22,8 +24,19 @@ private val log = KotlinLogging.logger {}
  *
  * 60s cache 적용 (ClaudeStatusService 내부) 라 부담 작음.
  */
-fun Routing.quotaRoutes(claudeStatus: ClaudeStatusService) {
+fun Routing.quotaRoutes(config: ServerConfig, claudeStatus: ClaudeStatusService) {
     get(ApiPath.SERVER_QUOTA) {
+        if (config.agent.provider == "mistral-vibe-acp") {
+            call.respond(
+                ClaudeStatusDto(
+                    model = "Mistral Vibe ACP",
+                    plan = "llama.cpp/OpenAI-compatible",
+                    quotaRemaining = "local/open provider",
+                    updatedAt = java.time.Instant.now().toString(),
+                ),
+            )
+            return@get
+        }
         val dto = runCatching { claudeStatus.snapshot(ProjectService.SCRATCH_ID) }
             .onFailure { log.debug(it) { "quota snapshot failed" } }
             .getOrNull()

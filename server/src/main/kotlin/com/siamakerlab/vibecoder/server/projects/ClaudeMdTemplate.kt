@@ -77,17 +77,18 @@ $cloneLine
 - On Linux/macOS, use ./gradlew.
 - Debug build task is assembleDebug unless the project config says otherwise.
 
-## Installed Build Tools (USE THESE — DO NOT RE-DOWNLOAD)
+## Build Toolchain Policy
 
-The vibe-coder host has already downloaded the following tools into bind-mounted
-volumes via the **Build Environment** page (`/env-setup`) or `vibe-doctor`.
-**Use these versions/paths. Do NOT trigger a fresh download of a different
-toolchain version.**
+Vibe Coder expects build tools to be provisioned in bind-mounted volumes by the
+**Build Environment** page (`/env-setup`) or by `vibe-doctor`. First verify the
+tools below. If a required tool is missing, stop and report that Env Setup or
+`vibe-doctor` must be run. Do not install global toolchains manually with
+`apt`, `wget`, `curl`, `sdkmanager`, or writes under `/opt`.
 
 | Tool | Container path | Notes |
 |---|---|---|
-| Gradle (host install) | `/home/vibe/.local/gradle/` (binary on PATH as `gradle`) | Latest stable. Use this for wrapper bootstrap. |
-| Android SDK | `${'$'}ANDROID_HOME` (typically `/opt/android-sdk`) | Includes cmdline-tools, platform-tools (adb), platforms;android-35, build-tools. |
+| Gradle (host install) | `/home/vibe/.local/gradle/` (binary on PATH as `gradle`) | Used only for wrapper bootstrap when present. |
+| Android SDK | `${'$'}ANDROID_HOME` (typically `/opt/android-sdk`) | Must include cmdline-tools, platform-tools, platforms;android-35, build-tools. |
 | JDK | bundled in the server image | OpenJDK 17, on PATH as `java`. |
 | Node.js + Claude CLI | bundled in the server image | Node 20 LTS, `claude` on PATH. |
 | MCP packages | `/home/vibe/.local/` (npm global prefix) | Whatever the user installed via `/env-setup/mcp`. |
@@ -113,8 +114,9 @@ reason in the response.
 
 ### When a wrapper is missing
 
-If `gradlew` is absent (e.g., a freshly scaffolded project), use the host
-gradle to generate one with the installed version:
+If `gradlew` is absent (e.g., a freshly scaffolded project), and `gradle` is
+available on PATH, use the host gradle to generate one with the installed
+version:
 
 ```bash
 gradle wrapper --gradle-version "${'$'}(gradle --version | awk '/^Gradle /{print ${'$'}2; exit}')" --distribution-type bin
@@ -122,6 +124,9 @@ gradle wrapper --gradle-version "${'$'}(gradle --version | awk '/^Gradle /{print
 
 `BuildService` also runs this automatically on the first build attempt, but
 generating up front is faster.
+
+If `gradle` is not available on PATH, do not download Gradle yourself. Report
+that `/env-setup` or `vibe-doctor gradle` must be run.
 
 ### Cache reuse
 
