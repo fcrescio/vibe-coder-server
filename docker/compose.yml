@@ -96,6 +96,13 @@ services:
       #   사용자는 Settings → General → Language 에서 본인 언어 선택.
       VIBECODER_DEFAULT_LANGUAGE: ${VIBECODER_DEFAULT_LANGUAGE:-en}
 
+      # Agent runtime. Use mistral-vibe-acp to run without Claude Code/Anthropic.
+      VIBECODER_AGENT_PROVIDER: ${VIBECODER_AGENT_PROVIDER:-mistral-vibe-acp}
+      VIBECODER_AGENT_COMMAND: ${VIBECODER_AGENT_COMMAND:-vibe-acp}
+      VIBECODER_AGENT_HOME: ${VIBECODER_AGENT_HOME:-/home/vibe/.vibe}
+      VIBECODER_AGENT_TIMEOUT_MINUTES: ${VIBECODER_AGENT_TIMEOUT_MINUTES:-10}
+      VIBE_HOME: ${VIBECODER_AGENT_HOME:-/home/vibe/.vibe}
+
     # LAN 페어링 / admin 웹 / API 모두 같은 포트
     ports:
       - "${VIBE_PORT:-17880}:17880"
@@ -150,6 +157,14 @@ services:
       # 으로 override.
       - ${VIBE_CLAUDE_DIR:-./vibe-coder-data/claude}:/home/vibe/.claude
 
+      # Mistral Vibe config/logs. For quick local testing you can set
+      # VIBE_VIBE_DIR=/home/fcrescio/.vibe to reuse an already working config.
+      - ${VIBE_VIBE_DIR:-./vibe-coder-data/vibe}:/home/vibe/.vibe
+
+    networks:
+      - default
+      - ml-infra
+
     # 헬스체크: /health 엔드포인트
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:17880/health"]
@@ -164,3 +179,8 @@ services:
 
 # v0.14.0 — named volume 미사용. 모든 영구 데이터는 ./vibe-coder-data/ 안의 bind mount.
 # postgres 데이터도 ./vibe-coder-data/postgres/ 디렉토리 — 백업/이전 시 같은 트리.
+
+networks:
+  ml-infra:
+    name: ml-infra_ml-infra-net
+    external: true
