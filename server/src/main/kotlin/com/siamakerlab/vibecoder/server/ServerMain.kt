@@ -12,6 +12,8 @@ import com.siamakerlab.vibecoder.server.build.BuildService
 import com.siamakerlab.vibecoder.server.build.GradleBuilder
 import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
 import com.siamakerlab.vibecoder.server.claude.ClaudeStatusService
+import com.siamakerlab.vibecoder.server.agent.AgentRuntime
+import com.siamakerlab.vibecoder.server.agent.MistralVibeAcpSessionManager
 import com.siamakerlab.vibecoder.server.config.ConfigLoader
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.SystemClock
@@ -187,7 +189,11 @@ fun main(args: Array<String>) {
     )
     // v0.49.0 — Project ACL persistence (member 가 일부 프로젝트만 보기).
     val projectAclRepo = com.siamakerlab.vibecoder.server.repo.ProjectAclRepository(clock)
-    val sessionManager = ClaudeSessionManager(config, workspace, hub, history = conversationHistory)
+    val claudeSessionManager = ClaudeSessionManager(config, workspace, hub, history = conversationHistory)
+    val sessionManager: AgentRuntime = when (config.agent.provider.lowercase()) {
+        "mistral-vibe-acp" -> MistralVibeAcpSessionManager(config, workspace, hub)
+        else -> claudeSessionManager
+    }
     // v1.1.0 — ProjectDto.busy 필드를 위해 sessionManager 를 lambda 로 주입.
     // 구성 순서: sessionManager 가 먼저 생성되어야 lambda 가 안전하게 호출 가능.
     val projects = ProjectService(
@@ -241,9 +247,9 @@ fun main(args: Array<String>) {
     val mcp = McpService(clock, queue, hub)
     val status = StatusService(config, projectRepo, buildRepo, env)
     val actionRegistry = ProjectActionRegistry(workspace)
-    val actionHandler = ServerActionHandler(projects, build, git, hub, sessionManager)
+    val actionHandler = ServerActionHandler(projects, build, git, hub, claudeSessionManager)
     val capabilityService = CapabilityService(env, actionRegistry)
-    val claudeStatusService = ClaudeStatusService(config, workspace, sessionManager)
+    val claudeStatusService = ClaudeStatusService(config, workspace, claudeSessionManager)
     // v0.21.0 — usage 백그라운드 폴링 + 임계치 알림.
     val claudeUsageMonitor = com.siamakerlab.vibecoder.server.claude.ClaudeUsageMonitor(
         statusService = claudeStatusService,
@@ -251,23 +257,23 @@ fun main(args: Array<String>) {
         configProvider = { config.claude.usage },
         activeProjectsProvider = { projectRepo.list().map { it.id } },
     )
-    claudeUsageMonitor.start()
+    if (config.agent.provider != "mistral-vibe-acp") claudeUsageMonitor.start()
     // v1.7.9 — 컨테이너 구동 중 토큰 자동 갱신. workspace.root 를 cwd 로 사용해
     // SCRATCH 디렉토리 유무와 무관하게 동작 보장.
     val claudeTokenRefresher = com.siamakerlab.vibecoder.server.claude.ClaudeTokenRefresher(
         claudeAuthService = claudeAuth,
         cwd = workspace.root,
     )
-    claudeTokenRefresher.start()
+    if (config.agent.provider != "mistral-vibe-acp") claudeTokenRefresher.start()
     // v0.22.0 — Play Console 업로드 트리거 (MCP google-play-publisher 위임).
     val playPublishService = com.siamakerlab.vibecoder.server.publish.PlayPublishService(
         mcpService = mcp,
-        sessionManager = sessionManager,
+        sessionManager = claudeSessionManager,
     )
     // v0.23.0 — TestFlight 업로드 트리거 (MCP app-store-connect 위임).
     val testFlightPublishService = com.siamakerlab.vibecoder.server.publish.TestFlightPublishService(
         mcpService = mcp,
-        sessionManager = sessionManager,
+        sessionManager = claudeSessionManager,
     )
     // v0.28.0 — APK 서명 검사 + 빌드 캐시 관리.
     val apkSignerInspector = com.siamakerlab.vibecoder.server.artifacts.ApkSignerInspector()
@@ -400,6 +406,7 @@ fun main(args: Array<String>) {
         hub = hub,
         projects = projects,
         sessionManager = sessionManager,
+        claudeSessionManager = claudeSessionManager,
         gradle = gradle,
         artifacts = artifacts,
         build = build,

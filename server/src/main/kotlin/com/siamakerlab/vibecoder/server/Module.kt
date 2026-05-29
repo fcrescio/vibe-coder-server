@@ -41,6 +41,7 @@ import com.siamakerlab.vibecoder.server.build.BuildService
 import com.siamakerlab.vibecoder.server.build.GradleBuilder
 import com.siamakerlab.vibecoder.server.build.buildRoutes
 import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
+import com.siamakerlab.vibecoder.server.agent.AgentRuntime
 import com.siamakerlab.vibecoder.server.claude.SubAgentSessionManager
 import com.siamakerlab.vibecoder.server.claude.subAgentRoutes
 import com.siamakerlab.vibecoder.server.admin.projectAclRoutes
@@ -132,7 +133,8 @@ data class ServerContext(
     val queue: TaskQueue,
     val hub: LogHub,
     val projects: ProjectService,
-    val sessionManager: ClaudeSessionManager,
+    val sessionManager: AgentRuntime,
+    val claudeSessionManager: ClaudeSessionManager,
     val gradle: GradleBuilder,
     val artifacts: ArtifactService,
     val build: BuildService,
@@ -354,10 +356,10 @@ fun Application.module(ctx: ServerContext) {
         // v1.2.0 — SSH key 관리 (자동 발급은 entrypoint, 본 routes 는 열람 + 재생성).
         sshKeyRoutes(adminDeps, SshKeyService())
         // v1.3.2 — 전역 (계정 단위) Claude 쿼타 — 사이드바 / Android 헤더용.
-        quotaRoutes(ctx.claudeStatusService)
+        quotaRoutes(ctx.config, ctx.claudeStatusService)
         // v1.5.0 — Android 키스토어 관리 (설정 → Keystores).
         // v1.8.0 — 같은 service 인스턴스를 BuildService 도 공유 (Gradle signing inject).
-        keystoreRoutes(adminDeps, ctx.keystoreService, ctx.projectRepo, ctx.sessionManager)
+        keystoreRoutes(adminDeps, ctx.keystoreService, ctx.projectRepo, ctx.claudeSessionManager)
         // v1.6.0 — Workspace terminal (security.allowTerminal=true 일 때만 등록).
         terminalRoutes(adminDeps, TerminalSessionManager(), ctx.deviceRepo, ctx.tokens)
         // v0.10.0 — admin SSR 라우트들의 JSON API 이중 노출 (vibe-coder-android wire)
@@ -376,7 +378,7 @@ fun Application.module(ctx: ServerContext) {
             builds = ctx.build,
             buildRepo = ctx.buildRepo,
             artifactRepo = ctx.artifactRepo,
-            sessionManager = ctx.sessionManager,
+            sessionManager = ctx.claudeSessionManager,
             hub = ctx.hub,
             gitReader = ctx.git,
             gitWriter = ctx.gitWriter,
@@ -393,7 +395,18 @@ fun Application.module(ctx: ServerContext) {
         buildCacheRoutes(adminDeps, ctx.buildCacheService)
         envRoutes(ctx.status, ctx.env)
         projectRoutes(ctx.projects)
-        consoleRoutes(ctx.projects, ctx.sessionManager, ctx.hub, ctx.claudeStatusService, ctx.env, ctx.auditLogger, ctx.promptSuggestionService)
+        consoleRoutes(ctx.projects, ctx.sessionManager, ctx.hub, { id ->
+            if (ctx.config.agent.provider == "mistral-vibe-acp") {
+                com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto(
+                    sessionId = ctx.sessionManager.currentSessionId(id),
+                    processAlive = ctx.sessionManager.isAlive(id),
+                    model = "Mistral Vibe ACP",
+                    plan = "llama.cpp/OpenAI-compatible",
+                    updatedAt = java.time.Instant.now().toString(),
+                    busy = ctx.sessionManager.isBusy(id),
+                )
+            } else ctx.claudeStatusService.snapshot(id)
+        }, ctx.env, ctx.auditLogger, ctx.promptSuggestionService)
         projectActionRoutes(ctx.projects, ctx.actionRegistry, ctx.actionHandler, ctx.capabilityService)
         buildRoutes(ctx.build, ctx.hub, ctx.projects)
         artifactRoutes(ctx.artifactRepo, ctx.workspace, ctx.artifacts, ctx.apkVerifier)
@@ -476,7 +489,7 @@ fun Application.module(ctx: ServerContext) {
         symbolRoutes(adminDeps, ctx.projects, ctx.symbolFinder, ctx.kotlinLspService)
         // v0.55.0 — Phase 34 Prometheus /metrics endpoint.
         metricsRoutes(adminDeps, ctx.metrics)
-        wsRoutes(ctx.hub, ctx.deviceRepo, ctx.tokens, ctx.sessionManager,
+        wsRoutes(ctx.hub, ctx.deviceRepo, ctx.tokens, ctx.claudeSessionManager,
             ctx.actionRegistry, ctx.actionHandler, ctx.subAgentManager, ctx.adminUserRepo, ctx.projects)
     }
 }

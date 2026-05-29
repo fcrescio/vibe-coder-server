@@ -1,6 +1,7 @@
 package com.siamakerlab.vibecoder.server.claude
 
 import com.siamakerlab.vibecoder.server.audit.AuditLogger
+import com.siamakerlab.vibecoder.server.agent.AgentRuntime
 import com.siamakerlab.vibecoder.server.auth.AUTH_BEARER
 import com.siamakerlab.vibecoder.server.auth.requireApiWrite
 import com.siamakerlab.vibecoder.server.auth.requireDevice
@@ -10,6 +11,7 @@ import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.projects.ProjectService
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.dto.CheckStatus
+import com.siamakerlab.vibecoder.shared.dto.ClaudeStatusDto
 import com.siamakerlab.vibecoder.shared.dto.PromptAcceptedDto
 import com.siamakerlab.vibecoder.shared.dto.PromptRequestDto
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -38,9 +40,9 @@ private val log = KotlinLogging.logger {}
  */
 fun Routing.consoleRoutes(
     projects: ProjectService,
-    sessionManager: ClaudeSessionManager,
+    sessionManager: AgentRuntime,
     hub: LogHub,
-    statusService: ClaudeStatusService,
+    statusSnapshot: suspend (String) -> ClaudeStatusDto,
     envDiagnostics: EnvDiagnostics,
     audit: AuditLogger,
     /** v0.31.0 — prompt 자동완성. */
@@ -57,12 +59,14 @@ fun Routing.consoleRoutes(
 
             // 인증 안 된 상태에서 자식 프로세스를 띄우면 사용자는 의미 없는 stderr 만 보게 된다.
             // 미리 차단하고 명확한 가이드를 응답으로 돌려준다.
-            val env = envDiagnostics.run()
-            if (env.claude.status != CheckStatus.OK) {
-                throw ApiException.localized(503, "claude_cli_missing", messageKey = "api.console.claudeCliMissing")
-            }
-            if (env.claudeAuth?.status == CheckStatus.ERROR) {
-                throw ApiException.localized(503, "claude_auth_required", messageKey = "api.console.claudeAuthRequired")
+            if (sessionManager is ClaudeSessionManager) {
+                val env = envDiagnostics.run()
+                if (env.claude.status != CheckStatus.OK) {
+                    throw ApiException.localized(503, "claude_cli_missing", messageKey = "api.console.claudeCliMissing")
+                }
+                if (env.claudeAuth?.status == CheckStatus.ERROR) {
+                    throw ApiException.localized(503, "claude_auth_required", messageKey = "api.console.claudeAuthRequired")
+                }
             }
 
             val body = call.receive<PromptRequestDto>()
@@ -71,10 +75,10 @@ fun Routing.consoleRoutes(
             // UTF-8 byte 기준으로 통일 (sendPrompt 내부 검증과 일치). char count 검증은
             // 한국어 등에서 한 글자가 3 byte 가 되어 의도가 어긋났다.
             val byteSize = text.toByteArray(Charsets.UTF_8).size
-            if (byteSize > ClaudeSessionManager.MAX_PROMPT_BYTES) {
+            if (byteSize > AgentRuntime.MAX_PROMPT_BYTES) {
                 throw ApiException.localized(400, "prompt_too_large",
                     messageKey = "api.console.promptTooLarge",
-                    args = listOf(ClaudeSessionManager.MAX_PROMPT_BYTES, byteSize))
+                    args = listOf(AgentRuntime.MAX_PROMPT_BYTES, byteSize))
             }
 
             try {
@@ -117,7 +121,7 @@ fun Routing.consoleRoutes(
                 ?: throw ApiException.localized(400, "bad_request", messageKey = "api.console.projectIdRequired")
             call.requireProjectAcl(projects, projectId)
             projects.rowOrThrow(projectId)
-            call.respond(statusService.snapshot(projectId))
+            call.respond(statusSnapshot(projectId))
         }
 
         // v0.31.0 — prompt 자동완성 (history 기반 prefix 매치).
