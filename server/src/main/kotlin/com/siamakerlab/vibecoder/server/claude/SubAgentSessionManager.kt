@@ -134,13 +134,13 @@ class SubAgentSessionManager(
         val key = AgentKey(projectId, agentName)
         val existed = sessions[key]?.process?.isAlive == true
         if (!existed) {
-            emitSystem(key, "cancel_noop", "진행 중인 sub-agent turn 이 없습니다.")
+            emitSystem(key, "cancel_noop", "No sub-agent turn is currently running.")
             return
         }
         terminateSession(key)
         emitSystem(
             key, "turn_cancelled",
-            "사용자가 sub-agent turn 을 중단했습니다. 다음 prompt 는 같은 세션으로 이어집니다.",
+            "The user cancelled the sub-agent turn. The next prompt will continue in the same session.",
         )
     }
 

@@ -1,22 +1,22 @@
 name: vibe-coder
 
 # ──────────────────────────────────────────────────────────────────────────
-# v0.14.0 — PostgreSQL 전환.
+# v0.14.0 — PostgreSQL migration.
 #
-# 이전 v0.13.x 까지는 server 컨테이너 하나에 SQLite 가 박혀 있었음. v0.14.0
-# 부터는 postgres 사이드카 컨테이너가 영구 데이터를 보관.
+# Earlier v0.13.x releases embedded SQLite in the server container. From v0.14.0,
+# the PostgreSQL sidecar owns persistent database storage.
 #
-# 통합 데이터 디렉토리 (./vibe-coder-data) 안에:
+# Unified data directory (./vibe-coder-data):
 #   vibe-coder-data/
-#     ├── workspace/      ← 프로젝트 소스 / APK
-#     ├── postgres/       ← PG 데이터 (v0.14.0 신규)
-#     ├── server/         ← 로그 / 빌드 메타
-#     ├── dev-tools/      ← Android SDK / Gradle / MCP / Playwright / 설정
-#     └── claude/         ← Claude OAuth 자격증명 / MCP 등록 정보
+#     ├── workspace/      ← project source / APKs
+#     ├── postgres/       ← PostgreSQL data (v0.14.0+)
+#     ├── server/         ← logs / build metadata
+#     ├── dev-tools/      ← Android SDK / Gradle / MCP / Playwright / config
+#     └── claude/         ← Claude OAuth credentials / MCP registrations
 #
-# `tar czf backup.tar.gz vibe-coder-data/` 한 줄 백업 그대로 유효.
+# A one-line backup still works: `tar czf backup.tar.gz vibe-coder-data/`.
 #
-# 기존 SQLite 사용자: docs/migration/sqlite-to-postgres.md (P6) 참고.
+# Existing SQLite users: see docs/migration/sqlite-to-postgres.md (P6).
 # ──────────────────────────────────────────────────────────────────────────
 
 services:
@@ -27,9 +27,8 @@ services:
     environment:
       POSTGRES_DB: ${VIBECODER_DB_NAME:-vibecoder}
       POSTGRES_USER: ${VIBECODER_DB_USER:-vibecoder}
-      # 비밀번호는 .env 의 VIBECODER_DB_PASSWORD 로 반드시 지정.
-      # docker compose 가 빈 값에서 그대로 부팅 시도하면 postgres 가 거절하므로,
-      # 다음 줄에서 누락된 비밀번호를 명시적으로 검출.
+      # Password must be set through VIBECODER_DB_PASSWORD in .env.
+      # Detect missing values here instead of letting Postgres fail later.
       POSTGRES_PASSWORD: ${VIBECODER_DB_PASSWORD:?VIBECODER_DB_PASSWORD must be set in .env}
       TZ: ${TZ:-Asia/Seoul}
     volumes:
@@ -40,18 +39,18 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
-    # 기본은 외부 노출 X (server 컨테이너만 같은 docker network 안에서 접근).
-    # 호스트에서 직접 psql 로 접속하고 싶다면 .env 에 VIBE_PG_PORT=5432 등 설정 후 주석 해제.
+    # Default: no external exposure; only the server container can reach it.
+    # To connect with psql from the host, set VIBE_PG_PORT=5432 in .env and uncomment.
     # ports:
     #   - "${VIBE_PG_PORT:-5432}:5432"
 
   vibe-coder-server:
-    # 로컬 빌드 (개발자용)
+    # Local build (developer use)
     build:
       context: ..
       dockerfile: docker/Dockerfile
 
-    # Docker Hub 배포 사용자는 위 build: 블록 대신 image: 만 사용
+    # Docker Hub users can keep only image: instead of the build: block.
     image: ${VIBECODER_IMAGE:-siamakerlab/vibe-coder-server:latest}
 
     container_name: vibe-coder-server
@@ -61,28 +60,27 @@ services:
       postgres:
         condition: service_healthy
 
-    # 호스트 UID/GID 매칭 → 마운트된 볼륨의 파일 소유권 충돌 방지
+    # Match host UID/GID to avoid ownership conflicts on mounted volumes.
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
       TZ: ${TZ:-Asia/Seoul}
 
-      # JVM 힙 (호스트 RAM 보고 조정).
-      # v1.5.2 — -Duser.timezone 명시로 Java/Kotlin DateTime 클래스가 컨테이너
-      # TZ 와 일관 동작. Claude `/usage` 의 reset 시각 (예: "Resets 10:20pm
-      # (Asia/Seoul)") 과 server-side timestamp / DB UTC 변환 일관성 유지.
+      # JVM heap; tune for available host RAM.
+      # v1.5.2 — explicit -Duser.timezone keeps Java/Kotlin time handling aligned
+      # with container TZ and server-side UTC persistence.
       JAVA_OPTS: ${JAVA_OPTS:--Xmx2g -XX:+UseG1GC -Dfile.encoding=UTF-8 -Duser.timezone=${TZ:-Asia/Seoul}}
 
-      # 첫 실행 시 admin 자동 생성 (선택). 미지정 시 /admin/setup 화면.
+      # Optional first-run admin bootstrap. If unset, use /admin/setup.
       VIBECODER_ADMIN_USERNAME: ${VIBECODER_ADMIN_USERNAME:-}
       VIBECODER_ADMIN_PASSWORD: ${VIBECODER_ADMIN_PASSWORD:-}
 
-      # CORS 허용 host (v0.12.0+) — 콤마 구분. 기본 `*` = anyHost.
-      # 외부 origin 노출 시엔 신뢰 origin 만 명시 (예: "https://my-app.example.com").
+      # CORS allowed hosts (v0.12.0+), comma-separated. Default `*` = anyHost.
+      # For external origins, list only trusted origins such as "https://my-app.example.com".
       VIBECODER_CORS_ALLOWED_HOSTS: ${VIBECODER_CORS_ALLOWED_HOSTS:-*}
       VIBECODER_CORS_ALLOW_CREDENTIALS: ${VIBECODER_CORS_ALLOW_CREDENTIALS:-false}
 
-      # v0.14.0 — PostgreSQL 연결. host 는 같은 docker network 안의 service 이름.
+      # v0.14.0 — PostgreSQL connection. The host is the service name on the same Docker network.
       VIBECODER_DB_HOST: ${VIBECODER_DB_HOST:-postgres}
       VIBECODER_DB_PORT: ${VIBECODER_DB_PORT:-5432}
       VIBECODER_DB_NAME: ${VIBECODER_DB_NAME:-vibecoder}
@@ -91,9 +89,9 @@ services:
       VIBECODER_DB_MAX_POOL: ${VIBECODER_DB_MAX_POOL:-10}
       VIBECODER_DB_SSLMODE: ${VIBECODER_DB_SSLMODE:-disable}
 
-      # v0.77.0 — SSR 기본 언어. 사용자 별 설정 없을 때 fallback.
-      #   허용 값: en, ko. 기본 en (CLAUDE.md §5 공개 문서 영문 표준).
-      #   사용자는 Settings → General → Language 에서 본인 언어 선택.
+      # v0.77.0 — default SSR language when the user has no preference.
+      #   Allowed values: en, ko. Default: en.
+      #   Users can choose their language in Settings → General → Language.
       VIBECODER_DEFAULT_LANGUAGE: ${VIBECODER_DEFAULT_LANGUAGE:-en}
 
       # Agent runtime. Use mistral-vibe-acp to run without Claude Code/Anthropic.
@@ -103,58 +101,59 @@ services:
       VIBECODER_AGENT_TIMEOUT_MINUTES: ${VIBECODER_AGENT_TIMEOUT_MINUTES:-10}
       VIBE_HOME: ${VIBECODER_AGENT_HOME:-/home/vibe/.vibe}
 
-    # LAN 페어링 / admin 웹 / API 모두 같은 포트
+    # LAN pairing, admin web UI, and API share the same port.
     ports:
       - "${VIBE_PORT:-17880}:17880"
 
     # ────────────────────────────────────────────────────────────────────
-    # 볼륨 — v0.7.0 통합 구조 (v0.14.0 에서 SQLite 경로 제거, PG 는 자체 컨테이너)
+    # Volumes — v0.7.0 unified layout. v0.14.0 removed the SQLite path; Postgres
+    # now stores its own data in the sidecar volume.
     #
-    # ${VIBE_DATA_ROOT:-./vibe-coder-data}/ 한 디렉토리 안에 모든 영구 데이터.
-    # 처음 실행 시 호스트에 빈 디렉토리들이 자동 생성되고, doctor/MCP 가
-    # 그 안을 채워 넣습니다. 이미지 교체와 무관하게 보존됩니다.
+    # All persistent data lives under one host directory:
+    # ${VIBE_DATA_ROOT:-./vibe-coder-data}/.
+    # Empty host directories are created on first boot and later filled by
+    # doctor/MCP. They survive image replacements.
     # ────────────────────────────────────────────────────────────────────
     volumes:
-      # 프로젝트 소스 + 빌드 산출물 (호스트 IDE 와 직접 공유 가능)
+      # Project source + build outputs; directly shareable with host IDEs.
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/workspace:/workspace
 
-      # 서버 영속 데이터 (로그 / 빌드 메타). v0.13.x 까지 SQLite 도 여기였으나
-      # v0.14.0 부터는 postgres 컨테이너로 이전 — 본 디렉토리는 로그용으로 축소.
+      # Server persistent data (logs / build metadata). SQLite lived here until
+      # v0.13.x; v0.14.0 moved DB storage to the Postgres container.
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/server:/data
 
-      # ── dev-tools — 한 부모 아래로 모은 빌드 환경 도구들 ───────────
-      # Android SDK (3~4GB, doctor 가 채움)
+      # ── dev-tools — build environment tools under one parent ───────────
+      # Android SDK (3-4GB, populated by doctor)
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/android-sdk:/opt/android-sdk
-      # Gradle 의존성 캐시 (1~2GB, 첫 빌드 시 채워짐)
+      # Gradle dependency cache (1-2GB, populated during the first build)
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/gradle:/home/vibe/.gradle
-      # vibe 의 npm 글로벌 prefix — MCP `npm install -g <pkg>` 가 여기에 떨어짐
+      # npm global prefix for vibe; MCP `npm install -g <pkg>` lands here.
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/npm-global:/home/vibe/.local
-      # npx / npm 다운로드 캐시
+      # npx / npm download cache
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/npm-cache:/home/vibe/.npm
-      # Playwright 브라우저 (Playwright MCP 사용 시 ~300MB)
+      # Playwright browsers (~300MB when using Playwright MCP)
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/playwright:/home/vibe/.cache/ms-playwright
-      # 기타 도구 설정 (claude-code, npm config 등)
+      # Misc tool config (claude-code, npm config, etc.)
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/config:/home/vibe/.config
-      # v1.2.0 — SSH 키 (vibe-coder 가 git clone/push 시 사용). 첫 부팅 시
-      # entrypoint 가 ED25519 키쌍 자동 생성. 이미 있으면 절대 덮어쓰지 않음 →
-      # 서버 업데이트 시 동일 키 유지. 설정 → SSH Key 에서 공개키 복사.
+      # v1.2.0 — SSH keys used by vibe-coder for git clone/push. The entrypoint
+      # generates an ED25519 keypair on first boot and never overwrites it.
+      # Copy the public key from Settings -> SSH Key.
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/ssh:/home/vibe/.ssh
-      # v1.5.0 — Android 앱 키스토어 보관. 설정 → Keystores 에서 패키지명 별로
-      # release / debug / properties / admob 파일 생성. 영속 유지 — 키스토어
-      # 분실은 Play Store 업로드 영구 차단.
+      # v1.5.0 — Android app keystore storage. Settings -> Keystores generates
+      # release / debug / properties / admob files per package name. Keep this
+      # backed up; losing release keys permanently blocks Play Store updates.
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/keystores:/home/vibe/keystores
-      # v1.7.25 — Android Gradle 의 default debug.keystore 영속. 영속 안 하면
-      # 컨테이너 재시작마다 fingerprint 가 바뀌어 같은 packageName 의 기존
-      # 설치 앱과 cert 불일치 → INSTALL_FAILED_UPDATE_INCOMPATIBLE.
-      # 호스트 PC 의 ~/.android/debug.keystore 를 이 디렉토리에 복사해두면
-      # 호스트 / 컨테이너 빌드가 같은 debug cert 공유.
+      # v1.7.25 — persist Android Gradle's default debug.keystore. Without this,
+      # every container restart changes the fingerprint and can cause
+      # INSTALL_FAILED_UPDATE_INCOMPATIBLE for an existing packageName.
+      # Copy the host ~/.android/debug.keystore here to share one debug cert.
       - ${VIBE_DATA_ROOT:-./vibe-coder-data}/dev-tools/android:/home/vibe/.android
 
-      # ── Claude 인증 ─────────────────────────────────────────────
-      # 기본: 통합 디렉토리 안의 vibe-coder-data/claude/.
-      # 호스트의 ~/.claude 와 공유하고 싶으면 .env 에서
+      # ── Claude auth ─────────────────────────────────────────────
+      # Default: vibe-coder-data/claude/ inside the unified data directory.
+      # To share the host ~/.claude, set this in .env:
       #   VIBE_CLAUDE_DIR=~/.claude
-      # 으로 override.
+      # as an override.
       - ${VIBE_CLAUDE_DIR:-./vibe-coder-data/claude}:/home/vibe/.claude
 
       # Mistral Vibe config/logs. For quick local testing you can set
@@ -165,7 +164,7 @@ services:
       - default
       - ml-infra
 
-    # 헬스체크: /health 엔드포인트
+    # Healthcheck: /health endpoint
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:17880/health"]
       interval: 30s
@@ -173,12 +172,13 @@ services:
       start_period: 60s
       retries: 3
 
-    # USB 디바이스로 ADB 사용 시 활성화:
+    # Enable when using ADB over USB:
     # devices:
     #   - /dev/bus/usb:/dev/bus/usb
 
-# v0.14.0 — named volume 미사용. 모든 영구 데이터는 ./vibe-coder-data/ 안의 bind mount.
-# postgres 데이터도 ./vibe-coder-data/postgres/ 디렉토리 — 백업/이전 시 같은 트리.
+# v0.14.0 — no named volumes. All persistent data is bind-mounted under
+# ./vibe-coder-data/. Postgres data is also in ./vibe-coder-data/postgres/, so
+# backup/migration uses the same tree.
 
 networks:
   ml-infra:

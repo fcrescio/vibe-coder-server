@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# vibe-coder 컨테이너 엔트리포인트.
+# vibe-coder container entrypoint.
 #
-# 책임
-#   1. 호스트 UID/GID 매칭 (PUID/PGID env로 받음, 미설정 시 1000)
-#   2. 볼륨 마운트 디렉토리 소유권 정리
-#   3. Admin 부트스트랩 env를 서버 시스템 프로퍼티로 패스스루
-#   4. doctor 미실행 안내 (Android SDK 누락 시)
-#   5. server / vibe-doctor / shell 중 하나로 분기
+# Responsibilities
+#   1. Match host UID/GID (from PUID/PGID env, default 1000)
+#   2. Normalize ownership for mounted volume directories
+#   3. Pass admin bootstrap env through to the server
+#   4. Warn when doctor has not installed Android SDK yet
+#   5. Dispatch to server / vibe-doctor / shell
 
 set -euo pipefail
 
-# ─── 0. 색상 (TTY일 때만) ────────────────────────────────────────────────────
+# ─── 0. Colors (TTY only) ────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
     C_RESET=$'\033[0m'; C_BLUE=$'\033[0;34m'
     C_YELLOW=$'\033[0;33m'; C_GREEN=$'\033[0;32m'; C_BOLD=$'\033[1m'
@@ -21,9 +21,9 @@ log()  { printf '%s[entrypoint]%s %s\n' "${C_BLUE}" "${C_RESET}" "$*"; }
 warn() { printf '%s[entrypoint]%s %s\n' "${C_YELLOW}" "${C_RESET}" "$*"; }
 ok()   { printf '%s[entrypoint]%s %s\n' "${C_GREEN}" "${C_RESET}" "$*"; }
 
-# ─── 1. UID/GID 매칭 ────────────────────────────────────────────────────────
-# 호스트의 PUID/PGID를 받아 vibe 사용자의 UID/GID를 매칭.
-# 마운트된 볼륨의 호스트 측 소유권과 일치시켜 권한 충돌 방지.
+# ─── 1. UID/GID match ────────────────────────────────────────────────────────
+# Match the vibe user's UID/GID to host PUID/PGID to avoid mounted-volume
+# ownership conflicts.
 PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"
 
@@ -31,17 +31,18 @@ current_uid="$(id -u vibe)"
 current_gid="$(id -g vibe)"
 
 if [[ "$current_uid" != "$PUID" ]] || [[ "$current_gid" != "$PGID" ]]; then
-    log "UID/GID 매칭: ${current_uid}:${current_gid} → ${PUID}:${PGID}"
+    log "Matching UID/GID: ${current_uid}:${current_gid} -> ${PUID}:${PGID}"
     groupmod -o -g "$PGID" vibe 2>/dev/null || true
     usermod  -o -u "$PUID" -g "$PGID" vibe 2>/dev/null || true
 fi
 
-# ─── 2. 볼륨 소유권 정리 ─────────────────────────────────────────────────────
-# 매번 chown -R 하면 느리므로, 디렉토리만 1회 chown + 새 파일은 vibe가 만들도록.
-# v0.7.0 — 다음을 추가했다 (이미지 업그레이드 시 사라지던 도구들의 영구 위치):
-#   /home/vibe/.npm                  npx 캐시 (MCP 자주 사용)
-#   /home/vibe/.cache/ms-playwright  Playwright 브라우저
-#   /home/vibe/.local                vibe 의 npm 글로벌 prefix (MCP 영구 설치)
+# ─── 2. Volume ownership ─────────────────────────────────────────────────────
+# Avoid slow recursive chown on every boot: chown top-level directories once and
+# let the vibe user create new files.
+# v0.7.0 — persistent locations for tools that disappeared on image upgrades:
+#   /home/vibe/.npm                  npx cache (frequently used by MCP)
+#   /home/vibe/.cache/ms-playwright  Playwright browsers
+#   /home/vibe/.local                npm global prefix for persistent MCP installs
 for dir in \
     /workspace \
     /data \
@@ -61,68 +62,67 @@ for dir in \
     fi
 done
 
-# v1.7.23 — 워크스페이스 각 프로젝트의 .gradle / .android 캐시 디렉토리 안에
-# root 소유 잔여물 자동 정리. 이전에 docker exec (default user root) 또는
-# 다른 process 가 그 path 에 쓴 file 이 남으면 vibe 가 Gradle build 시
-# "executionHistory.lock (Permission denied)" 에러. find 로 빠르게 idempotent.
+# v1.7.23 — clean root-owned leftovers from each workspace project's .gradle /
+# .android cache directories. Files written by prior root `docker exec` sessions
+# can break Gradle with "executionHistory.lock (Permission denied)".
 for sub in .gradle .android; do
     find /workspace -mindepth 2 -maxdepth 3 -type d -name "$sub" 2>/dev/null | while read -r p; do
         bad=$(find "$p" -mindepth 1 ! -user vibe -print -quit 2>/dev/null)
         if [[ -n "$bad" ]]; then
-            warn "$p 안 root-owned 잔여물 발견 — chown -R vibe:vibe"
+            warn "Root-owned leftovers found under $p; running chown -R vibe:vibe"
             chown -R vibe:vibe "$p" 2>/dev/null || true
         fi
     done
 done
 
-# ─── 2b. SSH 키 자동 발급 (v1.2.0, v1.2.1 graceful degrade) ────────────────
-# 컨테이너 첫 부팅 시 vibe 사용자의 ED25519 SSH 키쌍을 자동 생성.
-# 이미 있으면 절대 덮어쓰지 않음 (서버 업데이트 / 이미지 교체 시 동일 키 유지).
-# 볼륨 마운트로 영속. 재생성은 운영자가 설정 UI 의 "Regenerate" 버튼으로 명시 트리거.
+# ─── 2b. SSH key bootstrap (v1.2.0, v1.2.1 graceful degrade) ────────────────
+# Generate an ED25519 SSH keypair for the vibe user on first container boot.
+# Existing keys are never overwritten, so server/image updates keep the same key.
+# Keys are persisted through the mounted volume. Regeneration is an explicit
+# operator action through the settings UI.
 #
-# v1.2.1 — SSH 키 자동 발급은 *보조* 기능. ssh-keygen 누락 / 생성 실패가 서버
-# 부팅 자체를 막지 않도록 graceful degrade. set -e 환경에서도 안전하게 통과.
+# v1.2.1 — SSH key bootstrap is auxiliary. Missing ssh-keygen or generation
+# failures should not block server boot, even under set -e.
 SSH_DIR=/home/vibe/.ssh
 SSH_KEY=$SSH_DIR/id_ed25519
 if [[ ! -f "$SSH_KEY" ]]; then
     if ! command -v ssh-keygen >/dev/null 2>&1; then
-        warn "openssh-client 미설치 — SSH 키 자동 생성을 건너뜁니다."
-        warn "git clone/push (SSH) 가 필요하면 이미지에 openssh-client 추가 후 재기동하세요."
+        warn "openssh-client is not installed; skipping automatic SSH key generation."
+        warn "Install openssh-client in the image and restart if SSH git clone/push is needed."
     else
         mkdir -p "$SSH_DIR"
         chown vibe:vibe "$SSH_DIR"
         chmod 700 "$SSH_DIR"
-        log "SSH 키 (ED25519) 자동 생성 — $SSH_KEY"
+        log "Generating SSH key (ED25519): $SSH_KEY"
         if gosu vibe:vibe ssh-keygen -t ed25519 -f "$SSH_KEY" -N "" \
             -C "vibe-coder-server@$(hostname)-$(date +%Y%m%d)" >/dev/null
         then
             chmod 600 "$SSH_KEY"
             chmod 644 "${SSH_KEY}.pub"
-            ok "SSH 공개 키 생성 완료. 설정 → SSH Key 에서 복사하여 Gitea/GitHub 등록 가능."
+            ok "SSH public key generated. Copy it from Settings -> SSH Key to register with Gitea/GitHub."
         else
-            warn "ssh-keygen 실행 실패 — SSH 키 자동 생성을 건너뜁니다 (서버 부팅은 계속)."
+            warn "ssh-keygen failed; skipping automatic SSH key generation and continuing server boot."
         fi
     fi
 fi
-# 권한 정리 — 매 부팅마다 idempotent (chmod 가 mounted volume 의 잘못된 mode 정정).
+# Permission cleanup; idempotent on every boot and fixes bad mounted-volume modes.
 [[ -d "$SSH_DIR" ]] && chmod 700 "$SSH_DIR" 2>/dev/null || true
 [[ -f "$SSH_KEY" ]] && chmod 600 "$SSH_KEY" 2>/dev/null || true
 [[ -f "${SSH_KEY}.pub" ]] && chmod 644 "${SSH_KEY}.pub" 2>/dev/null || true
 
-# v0.7.0 — 빈 .local 볼륨이 마운트된 케이스 대비: .npmrc 가 home 에 있고 .local
-# 이 비어 있으면 prefix 가 무효화될 수 있어, idempotent 재생성.
+# v0.7.0 — handle empty mounted .local volumes. If .npmrc is missing, npm's
+# prefix can fall back to a non-persistent location, so recreate it idempotently.
 if [[ ! -f /home/vibe/.npmrc ]]; then
     printf 'prefix=/home/vibe/.local\nfund=false\nupdate-notifier=false\n' \
         > /home/vibe/.npmrc
     chown vibe:vibe /home/vibe/.npmrc
 fi
 
-# ─── 2c. Git global config 영속 위치 보장 (v1.9.0) ───────────────────────────
-# Dockerfile 의 ENV GIT_CONFIG_GLOBAL=/home/vibe/.config/git/config 와 짝.
-# 디렉토리는 dev-tools/config 볼륨이 cover 하지만, 첫 부팅 시 비어 있을 수 있어
-# idempotent 생성 + ownership 정리. 파일 자체는 사용자가 /env-setup 의 "Git
-# Identity" 카드에서 입력해야 채워짐 (운영자가 직접 만들지 않음 — 자동 ID 추측
-# 금지).
+# ─── 2c. Persistent Git global config (v1.9.0) ───────────────────────────────
+# Paired with Dockerfile ENV GIT_CONFIG_GLOBAL=/home/vibe/.config/git/config.
+# dev-tools/config covers the directory, but it may be empty on first boot, so
+# create it idempotently and fix ownership. The file itself is created only after
+# the user fills the "Git Identity" card in /env-setup.
 GIT_CFG_DIR=/home/vibe/.config/git
 GIT_CFG_FILE=$GIT_CFG_DIR/config
 if [[ ! -d "$GIT_CFG_DIR" ]]; then
@@ -135,36 +135,36 @@ if [[ -f "$GIT_CFG_FILE" ]]; then
     chmod 600 "$GIT_CFG_FILE" 2>/dev/null || true
 fi
 
-# ─── 3. Admin 부트스트랩 (있으면 서버 sys-prop으로 전달) ──────────────────────
+# ─── 3. Admin bootstrap (passed through env when provided) ────────────────────
 JAVA_OPTS="${JAVA_OPTS:-}"
 if [[ -n "${VIBECODER_ADMIN_USERNAME:-}" ]] && [[ -n "${VIBECODER_ADMIN_PASSWORD:-}" ]]; then
-    log "Admin 부트스트랩 자격증명 감지 → 서버에 전달 (첫 실행 시 자동 생성)"
-    # 비밀번호가 ps 등에 노출되지 않도록 env로만 전달 (JVM은 env 자체에서 읽음)
+    log "Admin bootstrap credentials detected; passing them to the server for first-run creation"
+    # Keep the password in env so it is not exposed through process arguments.
     export VIBECODER_ADMIN_USERNAME VIBECODER_ADMIN_PASSWORD
 fi
 
-# ─── 4. Android SDK 누락 안내 ────────────────────────────────────────────────
+# ─── 4. Android SDK hint ─────────────────────────────────────────────────────
 if [[ ! -d "${ANDROID_HOME:-/opt/android-sdk}/platform-tools" ]]; then
     warn ""
-    warn "Android SDK가 아직 설치되어 있지 않습니다."
-    warn "빌드를 시작하기 전에 다음 명령으로 doctor를 실행하세요:"
+    warn "Android SDK is not installed yet."
+    warn "Before building Android apps, run doctor with:"
     warn ""
     warn "    docker exec -it <container-name> vibe-doctor"
     warn ""
 fi
 
-# ─── 5. 디버그 정보 출력 ────────────────────────────────────────────────────
-ok "vibe-coder 컨테이너 부팅"
+# ─── 5. Debug information ────────────────────────────────────────────────────
+ok "vibe-coder container booting"
 log "PUID:PGID    = ${PUID}:${PGID}"
 log "ANDROID_HOME = ${ANDROID_HOME:-(unset)}"
 log "WORKSPACE    = ${VIBECODER_WORKSPACE_ROOT:-(unset)}"
 log "Admin URL    = http://0.0.0.0:17880/admin"
 
-# ─── 6. 분기 ────────────────────────────────────────────────────────────────
+# ─── 6. Command dispatch ─────────────────────────────────────────────────────
 case "${1:-server}" in
     server)
-        log "vibe-coder 서버 시작..."
-        # gosu로 vibe 사용자로 권한 강등 후 서버 실행
+        log "Starting vibe-coder server..."
+        # Drop privileges to the vibe user before running the server.
         exec gosu vibe:vibe /opt/vibe-coder/bin/server
         ;;
     doctor)
@@ -175,7 +175,7 @@ case "${1:-server}" in
         exec gosu vibe:vibe /bin/bash
         ;;
     *)
-        # 그 외 명령은 vibe로 그대로 실행 (`docker run ... claude --version` 등)
+        # Run any other command as vibe (`docker run ... claude --version`, etc.).
         exec gosu vibe:vibe "$@"
         ;;
 esac

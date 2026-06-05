@@ -1,39 +1,39 @@
 # syntax=docker/dockerfile:1.7
 #
-# Vibe Coder Server — 슬림 런타임 이미지
+# Vibe Coder Server — slim runtime image
 #
-# 설계 의도
-#   - 이미지 크기 최소화를 위해 Android SDK / Gradle 캐시 / Claude 인증은 이미지에 박지 않는다.
-#   - 위 무거운 컴포넌트는 사용자가 컨테이너 부팅 후 `vibe-doctor`로 볼륨에 다운로드.
-#   - 이미지에는 "vibe-coder 서버 본체 + Claude Code CLI + 빌드환경 셋업 도구"만 포함한다.
+# Design intent
+#   - Keep Android SDK / Gradle cache / Claude auth out of the image to minimize size.
+#   - Download those heavier components into volumes after container boot via `vibe-doctor`.
+#   - Include only the vibe-coder server, Claude Code CLI, and setup tools.
 #
-# 빌드 (메인테이너용)
+# Build (maintainers)
 #
-#   일반 commit push (amd64-only · v0.6.3+ 기본):
+#   Regular commit push (amd64-only; v0.6.3+ default):
 #     docker buildx build --platform linux/amd64 \
 #         -f docker/Dockerfile -t siamakerlab/vibe-coder-server:0.6.3 --push .
 #
-#   마일스톤 multi-arch push (v0.7.0 / v1.0.0 등):
+#   Milestone multi-arch push (v0.7.0 / v1.0.0, etc.):
 #     docker buildx build --platform linux/amd64,linux/arm64 \
 #         -f docker/Dockerfile -t siamakerlab/vibe-coder-server:0.6.3 --push .
 
 # ------------------------------------------------------------------------------
-# Stage 1: 서버 빌드 (Gradle installDist)
-# v0.38.0 — Ubuntu 26.04 LTS (Resolute Raccoon) rebase. eclipse-temurin 의
-# resolute 태그가 26.04 LTS 매핑 확정 (`/etc/os-release`: Ubuntu 26.04 LTS).
+# Stage 1: server build (Gradle installDist)
+# v0.38.0 — Ubuntu 26.04 LTS rebase. eclipse-temurin's resolute tag maps to
+# Ubuntu 26.04 LTS (`/etc/os-release`: Ubuntu 26.04 LTS).
 # ------------------------------------------------------------------------------
 FROM eclipse-temurin:17-jdk-resolute AS builder
 
 WORKDIR /src
 
-# Gradle wrapper + 빌드 스크립트 복사. Android 모듈은 -PskipAndroidModule=true 로 제외.
+# Copy Gradle wrapper and build scripts. Exclude Android modules with -PskipAndroidModule=true.
 COPY gradle ./gradle
 COPY gradlew ./gradlew
 COPY settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY shared/build.gradle.kts ./shared/
 COPY server/build.gradle.kts ./server/
 
-# 소스 복사
+# Copy source
 COPY shared ./shared
 COPY server ./server
 
@@ -43,25 +43,25 @@ RUN --mount=type=cache,target=/root/.gradle \
     ./gradlew -PskipAndroidModule=true :server:installDist --no-daemon -x test
 
 # ------------------------------------------------------------------------------
-# Stage 2: 런타임 — v0.38.0 Ubuntu 26.04 LTS rebase, v0.68.1 JDK 로 변경.
+# Stage 2: runtime — v0.38.0 Ubuntu 26.04 LTS rebase, v0.68.1 switched to JDK.
 #
-# v0.68.1 hotfix: Android 디버그 빌드 시 Gradle Java toolchain 이
-# `/opt/java/openjdk` 를 잡으면서 JRE-only 라 javac 가 없어 컴파일 실패
+# v0.68.1 hotfix: Android debug builds made Gradle's Java toolchain select
+# `/opt/java/openjdk`; with JRE-only images, javac was missing and compilation failed
 # (`Toolchain installation '/opt/java/openjdk' does not provide the required
-# capabilities: [JAVA_COMPILER]`). runtime 도 JDK 로 통일 (~130MB 증가) —
-# 단일 사용자 LAN 도구라 이미지 크기보다 빌드 안정성 우선.
-# 빌더 stage 는 이미 jdk-resolute 라 추가 다운로드 없음.
+# capabilities: [JAVA_COMPILER]`). Use JDK in runtime too (~130MB increase);
+# for this single-user LAN tool, build stability is more important than image size.
+# The builder stage already uses jdk-resolute, so there is no extra download there.
 # ------------------------------------------------------------------------------
 FROM eclipse-temurin:17-jdk-resolute AS runtime
 
 LABEL org.opencontainers.image.title="Vibe Coder Server"
-LABEL org.opencontainers.image.description="Ktor 기반 vibe-coder 서버 (LAN 1인 개발 도구) · Ubuntu 26.04 LTS"
+LABEL org.opencontainers.image.description="Ktor-based vibe-coder server (single-user LAN development tool) · Ubuntu 26.04 LTS"
 LABEL org.opencontainers.image.source="https://github.com/siamakerlab/vibe-coder"
 LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 LABEL org.opencontainers.image.source="https://github.com/siamakerlab/vibe-coder-server"
 
-# ---- 시스템 패키지 (도구 최소셋) ---------------------------------------------
-# Android SDK / Playwright Chromium / 무거운 MCP들은 doctor가 볼륨에 설치한다.
+# ---- System packages (minimal toolset) --------------------------------------
+# Android SDK / Playwright Chromium / heavier MCP packages are installed into volumes by doctor.
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         bash \
@@ -85,11 +85,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         xz-utils \
         zip \
     && rm -rf /var/lib/apt/lists/*
-# util-linux 는 `script` 명령(pty wrapping) 을 제공 — v0.7.0 옵션 A (Claude
-# 반자동 웹 OAuth) 가 `claude auth login` TUI 를 spawn 할 때 필수.
+# util-linux provides `script` for PTY wrapping. v0.7.0 option A needs it to
+# spawn the `claude auth login` TUI for semi-automatic web OAuth.
 
 # ---- Node.js 20 LTS + Claude Code CLI ----------------------------------------
-# Node는 Claude CLI와 MCP 실행에 필요하므로 이미지에 포함 (전체 ~150MB).
+# Node is required for Claude CLI and MCP execution, so it is included in the image.
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
@@ -103,15 +103,15 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 # to OpenAI-compatible providers such as llama.cpp through ~/.vibe/config.toml.
 ENV PIPX_HOME=/opt/pipx
 ENV PIPX_BIN_DIR=/usr/local/bin
-RUN pipx install mistral-vibe
+ARG MISTRAL_VIBE_VERSION=2.14.0
+RUN pipx install "mistral-vibe==${MISTRAL_VIBE_VERSION}"
 
-# ---- 사용자 / 디렉토리 -------------------------------------------------------
-# entrypoint에서 호스트 UID에 맞춰 재조정한다. 여기는 기본값.
+# ---- User / directories ------------------------------------------------------
+# The entrypoint adjusts this to the host UID when requested. These are defaults.
 ARG VIBE_UID=1000
 ARG VIBE_GID=1000
-# Ubuntu 24.04 (noble) base 부터 default `ubuntu` 사용자가 UID 1000 으로
-# 사전 생성되어 있어 충돌. 먼저 제거 후 vibe 생성. (조용히 실패 허용 — 다른
-# base 에선 ubuntu 사용자가 없을 수 있음)
+# Ubuntu 24.04 (noble) images pre-create an `ubuntu` user with UID 1000.
+# Remove it first to avoid collisions; ignore failures on bases without it.
 RUN userdel -r ubuntu 2>/dev/null || true \
     && groupdel ubuntu 2>/dev/null || true \
     && groupadd --gid ${VIBE_GID} vibe \
@@ -135,21 +135,21 @@ RUN userdel -r ubuntu 2>/dev/null || true \
     && chmod 0440 /etc/sudoers.d/vibe-nopasswd \
     && visudo -c -f /etc/sudoers.d/vibe-nopasswd
 
-# v0.7.0 — vibe 사용자 NOPASSWD sudo.
-# 근거: 컨테이너는 1인 LAN 격리 도구이며 도커 레벨에서 외부 신뢰 경계가 분리됨.
-# Claude Code 가 시스템 패키지 설치 / 권한 정리 등을 위해 sudo 가 필요한 경우
-# 비밀번호 prompt 가 vibe-coder 스트림에서 hang 을 일으키므로 NOPASSWD 로 우회.
-# CLAUDE.md §3 의 "raw shell UI 금지" 와 별개 — Claude Code 가 자체 정책으로
-# 어떤 sudo 명령을 쓸지 결정하며, 사용자가 직접 shell 을 쓰는 경로는 없음.
+# v0.7.0 — NOPASSWD sudo for the vibe user.
+# Rationale: this is a single-user LAN container with the external trust boundary
+# at Docker isolation. Claude Code may need sudo for package installs or permission
+# cleanup; password prompts would hang the vibe-coder stream, so bypass them.
+# This is separate from CLAUDE.md §3's raw shell UI policy: Claude Code still
+# decides which sudo command to run under its own policy.
 
-# ---- vibe-coder 서버 본체 ---------------------------------------------------
+# ---- vibe-coder server ------------------------------------------------------
 COPY --from=builder --chown=vibe:vibe /src/server/build/install/server /opt/vibe-coder
 
 # ---- doctor / entrypoint -----------------------------------------------------
 COPY --chown=root:root docker/doctor /opt/vibe-doctor
 COPY --chown=root:root docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-# v1.4.0 — Claude TUI Usage 탭 PTY capture (expect 스크립트). slash command 가
-# --print 에서 차단되어 quota 를 다른 방식으로 가져올 수 없음.
+# v1.4.0 — Claude TUI Usage tab PTY capture (expect script). Slash commands are
+# blocked in --print mode, so quota cannot be read another way.
 COPY --chown=root:root docker/scripts/claude-usage-capture.exp /usr/local/bin/claude-usage-capture.exp
 RUN chmod +x /opt/vibe-doctor/vibe-doctor \
     && chmod +x /opt/vibe-doctor/lib/*.sh \
@@ -158,44 +158,44 @@ RUN chmod +x /opt/vibe-doctor/vibe-doctor \
     && ln -s /opt/vibe-doctor/vibe-doctor /usr/local/bin/vibe-doctor \
     && ln -s /opt/vibe-coder/bin/server /usr/local/bin/vibe-coder-server
 
-# ---- 런타임 환경변수 ---------------------------------------------------------
-# Android SDK 경로(볼륨)
+# ---- Runtime environment ----------------------------------------------------
+# Android SDK path (volume)
 ENV ANDROID_HOME=/opt/android-sdk
 ENV ANDROID_SDK_ROOT=/opt/android-sdk
 ENV PATH=/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:${PATH}
 
-# vibe-coder 서버 설정 경로
+# vibe-coder server config path
 ENV VIBECODER_WORKSPACE_ROOT=/workspace
 ENV VIBECODER_DATA_DIR=/data
 
-# Claude CLI 인증 경로 (볼륨)
+# Claude CLI auth path (volume)
 ENV CLAUDE_CONFIG_DIR=/home/vibe/.claude
 ENV VIBE_HOME=/home/vibe/.vibe
 
-# v1.9.0 — Git global config 를 영속 위치 (`/home/vibe/.config/git/config`) 로 강제.
-# `/home/vibe/.config` 는 이미 `dev-tools/config` 볼륨에 영속화돼 있어 별도 mount
-# 추가 없이 컨테이너 재시작 / 이미지 업그레이드 후에도 사용자가 입력한
-# `user.name` / `user.email` 이 유지된다. git 2.32+ 의 GIT_CONFIG_GLOBAL 사용.
-# (자식 git 프로세스 — clone / commit / log 모두 동일 파일을 global config 로 인식)
+# v1.9.0 — force Git global config to a persistent path:
+# `/home/vibe/.config/git/config`. `/home/vibe/.config` is already persisted by
+# the `dev-tools/config` volume, so user-entered `user.name` / `user.email`
+# survive container restarts and image upgrades. Git 2.32+ honors GIT_CONFIG_GLOBAL
+# for child git processes such as clone / commit / log.
 ENV GIT_CONFIG_GLOBAL=/home/vibe/.config/git/config
 
-# v0.7.0 — vibe 사용자의 npm 글로벌 prefix 를 /home/vibe/.local 로 분리.
-# 이로써 `vibe-doctor mcp` 의 `npm install -g <pkg>` 가 시스템 디렉토리가 아닌
-# 영구 볼륨에 저장되어, 이미지 업그레이드 후에도 MCP 가 사라지지 않는다.
-# /home/vibe/.local/bin 을 PATH 에 추가 (Claude CLI 가 MCP 명령을 찾도록).
+# v0.7.0 — move the vibe user's npm global prefix to /home/vibe/.local.
+# `vibe-doctor mcp` installs global npm packages into a persistent volume instead
+# of a system directory, so MCP tools survive image upgrades. Add
+# /home/vibe/.local/bin to PATH so Claude CLI can find MCP commands.
 ENV PATH=/home/vibe/.local/bin:${PATH}
 
-# JVM 옵션 (사용자가 .env로 덮어쓰기 가능)
+# JVM options (user-overridable through .env)
 ENV JAVA_OPTS="-Xmx2g -XX:+UseG1GC -Dfile.encoding=UTF-8"
 
-# ---- 포트 / 헬스체크 ---------------------------------------------------------
+# ---- Port / healthcheck -----------------------------------------------------
 EXPOSE 17880
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -fsS http://127.0.0.1:17880/health || exit 1
 
-# ---- 실행 -------------------------------------------------------------------
-# tini로 PID 1 시그널 처리, entrypoint가 UID 매칭 후 gosu로 vibe 사용자로 전환.
+# ---- Execution --------------------------------------------------------------
+# tini handles PID 1 signals; entrypoint matches UID and switches to vibe via gosu.
 WORKDIR /workspace
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
 CMD ["server"]

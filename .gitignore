@@ -1,12 +1,12 @@
 # bkit (local tool state — never commit, per global CLAUDE.md §11)
 .bkit/
-# Claude Code 자체 도구 상태 (ScheduleWakeup lock 등) — never commit.
+# Claude Code local tool state (ScheduleWakeup locks, etc.) — never commit.
 .claude/
 
 # Gradle
 .gradle/
-# 모듈별 build output 무시 — 단, src 트리 안의 build 패키지(예:
-# server/src/main/kotlin/.../server/build/ApkFinder.kt)는 무시하지 않는다.
+# Ignore module build outputs, but keep source packages named build, such as
+# server/src/main/kotlin/.../server/build/ApkFinder.kt.
 **/build/
 !**/src/**/build/
 !**/src/**/build/**
@@ -21,6 +21,7 @@ captures/
 .cxx/
 
 # Server runtime data (workspace, db, logs)
+docker/vibe-coder-data/
 vibe-coder-server-data/
 server/workspace/
 /workspace/
@@ -43,14 +44,14 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Docker PoC artifacts (개인 환경설정/빌드 컨텍스트 산출물)
+# Docker local artifacts (private config / build context outputs)
 docker/.env
 docker/*.local.yml
 docker/build-context/
 
-# 운영자 내부 문서 — 일반 사용자에게는 README 만 공개 (v0.10.0+)
-# CLAUDE.md 는 Claude Code 자동 메모리/규칙 파일이라 운영자 전용.
-# docs/ 는 PDCA 산출물 (plan/design/analysis/report) 로 내부 작업 흔적.
+# Operator-internal docs. Public users should only need README (v0.10.0+).
+# CLAUDE.md is Claude Code memory/rules, so it stays operator-only.
+# docs/ contains PDCA work artifacts (plan/design/analysis/report).
 CLAUDE.md
 docs/
 vibe-coder-icon.png
