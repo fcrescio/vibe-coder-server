@@ -58,6 +58,9 @@ agent:
   command: vibe-acp
   home: /home/vibe/.vibe
   timeoutMinutes: 60
+  # ACP tool permission policy until the server UI grows interactive approval.
+  # allow_once preserves the current autonomous behavior; reject_once is read-only hardening.
+  permissionMode: allow_once
 
 build:
   timeoutMinutes: 30

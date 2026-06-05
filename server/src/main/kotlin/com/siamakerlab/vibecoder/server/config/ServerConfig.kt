@@ -30,6 +30,14 @@ data class AgentSection(
     val command: String = "vibe-acp",
     val home: String = "/home/vibe/.vibe",
     val timeoutMinutes: Int = 60,
+    /**
+     * Permission response for Mistral Vibe ACP tool calls.
+     *
+     * - `allow_once`: current hands-off server behavior; every ACP permission request is approved.
+     * - `reject_once`: read-only default for environments that want explicit hardening until the
+     *   UI grows an approval prompt.
+     */
+    val permissionMode: String = "allow_once",
 )
 
 /**

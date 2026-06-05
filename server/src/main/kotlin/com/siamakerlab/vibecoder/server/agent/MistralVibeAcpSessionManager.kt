@@ -2,6 +2,7 @@ package com.siamakerlab.vibecoder.server.agent
 
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
+import com.siamakerlab.vibecoder.server.claude.ConversationHistoryService
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.ws.WsFrame
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -41,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.io.path.exists
+import kotlin.io.path.deleteIfExists
 import kotlin.io.path.notExists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -51,6 +53,7 @@ class MistralVibeAcpSessionManager(
     private val config: ServerConfig,
     private val workspace: WorkspacePath,
     private val hub: LogHub,
+    private val history: ConversationHistoryService? = null,
 ) : AgentRuntime {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -69,6 +72,7 @@ class MistralVibeAcpSessionManager(
             "prompt too large ($bytes bytes UTF-8 > ${AgentRuntime.MAX_PROMPT_BYTES})"
         }
         val session = ensureSession(projectId)
+        history?.userPrompt(projectId, session.sessionId.ifBlank { readSessionId(projectId) }, text)
         session.stdinMutex.withLock {
             setBusy(projectId, true)
             val response = try {
@@ -93,6 +97,7 @@ class MistralVibeAcpSessionManager(
             }
             val stopReason = response["stop_reason"]?.jsonPrimitive?.contentOrNull ?: "end_turn"
             flushAssistant(projectId)
+            history?.systemNotice(projectId, session.sessionId.ifBlank { readSessionId(projectId) }, "done", "Mistral Vibe ACP turn finished: $stopReason")
             setBusy(projectId, false)
             hub.emitConsole(topic(projectId)) { seq -> WsFrame.ConsoleDone(reason = stopReason, seq = seq) }
         }
@@ -101,6 +106,7 @@ class MistralVibeAcpSessionManager(
     override suspend fun startNew(projectId: String) {
         terminateSession(projectId)
         assistantBuffers.remove(projectId)
+        runCatching { sessionIdFile(projectId).deleteIfExists() }
         hub.resetConsole(topic(projectId))
         emitSystem(projectId, "new_session_requested", "Agent session reset. The next prompt starts a fresh Mistral Vibe session.")
     }
@@ -117,7 +123,8 @@ class MistralVibeAcpSessionManager(
 
     override fun isAlive(projectId: String): Boolean = sessions[projectId]?.process?.isAlive == true
 
-    override fun currentSessionId(projectId: String): String? = sessions[projectId]?.sessionId
+    override fun currentSessionId(projectId: String): String? =
+        sessions[projectId]?.sessionId?.takeIf { it.isNotBlank() } ?: readSessionId(projectId)
 
     override fun isBusy(projectId: String): Boolean = busy[projectId] == true
 
@@ -148,12 +155,14 @@ class MistralVibeAcpSessionManager(
             }
             .start()
 
+        val savedId = readSessionId(projectId)
         val session = AcpProjectSession(
             projectId = projectId,
             process = proc,
             stdin = BufferedWriter(OutputStreamWriter(proc.outputStream, StandardCharsets.UTF_8)),
             stdout = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8)),
             stderr = BufferedReader(InputStreamReader(proc.errorStream, StandardCharsets.UTF_8)),
+            sessionId = savedId.orEmpty(),
         )
         sessions[projectId] = session
         session.readerJob = scope.launch { readStdout(session) }
@@ -183,9 +192,12 @@ class MistralVibeAcpSessionManager(
         session.sessionId = newSession["sessionId"]?.jsonPrimitive?.contentOrNull
             ?: newSession["session_id"]?.jsonPrimitive?.contentOrNull
             ?: throw IllegalStateException("vibe-acp session/new did not return session_id")
+        runCatching { writeSessionId(projectId, session.sessionId) }
+            .onFailure { log.warn(it) { "[$projectId] failed to persist ACP session-id" } }
         hub.emitConsole(topic(projectId)) { seq ->
             WsFrame.ConsoleSessionStarted(sessionId = session.sessionId, model = "Mistral Vibe ACP", cwd = projectRoot.toString(), seq = seq)
         }
+        history?.systemNotice(projectId, session.sessionId, "session_started", "Mistral Vibe ACP session started in $projectRoot")
         return session
     }
 
@@ -428,6 +440,7 @@ class MistralVibeAcpSessionManager(
                 val name = update["field_meta"]?.jsonObject?.get("tool_name")?.jsonPrimitive?.contentOrNull
                     ?: update["title"]?.jsonPrimitive?.contentOrNull ?: "tool"
                 hub.emitConsole(topic(projectId)) { seq -> WsFrame.ConsoleToolUse(toolName = name, input = update, toolUseId = id, seq = seq) }
+                history?.toolUse(projectId, currentSessionId(projectId), name, id, update)
             }
             "tool_call_update" -> {
                 flushAssistant(projectId)
@@ -435,6 +448,7 @@ class MistralVibeAcpSessionManager(
                     ?: update["tool_call_id"]?.jsonPrimitive?.contentOrNull ?: return
                 val isError = update["status"]?.jsonPrimitive?.contentOrNull == "failed"
                 hub.emitConsole(topic(projectId)) { seq -> WsFrame.ConsoleToolResult(toolUseId = id, output = update, isError = isError, seq = seq) }
+                history?.toolResult(projectId, currentSessionId(projectId), id, update, isError)
             }
             "usage_update" -> {
                 val used = update["used"]?.jsonPrimitive?.contentOrNull
@@ -446,13 +460,18 @@ class MistralVibeAcpSessionManager(
     }
 
     private suspend fun respondPermission(session: AcpProjectSession, id: JsonElement) {
+        val mode = config.agent.permissionMode.trim().lowercase()
+        val optionId = when (mode) {
+            "reject_once", "reject", "deny", "deny_once" -> "reject_once"
+            else -> "allow_once"
+        }
         session.write(buildJsonObject {
             put("jsonrpc", "2.0")
             put("id", id)
             putJsonObject("result") {
                 putJsonObject("outcome") {
                     put("outcome", "selected")
-                    put("option_id", "allow_once")
+                    put("option_id", optionId)
                 }
             }
         })
@@ -494,14 +513,30 @@ class MistralVibeAcpSessionManager(
 
     private suspend fun emitSystem(projectId: String, code: String, message: String) {
         hub.emitConsole(topic(projectId)) { seq -> WsFrame.ConsoleSystem(code = code, message = message, seq = seq) }
+        history?.systemNotice(projectId, currentSessionId(projectId), code, message)
     }
 
     private suspend fun flushAssistant(projectId: String) {
         val text = assistantBuffers.remove(projectId)?.toString()?.takeIf { it.isNotBlank() } ?: return
         hub.emitConsole(topic(projectId)) { seq -> WsFrame.ConsoleAssistant(text = text, isPartial = false, seq = seq) }
+        history?.assistantText(projectId, currentSessionId(projectId), text)
     }
 
     private fun topic(projectId: String) = LogHub.consoleTopic(projectId)
+
+    private fun sessionIdFile(projectId: String): Path =
+        workspace.vibecoderDir(projectId).resolve("vibe-acp-session.id")
+
+    private fun readSessionId(projectId: String): String? {
+        val f = sessionIdFile(projectId)
+        return if (f.exists()) f.readText().trim().ifBlank { null } else null
+    }
+
+    private fun writeSessionId(projectId: String, sessionId: String) {
+        val f = sessionIdFile(projectId)
+        Files.createDirectories(f.parent)
+        f.writeText(sessionId)
+    }
 
     private class TerminalProcess(
         val process: Process,

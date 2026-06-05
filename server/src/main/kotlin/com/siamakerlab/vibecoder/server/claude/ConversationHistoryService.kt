@@ -138,6 +138,53 @@ class ConversationHistoryService(
         )
     }
 
+    fun assistantText(projectId: String, sessionId: String?, text: String, agentName: String? = null) = safe {
+        repo.insert(
+            projectId = projectId,
+            sessionId = sessionId,
+            role = "assistant",
+            content = text,
+            agentName = agentName,
+        )
+    }
+
+    fun toolUse(
+        projectId: String,
+        sessionId: String?,
+        toolName: String,
+        toolUseId: String,
+        input: JsonElement,
+        agentName: String? = null,
+    ) = safe {
+        repo.insert(
+            projectId = projectId,
+            sessionId = sessionId,
+            role = "tool_use",
+            content = jsonString(input),
+            toolName = toolName,
+            toolUseId = toolUseId,
+            agentName = agentName,
+        )
+    }
+
+    fun toolResult(
+        projectId: String,
+        sessionId: String?,
+        toolUseId: String,
+        output: JsonElement,
+        isError: Boolean,
+        agentName: String? = null,
+    ) = safe {
+        repo.insert(
+            projectId = projectId,
+            sessionId = sessionId,
+            role = if (isError) "tool_result_error" else "tool_result",
+            content = jsonString(output),
+            toolUseId = toolUseId,
+            agentName = agentName,
+        )
+    }
+
     private fun jsonStr(s: String?): String =
         if (s == null) "null" else Json.encodeToString(String.serializer(), s)
 

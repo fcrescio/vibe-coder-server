@@ -79,6 +79,9 @@ object ConfigLoader {
         System.getenv("VIBECODER_AGENT_TIMEOUT_MINUTES")?.takeIf { it.isNotBlank() }?.toIntOrNull()?.let {
             a = a.copy(timeoutMinutes = it)
         }
+        System.getenv("VIBECODER_AGENT_PERMISSION_MODE")?.takeIf { it.isNotBlank() }?.let {
+            a = a.copy(permissionMode = it)
+        }
         return a
     }
 
