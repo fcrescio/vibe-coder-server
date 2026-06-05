@@ -181,7 +181,24 @@ class MistralVibeAcpSessionManager(
             },
             timeoutMs = 10_000,
         )
-        val newSession = session.request(
+        val sessionResult = if (savedId != null) {
+            runCatching {
+                session.request(
+                    "session/load",
+                    buildJsonObject {
+                        put("cwd", projectRoot.toString())
+                        put("sessionId", savedId)
+                        putJsonArray("mcp_servers") {}
+                    },
+                    timeoutMs = 30_000,
+                )
+            }.onFailure {
+                log.info { "[$projectId] failed to load ACP session $savedId; starting new session (${it.message})" }
+                runCatching { sessionIdFile(projectId).deleteIfExists() }
+            }.getOrNull()
+        } else {
+            null
+        } ?: session.request(
             "session/new",
             buildJsonObject {
                 put("cwd", projectRoot.toString())
@@ -189,15 +206,21 @@ class MistralVibeAcpSessionManager(
             },
             timeoutMs = 20_000,
         )
-        session.sessionId = newSession["sessionId"]?.jsonPrimitive?.contentOrNull
-            ?: newSession["session_id"]?.jsonPrimitive?.contentOrNull
-            ?: throw IllegalStateException("vibe-acp session/new did not return session_id")
+        session.sessionId = sessionResult["sessionId"]?.jsonPrimitive?.contentOrNull
+            ?: sessionResult["session_id"]?.jsonPrimitive?.contentOrNull
+            ?: savedId
+            ?: throw IllegalStateException("vibe-acp session did not return session_id")
         runCatching { writeSessionId(projectId, session.sessionId) }
             .onFailure { log.warn(it) { "[$projectId] failed to persist ACP session-id" } }
         hub.emitConsole(topic(projectId)) { seq ->
             WsFrame.ConsoleSessionStarted(sessionId = session.sessionId, model = "Mistral Vibe ACP", cwd = projectRoot.toString(), seq = seq)
         }
-        history?.systemNotice(projectId, session.sessionId, "session_started", "Mistral Vibe ACP session started in $projectRoot")
+        history?.systemNotice(
+            projectId,
+            session.sessionId,
+            if (savedId != null && session.sessionId == savedId) "session_loaded" else "session_started",
+            "Mistral Vibe ACP session ready in $projectRoot",
+        )
         return session
     }
 

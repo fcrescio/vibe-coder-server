@@ -39,6 +39,7 @@ server/workspace/
 # Logs
 *.log
 logs/
+tmp/
 
 # OS
 .DS_Store
