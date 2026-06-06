@@ -21,6 +21,8 @@ data class ServerConfig(
     val i18n: I18nSection = I18nSection(),
     /** v1.5.0 — Android 키스토어 관리. defaults 가 UI form prefill 값. */
     val keystore: KeystoreSection = KeystoreSection(),
+    /** ADB host for device discovery. Empty = local ADB server. */
+    val adb: AdbSection = AdbSection(),
 )
 
 @Serializable
@@ -63,6 +65,19 @@ data class KeystoreDefaults(
     /** 평문 password — 운영자 본인이 server.yml 에서만 설정 (또는 env override). 비어있으면 form 필수. */
     val defaultPassword: String = "",
     val validityYears: Int = 25,
+)
+
+/**
+ * ADB host configuration for device discovery.
+ *
+ * When [host] is empty, `adb devices` runs against the local ADB server.
+ * Set to `host:port` (e.g. `192.168.1.100:5037`) for a remote ADB server.
+ *
+ * Env override: `VIBECODER_ADB_HOST`
+ */
+@Serializable
+data class AdbSection(
+    val host: String = "",
 )
 
 /**

@@ -68,6 +68,11 @@ object ConfigLoader {
             ?.takeIf { it in setOf("en", "ko") }
             ?.let { current = current.copy(i18n = current.i18n.copy(defaultLanguage = it)) }
 
+        // ADB host env override
+        System.getenv("VIBECODER_ADB_HOST")?.takeIf { it.isNotBlank() }?.let {
+            current = current.copy(adb = current.adb.copy(host = it))
+        }
+
         return current
     }
 
