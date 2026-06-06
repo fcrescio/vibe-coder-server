@@ -76,6 +76,7 @@ internal object SettingsNav {
             Triple("security", t("settings.tab.security"), "/password"),
             Triple("notifications", t("settings.tab.notifications"), "/settings/email"),
             Triple("build-env", t("settings.tab.buildEnv"), "/env-setup"),
+            Triple("adb", t("settings.tab.adb"), "/settings/adb"),
             Triple("prompts", t("settings.tab.prompts"), "/prompts"),
             Triple("backup", t("settings.tab.backup"), "/backup"),
             Triple("monitoring", t("settings.tab.monitoring"), "/usage"),
@@ -107,6 +108,7 @@ internal object SettingsNav {
             p == "/settings/ssh-key" -> "build-env"
             p.startsWith("/settings/keystores") -> "build-env"
             p.startsWith("/settings/terminal") -> "build-env"
+            p == "/settings/adb" -> "adb"
             p.startsWith("/prompts") -> "prompts"
             p.startsWith("/agents") -> "prompts"
             p.startsWith("/backup") -> "backup"

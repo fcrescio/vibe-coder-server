@@ -102,6 +102,7 @@ internal object MessagesEn {
         "settings.tab.audit" to "Audit",
         "settings.tab.buildEnv" to "Build environment",
         "settings.tab.prompts" to "Prompts & Agents",
+        "settings.tab.adb" to "ADB Devices",
         "settings.tab.monitoring" to "Monitoring",
         // v1.22.0 — Settings unified tab page title.
         "settings.tabs.title" to "Settings",

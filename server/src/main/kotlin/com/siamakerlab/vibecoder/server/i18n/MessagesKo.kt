@@ -80,6 +80,7 @@ internal object MessagesKo {
         "settings.tab.audit" to "감사 로그",
         "settings.tab.buildEnv" to "빌드 환경",
         "settings.tab.prompts" to "프롬프트 & 에이전트",
+        "settings.tab.adb" to "ADB 기기",
         "settings.tab.monitoring" to "모니터링",
         // v1.22.0 — 설정 통합 탭 페이지 타이틀.
         "settings.tabs.title" to "설정",
