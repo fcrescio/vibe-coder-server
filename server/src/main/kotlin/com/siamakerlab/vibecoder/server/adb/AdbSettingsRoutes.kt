@@ -6,6 +6,8 @@ import com.siamakerlab.vibecoder.server.admin.requireAdminOrRedirect
 import com.siamakerlab.vibecoder.server.admin.requireSessionOrRedirect
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
+import com.siamakerlab.vibecoder.server.config.ConfigPersistence
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.server.application.call
 import io.ktor.server.response.respondRedirect
@@ -13,6 +15,8 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+
+private val log = KotlinLogging.logger {}
 
 /**
  * `/settings/adb` SSR — ADB host configuration + connected device list.
@@ -38,6 +42,15 @@ fun Routing.adbSettingsRoutes(authDeps: AdminRoutesDeps, adb: AdbService) {
         val params = requireCsrf()
         val host = params["host"] ?: ""
         adb.updateHost(host)
+        // Persist to server.yml so the host survives server restarts
+        val newConfig = authDeps.config.copy(adb = authDeps.config.adb.copy(host = host))
+        try {
+            ConfigPersistence.save(newConfig)
+        } catch (e: Throwable) {
+            log.error(e) { "adb host persist failed" }
+            call.respondRedirect("/settings/adb?err=persist_failed")
+            return@post
+        }
         call.respondRedirect("/settings/adb?ok=saved")
     }
 }
