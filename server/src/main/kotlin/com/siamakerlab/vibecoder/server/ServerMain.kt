@@ -14,6 +14,7 @@ import com.siamakerlab.vibecoder.server.claude.ClaudeSessionManager
 import com.siamakerlab.vibecoder.server.claude.ClaudeStatusService
 import com.siamakerlab.vibecoder.server.agent.AgentRuntime
 import com.siamakerlab.vibecoder.server.agent.MistralVibeAcpSessionManager
+import com.siamakerlab.vibecoder.server.adb.AdbService
 import com.siamakerlab.vibecoder.server.config.ConfigLoader
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.SystemClock
@@ -254,6 +255,7 @@ fun main(args: Array<String>) {
     // (clone / commit / log) 가 GIT_CONFIG_GLOBAL=/home/vibe/.config/git/config 를
     // 자동 인식. 본 service 는 그 파일을 `git config --global` CLI 로 read/write.
     val gitConfig = com.siamakerlab.vibecoder.server.env.GitConfigService()
+    val adbService = AdbService().also { it.initHost(config.adb.host) }
     val mcp = McpService(clock, queue, hub)
     val status = StatusService(config, projectRepo, buildRepo, env)
     val actionRegistry = ProjectActionRegistry(workspace)
@@ -479,6 +481,7 @@ fun main(args: Array<String>) {
         kotlinLspService = kotlinLspService,
         keystoreService = keystoreService,
         gitConfig = gitConfig,
+        adbService = adbService,
     )
 
     Runtime.getRuntime().addShutdownHook(Thread {

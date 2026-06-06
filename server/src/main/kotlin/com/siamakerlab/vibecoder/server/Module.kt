@@ -66,6 +66,8 @@ import com.siamakerlab.vibecoder.server.emulator.emulatorRoutes
 import com.siamakerlab.vibecoder.server.emulator.vncProxyRoutes
 import com.siamakerlab.vibecoder.server.notify.emailSettingsRoutes
 import com.siamakerlab.vibecoder.server.notify.webhookSettingsRoutes
+import com.siamakerlab.vibecoder.server.adb.AdbService
+import com.siamakerlab.vibecoder.server.adb.adbSettingsRoutes
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.Clock
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
@@ -236,6 +238,7 @@ data class ServerContext(
      * GIT_CONFIG_GLOBAL=/home/vibe/.config/git/config 파일을 통해 영속화.
      */
     val gitConfig: com.siamakerlab.vibecoder.server.env.GitConfigService,
+    val adbService: AdbService,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -446,6 +449,7 @@ fun Application.module(ctx: ServerContext) {
         usersRoutes(adminDeps, ctx.adminUserRepo, ctx.deviceRepo, ctx.hasher)
         emailSettingsRoutes(adminDeps, ctx.emailNotifier)
         webhookSettingsRoutes(adminDeps, ctx.webhookNotifier)
+        adbSettingsRoutes(adminDeps, ctx.adbService)
         emulatorRoutes(adminDeps, ctx.emulator)
         // v0.42.0 — noVNC reverse proxy (admin-only).
         vncProxyRoutes(adminDeps)
