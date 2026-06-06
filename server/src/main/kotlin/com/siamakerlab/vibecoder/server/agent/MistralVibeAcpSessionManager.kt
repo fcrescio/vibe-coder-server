@@ -706,6 +706,11 @@ class MistralVibeAcpSessionManager(
         val androidHome = System.getenv("ANDROID_HOME")?.takeIf { it.isNotBlank() } ?: "/opt/android-sdk"
         val gradleHint = "/home/vibe/.local/gradle/bin/gradle"
         val adbInfo = deviceService?.deviceSummary()?.let { "\n- ADB devices: $it" } ?: ""
+        val deviceTools = if (deviceService != null) """
+            - You have device tools available: device/screencap (capture screenshot as base64 PNG),
+              device/tap (tap at x,y coordinates), device/swipe (swipe gesture).
+              Use these to interact with connected Android devices.
+        """.trimIndent() else ""
         return """
             Vibe Coder environment context:
             - You are editing Android project `$projectId` at `$projectRoot`.
@@ -715,7 +720,7 @@ class MistralVibeAcpSessionManager(
             - Prefer `./gradlew :app:assembleDebug --no-daemon` when a wrapper exists.
             - If `gradlew` is missing, use installed Gradle on PATH or `$gradleHint` to create the wrapper; do not download toolchains manually.
             - Before coding, inspect the project briefly with file reads or short shell commands. Before finishing, run a targeted build when practical and report the result.
-            - Keep responses concise: changed files, key decisions, build status, next blocker if any.$adbInfo
+            - Keep responses concise: changed files, key decisions, build status, next blocker if any.$adbInfo$deviceTools
         """.trimIndent()
     }
 
