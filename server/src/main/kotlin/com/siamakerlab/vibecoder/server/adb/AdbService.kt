@@ -31,9 +31,7 @@ class AdbService {
     fun listDevices(): AdbDevicesResult {
         val cmd = buildList {
             add(resolveAdb())
-            if (adbHost.isNotBlank()) {
-                add("-H"); add(adbHost)
-            }
+            addHostAndPort(this)
             add("devices"); add("-l")
         }
         return runCommand(cmd, timeoutSeconds = 10).parseDevices()
@@ -43,9 +41,7 @@ class AdbService {
     fun rawCommand(vararg args: String): AdbCommandResult {
         val cmd = buildList {
             add(resolveAdb())
-            if (adbHost.isNotBlank()) {
-                add("-H"); add(adbHost)
-            }
+            addHostAndPort(this)
             args.forEach { add(it) }
         }
         return runCommand(cmd, timeoutSeconds = 30)
@@ -67,6 +63,22 @@ class AdbService {
     }
 
     // region internals
+
+    /** Add `-H <host> [-P <port>]` to the command list if [adbHost] is set. */
+    private fun addHostAndPort(cmd: MutableList<String>) {
+        if (adbHost.isBlank()) return
+        val colon = adbHost.lastIndexOf(':')
+        if (colon > 0 && colon < adbHost.length - 1) {
+            val host = adbHost.substring(0, colon)
+            val port = adbHost.substring(colon + 1)
+            cmd.add("-H"); cmd.add(host)
+            if (port.all { it.isDigit() }) {
+                cmd.add("-P"); cmd.add(port)
+            }
+        } else {
+            cmd.add("-H"); cmd.add(adbHost)
+        }
+    }
 
     private fun runCommand(cmd: List<String>, timeoutSeconds: Long): AdbCommandResult {
         return try {
