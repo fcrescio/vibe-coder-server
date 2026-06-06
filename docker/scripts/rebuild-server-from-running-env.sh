@@ -9,7 +9,7 @@ SERVER_CONTAINER="${SERVER_CONTAINER:-vibe-coder-server}"
 SERVICE="${SERVICE:-vibe-coder-server}"
 
 if [[ -z "${VIBECODER_DB_PASSWORD:-}" ]]; then
-  if ! docker inspect "$SERVER_CONTAINER" >/dev/null 2>&1; then
+  if ! docker inspect -f '{{.Name}}' "$SERVER_CONTAINER" >/dev/null 2>&1; then
     echo "error: VIBECODER_DB_PASSWORD is not set and container '$SERVER_CONTAINER' was not found" >&2
     exit 1
   fi
