@@ -8,7 +8,6 @@ import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import io.ktor.http.ContentType
 import io.ktor.server.application.call
-import io.ktor.server.request.receive
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
@@ -36,8 +35,7 @@ fun Routing.adbSettingsRoutes(authDeps: AdminRoutesDeps, adb: AdbService) {
     post("/settings/adb") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
         if (!requireAdminOrRedirect(sess)) return@post
-        requireCsrf()
-        val params = call.receive<io.ktor.http.Parameters>()
+        val params = requireCsrf()
         val host = params["host"] ?: ""
         adb.updateHost(host)
         call.respondRedirect("/settings/adb?ok=saved")
