@@ -8,6 +8,7 @@ import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import io.ktor.http.ContentType
 import io.ktor.server.application.call
+import io.ktor.server.request.receive
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
@@ -36,7 +37,8 @@ fun Routing.adbSettingsRoutes(authDeps: AdminRoutesDeps, adb: AdbService) {
         val sess = requireSessionOrRedirect(authDeps) ?: return@post
         if (!requireAdminOrRedirect(sess)) return@post
         requireCsrf()
-        val host = call.request.queryParameters["host"] ?: call.request.receiveParameters().get("host") ?: ""
+        val params = call.receive<io.ktor.http.Parameters>()
+        val host = params["host"] ?: ""
         adb.updateHost(host)
         call.respondRedirect("/settings/adb?ok=saved")
     }
@@ -65,7 +67,7 @@ object AdbSettingsTemplates {
         } ?: ""
         val errHtml = err?.let { """<div class="error">$it</div>""" } ?: ""
 
-        val devicesResult = adb.listDevices().parseDevices()
+        val devicesResult = adb.listDevices()
         val deviceRows = if (devicesResult.success) {
             if (devicesResult.devices.isEmpty()) {
                 """<tr><td colspan="4" class="dim" style="text-align:center;padding:16px">No devices connected.</td></tr>"""

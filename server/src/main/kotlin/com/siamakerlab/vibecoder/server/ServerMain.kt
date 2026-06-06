@@ -190,6 +190,7 @@ fun main(args: Array<String>) {
     )
     // v0.49.0 — Project ACL persistence (member 가 일부 프로젝트만 보기).
     val projectAclRepo = com.siamakerlab.vibecoder.server.repo.ProjectAclRepository(clock)
+    val adbService = AdbService().also { it.initHost(config.adb.host) }
     val claudeSessionManager = ClaudeSessionManager(config, workspace, hub, history = conversationHistory)
     val sessionManager: AgentRuntime = when (config.agent.provider.lowercase()) {
         "mistral-vibe-acp" -> MistralVibeAcpSessionManager(config, workspace, hub, history = conversationHistory, adbService = adbService)
@@ -255,7 +256,6 @@ fun main(args: Array<String>) {
     // (clone / commit / log) 가 GIT_CONFIG_GLOBAL=/home/vibe/.config/git/config 를
     // 자동 인식. 본 service 는 그 파일을 `git config --global` CLI 로 read/write.
     val gitConfig = com.siamakerlab.vibecoder.server.env.GitConfigService()
-    val adbService = AdbService().also { it.initHost(config.adb.host) }
     val mcp = McpService(clock, queue, hub)
     val status = StatusService(config, projectRepo, buildRepo, env)
     val actionRegistry = ProjectActionRegistry(workspace)

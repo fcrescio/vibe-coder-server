@@ -36,7 +36,7 @@ class AdbService {
             }
             add("devices"); add("-l")
         }
-        return runCommand(cmd, timeoutSeconds = 10)
+        return runCommand(cmd, timeoutSeconds = 10).parseDevices()
     }
 
     /** Run `adb [-H <host>] <args...>` and return raw output. */
