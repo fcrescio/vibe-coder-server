@@ -45,6 +45,7 @@ import kotlin.io.path.writeText
 
 private val log = KotlinLogging.logger {}
 private const val MAX_AGENT_INSTRUCTIONS_CHARS = 32 * 1024
+private const val DEFAULT_ASSISTANT_BUFFER = "__default__"
 
 /**
  * Spawns `vibe-acp` (or configured command) child processes using the ACP JSON-RPC protocol.
@@ -196,6 +197,10 @@ class AcpAgentProcessFactory(
 
             "agent_message_chunk" -> {
                 val text = textContent(update["content"]) ?: return out
+                val messageId = update["messageId"]?.jsonPrimitive?.contentOrNull
+                    ?: update["message_id"]?.jsonPrimitive?.contentOrNull
+                    ?: DEFAULT_ASSISTANT_BUFFER
+                assistantBuffers.computeIfAbsent(messageId) { StringBuilder() }.append(text)
                 out += ClaudeEvent.AssistantMessage(text = text, isPartial = true)
             }
 
@@ -240,7 +245,21 @@ class AcpAgentProcessFactory(
         val stopReason = result["stopReason"]?.jsonPrimitive?.contentOrNull
             ?: result["stop_reason"]?.jsonPrimitive?.contentOrNull
             ?: return emptyList()
-        return listOf(ClaudeEvent.Done(reason = stopReason))
+        val out = mutableListOf<ClaudeEvent>()
+        val text = flushAssistantBuffers()
+        if (text.isNotBlank()) {
+            out += ClaudeEvent.AssistantMessage(text = text, isPartial = false)
+        }
+        out += ClaudeEvent.Done(reason = stopReason)
+        return out
+    }
+
+    private fun flushAssistantBuffers(): String {
+        if (assistantBuffers.isEmpty()) return ""
+        val text = assistantBuffers.keys.sorted().joinToString("") { key ->
+            assistantBuffers.remove(key)?.toString().orEmpty()
+        }
+        return text
     }
 
     private fun textContent(element: JsonElement?): String? {
