@@ -3,6 +3,7 @@ package com.siamakerlab.vibecoder.server.agent
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.claude.ConversationHistoryService
+import com.siamakerlab.vibecoder.server.projects.ProjectScaffolder
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.ws.WsFrame
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -38,6 +39,7 @@ import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -73,6 +75,12 @@ class MistralVibeAcpSessionManager(
         }
         val session = ensureSession(projectId)
         history?.userPrompt(projectId, session.sessionId.ifBlank { readSessionId(projectId) }, text)
+        val promptText = if (session.environmentPreambleSent) {
+            text
+        } else {
+            session.environmentPreambleSent = true
+            environmentPreamble(projectId, session.projectRoot) + "\n\nUser request:\n" + text
+        }
         session.stdinMutex.withLock {
             setBusy(projectId, true)
             val response = try {
@@ -83,7 +91,7 @@ class MistralVibeAcpSessionManager(
                         putJsonArray("prompt") {
                             add(buildJsonObject {
                                 put("type", "text")
-                                put("text", text)
+                                put("text", promptText)
                             })
                         }
                     },
@@ -144,6 +152,7 @@ class MistralVibeAcpSessionManager(
     private suspend fun spawnSession(projectId: String): AcpProjectSession {
         val projectRoot = workspace.projectRoot(projectId)
         if (!projectRoot.exists()) throw IllegalStateException("project root not found: $projectRoot")
+        ProjectScaffolder.ensureClaudeFiles(projectRoot)
         val cmd = System.getenv("VIBECODER_AGENT_COMMAND")?.takeIf { it.isNotBlank() } ?: config.agent.command
         val vibeHome = prepareRuntimeVibeHome()
         val proc = ProcessBuilder(cmd)
@@ -163,6 +172,7 @@ class MistralVibeAcpSessionManager(
             stdout = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8)),
             stderr = BufferedReader(InputStreamReader(proc.errorStream, StandardCharsets.UTF_8)),
             sessionId = savedId.orEmpty(),
+            projectRoot = projectRoot,
         )
         sessions[projectId] = session
         session.readerJob = scope.launch { readStdout(session) }
@@ -172,7 +182,7 @@ class MistralVibeAcpSessionManager(
             "initialize",
             buildJsonObject {
                 put("protocol_version", 1)
-                put("client_capabilities", buildJsonObject {})
+                put("client_capabilities", acpClientCapabilities())
                 putJsonObject("client_info") {
                     put("name", "vibe-coder-server")
                     put("title", "Vibe Coder Server")
@@ -240,27 +250,7 @@ class MistralVibeAcpSessionManager(
             }
         } else if (targetConfig.notExists()) {
             targetConfig.writeText(
-                """
-                active_model = "local"
-                enable_telemetry = false
-
-                [[providers]]
-                name = "llamacpp"
-                api_base = "http://10.89.0.3:8080/v1"
-                api_key_env_var = ""
-                api_style = "openai"
-                backend = "generic"
-
-                [[models]]
-                name = "local"
-                provider = "llamacpp"
-                alias = "local"
-
-                [session_logging]
-                save_dir = "${runtimeHome.resolve("logs/session")}"
-                session_prefix = "session"
-                enabled = true
-                """.trimIndent() + "\n",
+                defaultLocalConfig(runtimeHome),
             )
         }
 
@@ -279,11 +269,128 @@ class MistralVibeAcpSessionManager(
         } else {
             text.trimEnd() + "\n\n[session_logging]\nsave_dir = \"$sessionDir\"\nsession_prefix = \"session\"\nenabled = true\n"
         }
-        return replaced
+        return forceLocalAgentConfig(replaced)
             .replace(Regex("""(?m)^enable_telemetry\s*=\s*true\s*$"""), "enable_telemetry = false")
             .replace(Regex("""(?m)^enable_update_checks\s*=\s*true\s*$"""), "enable_update_checks = false")
             .replace(Regex("""(?m)^enable_auto_update\s*=\s*true\s*$"""), "enable_auto_update = false")
     }
+
+    private fun defaultLocalConfig(runtimeHome: Path): String {
+        val endpoint = agentEndpoint()
+        val modelName = agentModelName()
+        val modelAlias = agentModelAlias()
+        return """
+            active_model = "$modelAlias"
+            enable_telemetry = false
+            enable_update_checks = false
+            enable_auto_update = false
+
+            [[providers]]
+            name = "llamacpp"
+            api_base = "$endpoint"
+            api_key_env_var = ""
+            api_style = "openai"
+            backend = "generic"
+            reasoning_field_name = "reasoning_content"
+
+            [[models]]
+            name = "$modelName"
+            provider = "llamacpp"
+            alias = "$modelAlias"
+            auto_compact_threshold = 200000
+
+            [session_logging]
+            save_dir = "${runtimeHome.resolve("logs/session")}"
+            session_prefix = "session"
+            enabled = true
+        """.trimIndent() + "\n"
+    }
+
+    private fun forceLocalAgentConfig(text: String): String {
+        val endpoint = agentEndpoint()
+        val modelName = agentModelName()
+        val modelAlias = agentModelAlias()
+        val withActive = if (Regex("""(?m)^active_model\s*=\s*".*"$""").containsMatchIn(text)) {
+            text.replace(Regex("""(?m)^active_model\s*=\s*".*"$"""), """active_model = "$modelAlias"""")
+        } else {
+            """active_model = "$modelAlias"""" + "\n" + text
+        }
+        val withProviderEndpoint = replaceLlamacppApiBase(withActive, endpoint)
+        val withProvider = if (Regex("""(?m)^\s*name\s*=\s*"llamacpp"\s*$""").containsMatchIn(withProviderEndpoint)) {
+            withProviderEndpoint
+        } else {
+            withProviderEndpoint.trimEnd() + """
+
+                [[providers]]
+                name = "llamacpp"
+                api_base = "$endpoint"
+                api_key_env_var = ""
+                api_style = "openai"
+                backend = "generic"
+                reasoning_field_name = "reasoning_content"
+            """.trimIndent()
+        }
+        return if (Regex("""(?ms)\[\[models]]\s+name\s*=\s*"\Q$modelName\E".*?alias\s*=\s*"\Q$modelAlias\E"""").containsMatchIn(withProvider)) {
+            withProvider
+        } else {
+            withProvider.trimEnd() + """
+
+                [[models]]
+                name = "$modelName"
+                provider = "llamacpp"
+                alias = "$modelAlias"
+                auto_compact_threshold = 200000
+            """.trimIndent() + "\n"
+        }
+    }
+
+    private fun replaceLlamacppApiBase(text: String, endpoint: String): String {
+        val lines = text.lines().toMutableList()
+        var inProvider = false
+        var providerStart = -1
+        var providerNameIsLlamacpp = false
+        var apiBaseIndex = -1
+
+        fun flushProvider() {
+            if (inProvider && providerNameIsLlamacpp) {
+                if (apiBaseIndex >= 0) {
+                    lines[apiBaseIndex] = """api_base = "$endpoint""""
+                } else if (providerStart >= 0) {
+                    lines.add(providerStart + 1, """api_base = "$endpoint"""")
+                }
+            }
+            inProvider = false
+            providerStart = -1
+            providerNameIsLlamacpp = false
+            apiBaseIndex = -1
+        }
+
+        lines.indices.forEach { i ->
+            val line = lines[i].trim()
+            if (line == "[[providers]]") {
+                flushProvider()
+                inProvider = true
+                providerStart = i
+            } else if (line.startsWith("[[") && line != "[[providers]]") {
+                flushProvider()
+            } else if (inProvider && line == """name = "llamacpp"""") {
+                providerNameIsLlamacpp = true
+            } else if (inProvider && line.startsWith("api_base")) {
+                apiBaseIndex = i
+            }
+        }
+        flushProvider()
+        return lines.joinToString("\n")
+    }
+
+    private fun agentEndpoint(): String =
+        System.getenv("VIBECODER_AGENT_ENDPOINT")?.takeIf { it.isNotBlank() } ?: "http://10.89.0.3:8080/v1"
+
+    private fun agentModelAlias(): String =
+        System.getenv("VIBECODER_AGENT_MODEL_ALIAS")?.takeIf { it.isNotBlank() } ?: "qwen36"
+
+    private fun agentModelName(): String =
+        System.getenv("VIBECODER_AGENT_MODEL_NAME")?.takeIf { it.isNotBlank() } ?: "qwen3.6-A3B-spec"
 
     private suspend fun readStdout(session: AcpProjectSession) {
         try {
@@ -307,6 +414,9 @@ class MistralVibeAcpSessionManager(
                 }
                 if (idElement != null && method == "session/request_permission") {
                     respondPermission(session, idElement)
+                    continue
+                }
+                if (idElement != null && handleFsRequest(session, idElement, obj)) {
                     continue
                 }
                 if (idElement != null && handleTerminalRequest(session, idElement, obj)) {
@@ -335,6 +445,83 @@ class MistralVibeAcpSessionManager(
                 }
             }
         }
+    }
+
+    private fun acpClientCapabilities(): JsonObject =
+        buildJsonObject {
+            putJsonObject("fs") {
+                put("readTextFile", true)
+                put("writeTextFile", true)
+            }
+            put("terminal", true)
+            putJsonObject("auth") {
+                put("terminal", false)
+            }
+            putJsonObject("_meta") {
+                put("terminal-auth", false)
+                put("vibe-coder-server", true)
+            }
+        }
+
+    private suspend fun handleFsRequest(session: AcpProjectSession, id: JsonElement, obj: JsonObject): Boolean {
+        return when (val method = obj["method"]?.jsonPrimitive?.contentOrNull) {
+            "fs/read_text_file" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val path = safeProjectPath(session, params["path"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                    val line = params["line"]?.jsonPrimitive?.intOrNull?.takeIf { it > 0 } ?: 1
+                    val limit = params["limit"]?.jsonPrimitive?.intOrNull?.takeIf { it >= 0 }
+                    val content = withContext(Dispatchers.IO) {
+                        val lines = Files.readAllLines(path, StandardCharsets.UTF_8)
+                        val selected = lines.asSequence()
+                            .drop((line - 1).coerceAtLeast(0))
+                            .let { seq -> if (limit != null) seq.take(limit) else seq }
+                            .joinToString("\n")
+                        if (selected.isEmpty()) selected else "$selected\n"
+                    }
+                    session.write(result(id) {
+                        put("content", content)
+                    })
+                }.onFailure {
+                    respondRequestError(session, id, method, it.message ?: "read failed")
+                }
+                true
+            }
+            "fs/write_text_file" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val path = safeProjectPath(session, params["path"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                    val content = params["content"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    withContext(Dispatchers.IO) {
+                        path.parent?.let { Files.createDirectories(it) }
+                        Files.writeString(
+                            path,
+                            content,
+                            StandardCharsets.UTF_8,
+                            StandardOpenOption.CREATE,
+                            StandardOpenOption.TRUNCATE_EXISTING,
+                            StandardOpenOption.WRITE,
+                        )
+                    }
+                    session.write(result(id) {})
+                }.onFailure {
+                    respondRequestError(session, id, method, it.message ?: "write failed")
+                }
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun safeProjectPath(session: AcpProjectSession, rawPath: String): Path {
+        require(rawPath.isNotBlank()) { "path is required" }
+        val candidate = Path.of(rawPath).let {
+            if (it.isAbsolute) it else session.projectRoot.resolve(it)
+        }.toAbsolutePath().normalize()
+        if (!candidate.startsWith(session.projectRoot)) {
+            throw IllegalArgumentException("path outside project workspace: $candidate")
+        }
+        return candidate
     }
 
     private suspend fun handleTerminalRequest(session: AcpProjectSession, id: JsonElement, obj: JsonObject): Boolean {
@@ -423,6 +610,22 @@ class MistralVibeAcpSessionManager(
         }
     }
 
+    private fun environmentPreamble(projectId: String, projectRoot: Path): String {
+        val androidHome = System.getenv("ANDROID_HOME")?.takeIf { it.isNotBlank() } ?: "/opt/android-sdk"
+        val gradleHint = "/home/vibe/.local/gradle/bin/gradle"
+        return """
+            Vibe Coder environment context:
+            - You are editing Android project `$projectId` at `$projectRoot`.
+            - Read `CLAUDE.md` before broad changes; it contains the project rules and Android toolchain policy.
+            - This is a non-interactive web/mobile console. Do not use menus, REPLs, watch modes, or commands waiting for stdin.
+            - Android SDK is available through ANDROID_HOME/ANDROID_SDK_ROOT, normally `$androidHome`.
+            - Prefer `./gradlew :app:assembleDebug --no-daemon` when a wrapper exists.
+            - If `gradlew` is missing, use installed Gradle on PATH or `$gradleHint` to create the wrapper; do not download toolchains manually.
+            - Before coding, inspect the project briefly with file reads or short shell commands. Before finishing, run a targeted build when practical and report the result.
+            - Keep responses concise: changed files, key decisions, build status, next blocker if any.
+        """.trimIndent()
+    }
+
     private fun terminalId(obj: JsonObject): String =
         obj["params"]?.jsonObject?.get("terminalId")?.jsonPrimitive?.contentOrNull
             ?: obj["params"]?.jsonObject?.get("terminal_id")?.jsonPrimitive?.contentOrNull
@@ -436,9 +639,15 @@ class MistralVibeAcpSessionManager(
         }
 
     private suspend fun readStderr(session: AcpProjectSession) {
-        while (true) {
-            val line = withContext(Dispatchers.IO) { session.stderr.readLine() } ?: break
-            if (line.isNotBlank()) log.info { "[${session.projectId}][vibe-acp] $line" }
+        runCatching {
+            while (true) {
+                val line = withContext(Dispatchers.IO) { session.stderr.readLine() } ?: break
+                if (line.isNotBlank()) log.info { "[${session.projectId}][vibe-acp] $line" }
+            }
+        }.onFailure {
+            if (session.process.isAlive) {
+                log.debug(it) { "[${session.projectId}][vibe-acp] stderr reader stopped" }
+            }
         }
     }
 
@@ -460,8 +669,7 @@ class MistralVibeAcpSessionManager(
                 flushAssistant(projectId)
                 val id = update["toolCallId"]?.jsonPrimitive?.contentOrNull
                     ?: update["tool_call_id"]?.jsonPrimitive?.contentOrNull ?: return
-                val name = update["field_meta"]?.jsonObject?.get("tool_name")?.jsonPrimitive?.contentOrNull
-                    ?: update["title"]?.jsonPrimitive?.contentOrNull ?: "tool"
+                val name = acpToolName(update)
                 hub.emitConsole(topic(projectId)) { seq -> WsFrame.ConsoleToolUse(toolName = name, input = update, toolUseId = id, seq = seq) }
                 history?.toolUse(projectId, currentSessionId(projectId), name, id, update)
             }
@@ -480,6 +688,21 @@ class MistralVibeAcpSessionManager(
                 if (msg.isNotBlank()) hub.emitConsole(topic(projectId)) { seq -> WsFrame.ConsoleSystem(code = "usage", message = msg, seq = seq) }
             }
         }
+    }
+
+    private fun acpToolName(update: JsonObject): String {
+        val explicit = update["field_meta"]?.jsonObject?.get("tool_name")?.jsonPrimitive?.contentOrNull
+        val title = update["title"]?.jsonPrimitive?.contentOrNull
+        val raw = explicit ?: when {
+            title == null -> null
+            title.startsWith("Reading ") -> "read"
+            title.startsWith("Editing ") -> "edit"
+            title.startsWith("Writing ") -> "write_file"
+            title.startsWith("Grepping ") -> "grep"
+            title.startsWith("bash:") -> "bash"
+            else -> title
+        } ?: "tool"
+        return raw.take(64)
     }
 
     private suspend fun respondPermission(session: AcpProjectSession, id: JsonElement) {
@@ -501,12 +724,16 @@ class MistralVibeAcpSessionManager(
     }
 
     private suspend fun respondMethodNotFound(session: AcpProjectSession, id: JsonElement, method: String) {
+        respondRequestError(session, id, method, "Method not found: $method", code = -32601)
+    }
+
+    private suspend fun respondRequestError(session: AcpProjectSession, id: JsonElement, method: String, message: String, code: Int = -32000) {
         session.write(buildJsonObject {
             put("jsonrpc", "2.0")
             put("id", id)
             putJsonObject("error") {
-                put("code", -32601)
-                put("message", "Method not found: $method")
+                put("code", code)
+                put("message", "$method failed: $message")
             }
         })
     }
@@ -593,7 +820,9 @@ class MistralVibeAcpSessionManager(
         val stderr: BufferedReader,
         val stdinMutex: Mutex = Mutex(),
         val pending: ConcurrentHashMap<String, CompletableDeferred<JsonObject>> = ConcurrentHashMap(),
+        val projectRoot: Path,
         @Volatile var sessionId: String = "",
+        @Volatile var environmentPreambleSent: Boolean = false,
         @Volatile var readerJob: Job? = null,
         @Volatile var stderrJob: Job? = null,
         @Volatile var lastActivityMs: Long = System.currentTimeMillis(),
