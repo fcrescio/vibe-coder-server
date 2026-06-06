@@ -99,8 +99,17 @@ class MistralVibeAcpSessionManager(
                 )
             } catch (e: Exception) {
                 setBusy(projectId, false)
-                emitSystem(projectId, "agent_send_failed", e.message ?: "Mistral Vibe ACP prompt failed")
-                terminateSession(projectId)
+                if (e is AcpRequestException && e.isContextTooLong) {
+                    flushAssistant(projectId)
+                    emitSystem(
+                        projectId,
+                        "context_too_long",
+                        e.message ?: "Context too long. Send /compact to summarize the conversation, then retry.",
+                    )
+                } else {
+                    emitSystem(projectId, "agent_send_failed", e.message ?: "Mistral Vibe ACP prompt failed")
+                    terminateSession(projectId)
+                }
                 throw e
             }
             val stopReason = response["stop_reason"]?.jsonPrimitive?.contentOrNull ?: "end_turn"
@@ -842,7 +851,9 @@ class MistralVibeAcpSessionManager(
             val response = awaitWithIdleTimeout(deferred, method, timeoutMs)
             response["error"]?.jsonObject?.let {
                 val msg = it["message"]?.jsonPrimitive?.contentOrNull ?: "ACP request failed"
-                throw IllegalStateException(msg)
+                val code = it["code"]?.jsonPrimitive?.intOrNull
+                val data = it["data"]?.jsonObject
+                throw AcpRequestException(code = code, detail = msg, data = data)
             }
             return response["result"]?.jsonObject ?: JsonObject(emptyMap())
         }
@@ -877,5 +888,20 @@ class MistralVibeAcpSessionManager(
                 stdin.flush()
             }
         }
+    }
+
+    private class AcpRequestException(
+        val code: Int?,
+        detail: String,
+        val data: JsonObject?,
+    ) : IllegalStateException(detail) {
+        val isContextTooLong: Boolean
+            get() = code == VIBE_CONTEXT_TOO_LONG_CODE ||
+                message.orEmpty().contains("context too long", ignoreCase = true) ||
+                message.orEmpty().contains("maximum context", ignoreCase = true)
+    }
+
+    companion object {
+        private const val VIBE_CONTEXT_TOO_LONG_CODE = -31004
     }
 }

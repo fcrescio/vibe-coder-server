@@ -46,6 +46,7 @@ import kotlin.io.path.writeText
 private val log = KotlinLogging.logger {}
 private const val MAX_AGENT_INSTRUCTIONS_CHARS = 32 * 1024
 private const val DEFAULT_ASSISTANT_BUFFER = "__default__"
+private const val VIBE_CONTEXT_TOO_LONG_CODE = -31004
 
 /**
  * Spawns `vibe-acp` (or configured command) child processes using the ACP JSON-RPC protocol.
@@ -241,6 +242,22 @@ class AcpAgentProcessFactory(
     }
 
     private fun parseResponse(obj: JsonObject): List<ClaudeEvent> {
+        obj["error"]?.jsonObject?.let { error ->
+            val rawCode = error["code"]?.jsonPrimitive?.intOrNull
+            val code = error["code"]?.jsonPrimitive?.contentOrNull ?: "acp_error"
+            val message = error["message"]?.jsonPrimitive?.contentOrNull ?: "ACP request failed"
+            val normalizedCode = if (
+                rawCode == VIBE_CONTEXT_TOO_LONG_CODE ||
+                message.contains("context too long", ignoreCase = true) ||
+                message.contains("maximum context", ignoreCase = true)
+            ) {
+                "context_too_long"
+            } else {
+                code
+            }
+            return listOf(ClaudeEvent.ErrorEvent(code = normalizedCode, message = message))
+        }
+
         val result = obj["result"]?.jsonObject ?: return emptyList()
         val stopReason = result["stopReason"]?.jsonPrimitive?.contentOrNull
             ?: result["stop_reason"]?.jsonPrimitive?.contentOrNull
