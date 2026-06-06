@@ -121,6 +121,8 @@ object AdminTemplates {
             "chat" -> """<path d="M21 15 a2 2 0 0 1-2 2 H7 l-4 4 V5 a2 2 0 0 1 2-2 h14 a2 2 0 0 1 2 2 z"/>"""
             // Lucide "wrench" (단순화)
             "tools" -> """<path d="M14.7 6.3 a4 4 0 0 0-5.4 5.4 L3 18 l3 3 L12.3 14.7 a4 4 0 0 0 5.4-5.4 l-2 2 l-2-2 l2-2 z"/>"""
+            // Lucide "smartphone"
+            "device" -> """<rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>"""
             // Lucide "settings"
             "settings" -> """<circle cx="12" cy="12" r="3"/><path d="M19.4 15 a1.65 1.65 0 0 0 .33 1.82 l.06.06 a2 2 0 1 1-2.83 2.83 l-.06-.06 a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51 V21 a2 2 0 0 1-4 0 v-.09 A1.65 1.65 0 0 0 9 19.4 a1.65 1.65 0 0 0-1.82.33 l-.06.06 a2 2 0 1 1-2.83-2.83 l.06-.06 a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1 H3 a2 2 0 0 1 0-4 h.09 A1.65 1.65 0 0 0 4.6 9 a1.65 1.65 0 0 0-.33-1.82 l-.06-.06 a2 2 0 1 1 2.83-2.83 l.06.06 a1.65 1.65 0 0 0 1.82.33 H9 a1.65 1.65 0 0 0 1-1.51 V3 a2 2 0 0 1 4 0 v.09 a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33 l.06-.06 a2 2 0 1 1 2.83 2.83 l-.06.06 a1.65 1.65 0 0 0-.33 1.82 V9 a1.65 1.65 0 0 0 1.51 1 H21 a2 2 0 0 1 0 4 h-.09 a1.65 1.65 0 0 0-1.51 1 z"/>"""
             else -> ""
@@ -158,6 +160,7 @@ object AdminTemplates {
     ${link("/projects", t("nav.projects"), "projects", "folder")}
     ${link("/chat", t("nav.chat"), "chat", "chat")}
     ${link("/tools/tabs", t("nav.tools"), "tools", "tools")}
+    ${link("/devices", t("nav.devices"), "devices", "device")}
     ${link("/settings/tabs", t("nav.settings"), "settings", "settings")}
   </div>
   <!-- v1.3.2 — 전역 Claude 쿼타 pill. v1.6.2 — header 에 refresh 버튼 + 타임존 제거. -->

@@ -44,6 +44,7 @@ internal object SettingsNav {
             p == "/logs" || p.startsWith("/logs/") -> "tools"
             p.startsWith("/code-search") -> "tools"
             p == "/history" || p.startsWith("/history/") -> "tools"
+            p == "/devices" || p.startsWith("/devices/") -> "devices"
             p.startsWith("/settings/ssh-key") -> "settings"
             p.startsWith("/settings/keystores") -> "settings"
             p.startsWith("/settings/terminal") -> "settings"
