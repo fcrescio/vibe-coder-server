@@ -68,6 +68,7 @@ import com.siamakerlab.vibecoder.server.notify.emailSettingsRoutes
 import com.siamakerlab.vibecoder.server.notify.webhookSettingsRoutes
 import com.siamakerlab.vibecoder.server.adb.AdbService
 import com.siamakerlab.vibecoder.server.adb.adbSettingsRoutes
+import com.siamakerlab.vibecoder.server.devices.deviceRoutes
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.Clock
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
@@ -239,6 +240,7 @@ data class ServerContext(
      */
     val gitConfig: com.siamakerlab.vibecoder.server.env.GitConfigService,
     val adbService: AdbService,
+    val deviceService: com.siamakerlab.vibecoder.server.devices.DeviceService,
 )
 
 fun Application.module(ctx: ServerContext) {
@@ -450,6 +452,7 @@ fun Application.module(ctx: ServerContext) {
         emailSettingsRoutes(adminDeps, ctx.emailNotifier)
         webhookSettingsRoutes(adminDeps, ctx.webhookNotifier)
         adbSettingsRoutes(adminDeps, ctx.adbService)
+        deviceRoutes(adminDeps, ctx.deviceService)
         emulatorRoutes(adminDeps, ctx.emulator)
         // v0.42.0 — noVNC reverse proxy (admin-only).
         vncProxyRoutes(adminDeps)
