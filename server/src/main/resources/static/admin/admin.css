@@ -780,6 +780,21 @@ table.devices small.dim { font-size: 11px; }
 .console-log .log-content { display: flex; flex-direction: column; min-width: 0; }
 .console-log .log-body { white-space: pre-wrap; word-break: break-word; }
 
+.console-image-result {
+    max-width: min(100%, 520px);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #111;
+    overflow: hidden;
+}
+.console-image-result img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 640px;
+    object-fit: contain;
+}
+
 /* v1.7.9 — 응답 카드 내부 하단 meta: 시각 + 복사 버튼. 우측 정렬. */
 .console-log .log-meta {
     display: flex;

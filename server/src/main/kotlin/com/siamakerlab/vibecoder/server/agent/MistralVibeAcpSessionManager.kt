@@ -4,7 +4,6 @@ import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.claude.ConversationHistoryService
 import com.siamakerlab.vibecoder.server.projects.ProjectScaffolder
-import com.siamakerlab.vibecoder.server.adb.AdbService
 import com.siamakerlab.vibecoder.server.devices.DeviceService
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.ws.WsFrame
@@ -29,6 +28,7 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -39,6 +39,10 @@ import java.io.BufferedWriter
 import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -70,20 +74,28 @@ class MistralVibeAcpSessionManager(
     private val terminals = ConcurrentHashMap<String, TerminalProcess>()
     private val nextTerminalId = AtomicLong(1)
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val httpClient = HttpClient.newBuilder()
+        .connectTimeout(java.time.Duration.ofSeconds(10))
+        .build()
 
-    override suspend fun sendPrompt(projectId: String, text: String) {
+    override suspend fun sendPrompt(projectId: String, text: String, images: List<AgentPromptImage>) {
         require(text.isNotBlank()) { "prompt text is required" }
-        val bytes = text.toByteArray(Charsets.UTF_8).size
+        val promptInputText = if (images.isNotEmpty() && !agentSupportsImages()) {
+            text + analyzePromptImageAttachments(text, images)
+        } else {
+            text
+        }
+        val bytes = promptInputText.toByteArray(Charsets.UTF_8).size
         require(bytes <= AgentRuntime.MAX_PROMPT_BYTES) {
             "prompt too large ($bytes bytes UTF-8 > ${AgentRuntime.MAX_PROMPT_BYTES})"
         }
         val session = ensureSession(projectId)
-        history?.userPrompt(projectId, session.sessionId.ifBlank { readSessionId(projectId) }, text)
+        history?.userPrompt(projectId, session.sessionId.ifBlank { readSessionId(projectId) }, promptInputText)
         val promptText = if (session.environmentPreambleSent) {
-            text
+            promptInputText
         } else {
             session.environmentPreambleSent = true
-            environmentPreamble(projectId, session.projectRoot) + "\n\nUser request:\n" + text
+            environmentPreamble(projectId, session.projectRoot) + "\n\nUser request:\n" + promptInputText
         }
         session.stdinMutex.withLock {
             setBusy(projectId, true)
@@ -97,6 +109,15 @@ class MistralVibeAcpSessionManager(
                                 put("type", "text")
                                 put("text", promptText)
                             })
+                            if (images.isNotEmpty() && agentSupportsImages()) {
+                                images.forEach { image ->
+                                    add(buildJsonObject {
+                                        put("type", "image")
+                                        put("mimeType", image.mimeType)
+                                        put("data", image.data)
+                                    })
+                                }
+                            }
                         }
                     },
                     timeoutMs = config.agent.timeoutMinutes.coerceAtLeast(1) * 60_000L,
@@ -294,7 +315,7 @@ class MistralVibeAcpSessionManager(
      * DeviceScreencap, DeviceTap, DeviceSwipe as available tools.
      */
     private fun ensureDeviceToolPaths(text: String): String {
-        val deviceToolPath = "/home/vibe/.vibe/tools/device.py"
+        val deviceToolPath = "/opt/vibe-coder/vibe-tools/device.py"
         val toolPathsLine = Regex("""(?m)^tool_paths\s*=\s*\[(.*)\]$""")
         val match = toolPathsLine.find(text)
         if (match == null) {
@@ -317,6 +338,7 @@ class MistralVibeAcpSessionManager(
         val endpoint = agentEndpoint()
         val modelName = agentModelName()
         val modelAlias = agentModelAlias()
+        val supportsImages = agentSupportsImages()
         return """
             active_model = "$modelAlias"
             enable_telemetry = false
@@ -335,7 +357,7 @@ class MistralVibeAcpSessionManager(
             name = "$modelName"
             provider = "llamacpp"
             alias = "$modelAlias"
-            supports_images = true
+            supports_images = $supportsImages
             auto_compact_threshold = 200000
 
             [session_logging]
@@ -349,6 +371,7 @@ class MistralVibeAcpSessionManager(
         val endpoint = agentEndpoint()
         val modelName = agentModelName()
         val modelAlias = agentModelAlias()
+        val supportsImages = agentSupportsImages()
         val withActive = if (Regex("""(?m)^active_model\s*=\s*".*"$""").containsMatchIn(text)) {
             text.replace(Regex("""(?m)^active_model\s*=\s*".*"$"""), """active_model = "$modelAlias"""")
         } else {
@@ -378,7 +401,7 @@ class MistralVibeAcpSessionManager(
                 name = "$modelName"
                 provider = "llamacpp"
                 alias = "$modelAlias"
-                supports_images = true
+                supports_images = $supportsImages
                 auto_compact_threshold = 200000
             """.trimIndent() + "\n"
         }
@@ -431,6 +454,13 @@ class MistralVibeAcpSessionManager(
 
     private fun agentModelName(): String =
         System.getenv("VIBECODER_AGENT_MODEL_NAME")?.takeIf { it.isNotBlank() } ?: "qwen3.6-A3B-spec"
+
+    private fun agentSupportsImages(): Boolean =
+        System.getenv("VIBECODER_AGENT_SUPPORTS_IMAGES")
+            ?.trim()
+            ?.lowercase()
+            ?.let { it in setOf("1", "true", "yes", "on") }
+            ?: true
 
     private suspend fun readStdout(session: AcpProjectSession) {
         try {
@@ -499,6 +529,7 @@ class MistralVibeAcpSessionManager(
             put("terminal", true)
             putJsonObject("device") {
                 put("screencap", true)
+                put("analyzeScreenshot", true)
                 put("tap", true)
                 put("swipe", true)
             }
@@ -729,18 +760,120 @@ class MistralVibeAcpSessionManager(
                 }
                 true
             }
+            "device/analyze_screenshot" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    val question = params["question"]?.jsonPrimitive?.contentOrNull
+                        ?: "Describe the current Android device screen and mention visible UI issues."
+                    if (serial == null) {
+                        respondRequestError(session, id, method, "no device serial provided and no device connected")
+                        return@runCatching
+                    }
+                    val b64 = svc.screencapBase64(serial)
+                    if (b64 == null) {
+                        respondRequestError(session, id, method, "screencap failed")
+                        return@runCatching
+                    }
+                    val answer = analyzeImageWithEndpoint(question, b64, "image/png")
+                    session.write(result(id) {
+                        put("serial", serial)
+                        put("mimeType", "image/png")
+                        put("data", b64)
+                        put("answer", answer)
+                    })
+                }.onFailure {
+                    respondRequestError(session, id, method, it.message ?: "visual analysis failed")
+                }
+                true
+            }
             else -> false
         }
     }
+
+    private suspend fun analyzePromptImageAttachments(text: String, images: List<AgentPromptImage>): String =
+        withContext(Dispatchers.IO) {
+            val analyses = images.mapIndexed { index, image ->
+                runCatching {
+                    val answer = analyzeImageWithEndpoint(
+                        question = "Analyze this image attachment for the following user request. Focus only on visual facts that help answer it.\n\nUser request:\n$text",
+                        base64Image = image.data,
+                        mimeType = image.mimeType,
+                    )
+                    "Image ${index + 1} (${image.mimeType}): $answer"
+                }.getOrElse { e ->
+                    "Image ${index + 1} (${image.mimeType}): external visual analysis failed: ${e.message ?: e::class.simpleName}"
+                }
+            }
+            "\n\n[${images.size} image attachment(s) were provided. Native ACP image forwarding is disabled, so the server analyzed them externally before this prompt.]\n" +
+                analyses.joinToString("\n\n")
+        }
+
+    private suspend fun analyzeImageWithEndpoint(question: String, base64Image: String, mimeType: String): String =
+        withContext(Dispatchers.IO) {
+            val endpoint = visionEndpoint().trimEnd('/')
+            val url = if (endpoint.endsWith("/chat/completions")) endpoint else "$endpoint/chat/completions"
+            val payload = buildJsonObject {
+                put("model", visionModelName())
+                put("max_tokens", 1200)
+                putJsonArray("messages") {
+                    add(buildJsonObject {
+                        put("role", "user")
+                        putJsonArray("content") {
+                            add(buildJsonObject {
+                                put("type", "text")
+                                put("text", question)
+                            })
+                            add(buildJsonObject {
+                                put("type", "image_url")
+                                putJsonObject("image_url") {
+                                    put("url", "data:$mimeType;base64,$base64Image")
+                                }
+                            })
+                        }
+                    })
+                }
+            }.toString()
+            val request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(java.time.Duration.ofSeconds(90))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer ${visionApiKey()}")
+                .POST(HttpRequest.BodyPublishers.ofString(payload))
+                .build()
+            val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+            if (response.statusCode() !in 200..299) {
+                throw IllegalStateException("vision endpoint HTTP ${response.statusCode()}: ${response.body().take(300)}")
+            }
+            val body = json.parseToJsonElement(response.body()).jsonObject
+            val message = body["choices"]?.jsonArray?.firstOrNull()
+                ?.jsonObject?.get("message")?.jsonObject
+            message?.get("content")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                ?: message?.get("reasoning_content")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                ?: response.body().take(2000)
+        }
+
+    private fun visionEndpoint(): String =
+        System.getenv("VIBECODER_VISION_ENDPOINT")?.takeIf { it.isNotBlank() } ?: agentEndpoint()
+
+    private fun visionModelName(): String =
+        System.getenv("VIBECODER_VISION_MODEL")?.takeIf { it.isNotBlank() } ?: agentModelName()
+
+    private fun visionApiKey(): String =
+        System.getenv("VIBECODER_VISION_API_KEY")?.takeIf { it.isNotBlank() }
+            ?: System.getenv("VIBECODER_AGENT_API_KEY")
+            ?: "dummy"
 
     private fun environmentPreamble(projectId: String, projectRoot: Path): String {
         val androidHome = System.getenv("ANDROID_HOME")?.takeIf { it.isNotBlank() } ?: "/opt/android-sdk"
         val gradleHint = "/home/vibe/.local/gradle/bin/gradle"
         val adbInfo = deviceService?.deviceSummary()?.let { "\n- ADB devices: $it" } ?: ""
         val deviceTools = if (deviceService != null) """
-            - You have device tools available: device/screencap (capture screenshot as base64 PNG),
-              device/tap (tap at x,y coordinates), device/swipe (swipe gesture).
-              Use these to interact with connected Android devices.
+            - You have device tools available: device_screencap (capture and show screenshot),
+              device_analyze_screenshot (visual assertion through the vision endpoint),
+              device_tap (tap at x,y coordinates), device_swipe (swipe gesture).
+              Use device_analyze_screenshot to close visual test loops on real/emulated devices.
         """.trimIndent() else ""
         return """
             Vibe Coder environment context:
@@ -974,7 +1107,7 @@ class MistralVibeAcpSessionManager(
                 val err = errorEl.jsonObject
                 val msg = err["message"]?.jsonPrimitive?.contentOrNull ?: "ACP request failed"
                 val code = err["code"]?.jsonPrimitive?.intOrNull
-                val data = err["data"]?.jsonObject
+                val data = err["data"]?.takeIf { it !is JsonNull }?.jsonObject
                 throw AcpRequestException(code = code, detail = msg, data = data)
             }
             val resultEl = response["result"]

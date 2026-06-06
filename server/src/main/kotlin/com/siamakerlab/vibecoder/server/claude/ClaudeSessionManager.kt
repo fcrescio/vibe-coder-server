@@ -87,19 +87,24 @@ class ClaudeSessionManager(
     }
 
     /** Send [text] as a user turn. Spawns the session if necessary. */
-    override suspend fun sendPrompt(projectId: String, text: String) {
+    override suspend fun sendPrompt(projectId: String, text: String, images: List<com.siamakerlab.vibecoder.server.agent.AgentPromptImage>) {
         require(text.isNotBlank()) { "prompt text is required" }
+        val actualText = if (images.isEmpty()) {
+            text
+        } else {
+            text + "\n\n[${images.size} image attachment(s) were provided, but this Claude compatibility path does not forward image blocks.]"
+        }
         // 실제 stdin 으로 흘러갈 UTF-8 byte size 기준으로 검증. v0.12.3 까지는
         // text.length (char count) 였는데 한국어 등 multi-byte 문자에서는 의도와
         // 다르게 작은 입력이 통과되거나 큰 입력이 거부될 수 있었다.
-        val bytes = text.toByteArray(Charsets.UTF_8).size
+        val bytes = actualText.toByteArray(Charsets.UTF_8).size
         require(bytes <= MAX_PROMPT_BYTES) {
             "prompt too large ($bytes bytes UTF-8 > $MAX_PROMPT_BYTES)"
         }
 
         val session = ensureSession(projectId)
         // v0.16.0 — user prompt 영구 적재 (sendPrompt 시점의 sessionId 사용).
-        history?.userPrompt(projectId, session.sessionId, text)
+        history?.userPrompt(projectId, session.sessionId, actualText)
         val envelope = buildJsonObject {
             put("type", "user")
             put("message", buildJsonObject {
@@ -107,7 +112,7 @@ class ClaudeSessionManager(
                 put("content", buildJsonArray {
                     addJsonObject {
                         put("type", "text")
-                        put("text", text)
+                        put("text", actualText)
                     }
                 })
             })

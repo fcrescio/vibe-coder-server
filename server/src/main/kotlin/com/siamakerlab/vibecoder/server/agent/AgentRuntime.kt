@@ -1,7 +1,12 @@
 package com.siamakerlab.vibecoder.server.agent
 
+data class AgentPromptImage(
+    val mimeType: String,
+    val data: String,
+)
+
 interface AgentRuntime {
-    suspend fun sendPrompt(projectId: String, text: String)
+    suspend fun sendPrompt(projectId: String, text: String, images: List<AgentPromptImage> = emptyList())
     suspend fun startNew(projectId: String)
     suspend fun cancelTurn(projectId: String)
     fun isAlive(projectId: String): Boolean

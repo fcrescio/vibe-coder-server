@@ -2,6 +2,7 @@ package com.siamakerlab.vibecoder.server.claude
 
 import com.siamakerlab.vibecoder.server.audit.AuditLogger
 import com.siamakerlab.vibecoder.server.agent.AgentRuntime
+import com.siamakerlab.vibecoder.server.agent.AgentPromptImage
 import com.siamakerlab.vibecoder.server.auth.AUTH_BEARER
 import com.siamakerlab.vibecoder.server.auth.requireApiWrite
 import com.siamakerlab.vibecoder.server.auth.requireDevice
@@ -81,8 +82,18 @@ fun Routing.consoleRoutes(
                     args = listOf(AgentRuntime.MAX_PROMPT_BYTES, byteSize))
             }
 
+            val images = body.images.map {
+                if (!it.mimeType.startsWith("image/")) {
+                    throw ApiException.localized(400, "bad_request", messageKey = "api.console.textRequired", detail = "Only image attachments are supported.")
+                }
+                if (it.data.length > 5_000_000) {
+                    throw ApiException.localized(400, "prompt_too_large", messageKey = "api.console.promptTooLarge", args = listOf(5_000_000, it.data.length))
+                }
+                AgentPromptImage(mimeType = it.mimeType, data = it.data)
+            }
+
             try {
-                sessionManager.sendPrompt(projectId, text)
+                sessionManager.sendPrompt(projectId, text, images)
             } catch (e: Exception) {
                 log.warn(e) { "[$projectId] prompt failed" }
                 throw ApiException.localized(500, "claude_send_failed",
