@@ -115,7 +115,7 @@ private fun renderPage(
                 "assistant" -> "assistant"
                 "tool_use" -> "tool"
                 "tool_result" -> "tool-out"
-                "error", "tool_result_error" -> "err"
+                "error", "tool_error", "tool_result_error" -> "err"
                 else -> "sys"
             }
             val href = if (r.projectId == "__scratch__") "/chat/history" else "/projects/${esc(r.projectId)}/history"

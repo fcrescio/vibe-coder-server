@@ -189,7 +189,7 @@ object AuditLog : Table("audit_log") {
  *  - sessionId — Claude 자식 프로세스의 system/init 에서 받은 id. null 가능
  *    (사용자 prompt 가 spawn 직전 도착).
  *  - turnIdx — projectId+sessionId 내 단조 증가 (LogHub seq 와 별개; replay 와 다른 정렬).
- *  - role — `user|assistant|tool_use|tool_result|system|error|unknown`.
+ *  - role — `user|assistant|tool_use|tool_result|tool_error|system|error|unknown`.
  *  - content — text/JSON 본문. tool_use 는 input JSON, tool_result 는 output JSON.
  *  - toolName / toolUseId — tool_use/tool_result 매칭용.
  *  - tokensIn/Out — Anthropic API 가 메시지에 포함 시 (없으면 null).

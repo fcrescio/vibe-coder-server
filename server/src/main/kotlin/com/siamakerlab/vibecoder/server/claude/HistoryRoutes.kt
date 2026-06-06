@@ -303,7 +303,7 @@ object HistoryTemplates {
                 val sel = if (s == filter.sessionId) " selected" else ""
                 """<option value="${esc(s)}"$sel>${esc(s.take(20))}…</option>"""
             })
-        val roleOpts = listOf("", "user", "assistant", "tool_use", "tool_result", "tool_result_error", "system", "error", "unknown")
+        val roleOpts = listOf("", "user", "assistant", "tool_use", "tool_result", "tool_error", "system", "error", "unknown")
             .joinToString("") { v ->
                 val label = if (v.isEmpty()) "(all roles)" else v
                 val sel = if (v == filter.role) " selected" else ""
@@ -338,7 +338,7 @@ object HistoryTemplates {
                     "assistant" -> "assistant"
                     "tool_use" -> "tool"
                     "tool_result" -> "tool-out"
-                    "tool_result_error", "error" -> "err"
+                    "tool_error", "tool_result_error", "error" -> "err"
                     else -> "sys"
                 }
                 val previewLen = 800

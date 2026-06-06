@@ -20,6 +20,7 @@ private val log = KotlinLogging.logger {}
  *  - role="assistant" — AssistantMessage (전체 turn 의 final text. partial 은 적재 안 함)
  *  - role="tool_use" — ToolUse (input JSON)
  *  - role="tool_result" — ToolResult (output JSON)
+ *  - role="tool_error" — ToolResult error (output JSON)
  *  - role="system" — SessionStarted, Done, system notice
  *  - role="error" — ErrorEvent
  *  - role="unknown" — Unknown (raw 만 보존)
@@ -85,7 +86,7 @@ class ConversationHistoryService(
             is ClaudeEvent.ToolResult -> repo.insert(
                 projectId = projectId,
                 sessionId = sessionId,
-                role = if (event.isError) "tool_result_error" else "tool_result",
+                role = if (event.isError) "tool_error" else "tool_result",
                 content = jsonString(event.output),
                 toolUseId = event.toolUseId,
                 agentName = agentName,
@@ -178,7 +179,7 @@ class ConversationHistoryService(
         repo.insert(
             projectId = projectId,
             sessionId = sessionId,
-            role = if (isError) "tool_result_error" else "tool_result",
+            role = if (isError) "tool_error" else "tool_result",
             content = jsonString(output),
             toolUseId = toolUseId,
             agentName = agentName,
