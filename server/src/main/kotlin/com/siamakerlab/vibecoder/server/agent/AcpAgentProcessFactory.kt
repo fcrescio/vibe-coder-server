@@ -5,7 +5,6 @@ import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.projects.ProjectScaffolder
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -89,15 +88,9 @@ class AcpAgentProcessFactory(
         val stdout = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8))
         val stderr = BufferedReader(InputStreamReader(proc.errorStream, StandardCharsets.UTF_8))
 
-        // ACP handshake
-        val pending = ConcurrentHashMap<String, CompletableDeferred<JsonObject>>()
-        val readerJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO).launch {
-            readResponses(stdout, pending)
-        }
-
         try {
             // Initialize
-            request(stdin, pending, "initialize", buildJsonObject {
+            request(stdin, stdout, "initialize", buildJsonObject {
                 put("protocol_version", 1)
                 putJsonObject("client_capabilities") {
                     putJsonObject("fs") {
@@ -123,7 +116,7 @@ class AcpAgentProcessFactory(
             // Create or load session
             val sessionResult = if (savedSessionId != null) {
                 runCatching {
-                    request(stdin, pending, "session/load", buildJsonObject {
+                    request(stdin, stdout, "session/load", buildJsonObject {
                         put("cwd", projectRoot.toString())
                         put("sessionId", savedSessionId)
                         putJsonArray("mcp_servers") {}
@@ -133,7 +126,7 @@ class AcpAgentProcessFactory(
                 }.getOrNull()
             } else null
 
-            val finalResult = sessionResult ?: request(stdin, pending, "session/new", buildJsonObject {
+            val finalResult = sessionResult ?: request(stdin, stdout, "session/new", buildJsonObject {
                 put("cwd", projectRoot.toString())
                 putJsonArray("mcp_servers") {}
             }, timeoutMs = 20_000)
@@ -143,7 +136,6 @@ class AcpAgentProcessFactory(
                 ?: savedSessionId
                 ?: throw IllegalStateException("vibe-acp session did not return session_id")
 
-            readerJob.cancel()
             return AgentProcess(
                 process = proc,
                 stdin = stdin,
@@ -153,7 +145,6 @@ class AcpAgentProcessFactory(
                 projectRoot = projectRoot.toAbsolutePath().normalize(),
             )
         } catch (e: Exception) {
-            readerJob.cancel()
             proc.destroy()
             throw e
         }
@@ -312,14 +303,12 @@ class AcpAgentProcessFactory(
 
     private suspend fun request(
         stdin: BufferedWriter,
-        pending: ConcurrentHashMap<String, CompletableDeferred<JsonObject>>,
+        stdout: BufferedReader,
         method: String,
         params: JsonObject,
         timeoutMs: Long,
     ): JsonObject {
         val id = requestIds.getAndIncrement().toString()
-        val deferred = CompletableDeferred<JsonObject>()
-        pending[id] = deferred
         val request = buildJsonObject {
             put("jsonrpc", "2.0")
             put("id", id)
@@ -331,14 +320,31 @@ class AcpAgentProcessFactory(
             stdin.newLine()
             stdin.flush()
         }
-        val response = withTimeoutOrNull(timeoutMs) { deferred.await() }
+        val response = withTimeoutOrNull(timeoutMs) {
+            readResponse(stdout, id, method)
+        }
             ?: throw IOException("ACP $method timed out after ${timeoutMs}ms")
-        pending.remove(id)
         response["error"]?.jsonObject?.let {
             val msg = it["message"]?.jsonPrimitive?.contentOrNull ?: "ACP request failed"
             throw IOException("ACP $method error: $msg")
         }
         return response["result"]?.jsonObject ?: JsonObject(emptyMap())
+    }
+
+    private suspend fun readResponse(stdout: BufferedReader, expectedId: String, method: String): JsonObject {
+        while (true) {
+            val line = withContext(Dispatchers.IO) { stdout.readLine() }
+                ?: throw IOException("ACP $method stream closed before response")
+            if (line.isBlank()) continue
+            val obj = runCatching { json.parseToJsonElement(line).jsonObject }.getOrNull() ?: continue
+            val idElement = obj["id"]
+            val id = idElement?.jsonPrimitive?.contentOrNull
+                ?: idElement?.jsonPrimitive?.intOrNull?.toString()
+            if (id == expectedId && (obj["result"] != null || obj["error"] != null)) {
+                return obj
+            }
+            log.debug { "Ignoring ACP handshake side message while waiting for $method: $line" }
+        }
     }
 
     private suspend fun respondPermission(process: AgentProcess, id: JsonElement) {
@@ -545,27 +551,6 @@ class AcpAgentProcessFactory(
 
         @Synchronized
         fun output(): String = bytes.toString(StandardCharsets.UTF_8)
-    }
-
-    private fun readResponses(
-        stdout: BufferedReader,
-        pending: ConcurrentHashMap<String, CompletableDeferred<JsonObject>>,
-    ) {
-        try {
-            while (true) {
-                val line = stdout.readLine() ?: break
-                if (line.isBlank()) continue
-                val obj = runCatching { json.parseToJsonElement(line).jsonObject }.getOrNull() ?: continue
-                val idElement = obj["id"]
-                val id = idElement?.jsonPrimitive?.contentOrNull
-                    ?: idElement?.jsonPrimitive?.intOrNull?.toString()
-                if (id != null && (obj["result"] != null || obj["error"] != null)) {
-                    pending.remove(id)?.complete(obj)
-                }
-            }
-        } catch (_: IOException) {
-            // stream closed
-        }
     }
 
     private fun prepareRuntimeVibeHome(): Path {
