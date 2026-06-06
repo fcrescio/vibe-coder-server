@@ -45,6 +45,7 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 private val log = KotlinLogging.logger {}
+private const val MAX_AGENT_INSTRUCTIONS_CHARS = 32 * 1024
 
 /**
  * Spawns `vibe-acp` (or configured command) child processes using the ACP JSON-RPC protocol.
@@ -264,7 +265,20 @@ class AcpAgentProcessFactory(
         sessionId: String,
     ): String {
         val actualText = if (firstPrompt) {
-            "Use the $agentName sub-agent to do the following:\n\n$text"
+            val instructions = readAgentInstructions(agentName)
+            buildString {
+                append("You are running as the `")
+                append(agentName)
+                append("` sub-agent inside Vibe Coder Server.\n")
+                if (!instructions.isNullOrBlank()) {
+                    append("\nSub-agent instructions:\n")
+                    append(instructions.trim())
+                    append("\n")
+                }
+                append("\nUse the available filesystem and terminal tools when project inspection is needed. ")
+                append("Do not invent file contents or command output.\n\n")
+                append(text)
+            }
         } else text
 
         return buildJsonObject {
@@ -281,6 +295,19 @@ class AcpAgentProcessFactory(
                 }
             }
         }.toString()
+    }
+
+    private fun readAgentInstructions(agentName: String): String? {
+        if (!agentName.all { it.isLetterOrDigit() || it == '.' || it == '-' || it == '_' }) return null
+        if (agentName.startsWith('.')) return null
+        val claudeConfig = System.getenv("CLAUDE_CONFIG_DIR")?.ifBlank { null }
+            ?: (System.getProperty("user.home") + "/.claude")
+        val root = Path.of(claudeConfig, "agents").toAbsolutePath().normalize()
+        val path = root.resolve("$agentName.md").toAbsolutePath().normalize()
+        if (!path.startsWith(root) || !Files.isRegularFile(path)) return null
+        return runCatching {
+            Files.readString(path, StandardCharsets.UTF_8).take(MAX_AGENT_INSTRUCTIONS_CHARS)
+        }.getOrNull()
     }
 
     private suspend fun request(
