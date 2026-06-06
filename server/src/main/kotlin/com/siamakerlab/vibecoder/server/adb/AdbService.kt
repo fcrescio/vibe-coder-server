@@ -149,9 +149,9 @@ data class AdbCommandResult(
             // Find the first significant whitespace separator.
             val sep = line.indexOfFirst { it.isWhitespace() && it != ' ' }
                 .takeIf { it >= 0 }
-                ?: line.indexOf("  ")
+                ?: line.indexOf("  ").takeIf { it >= 0 }
                 ?: line.indexOf(' ')
-            if (sep == null || sep < 0) return@mapNotNull null
+            if (sep < 0) return@mapNotNull null
             val serial = line.substring(0, sep).trim()
             val rest = line.substring(sep).trim()
             val status = rest.substringBefore(" ").trim()
