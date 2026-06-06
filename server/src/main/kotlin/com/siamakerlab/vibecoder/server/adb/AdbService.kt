@@ -21,6 +21,7 @@ class AdbService {
     /** Persisted host from config — set once at startup. */
     fun initHost(host: String) {
         adbHost = host
+        log.info { "adb host initialized: '${host}'" }
     }
 
     fun updateHost(host: String) {
@@ -81,6 +82,7 @@ class AdbService {
     }
 
     private fun runCommand(cmd: List<String>, timeoutSeconds: Long): AdbCommandResult {
+        log.info { "adb cmd: ${cmd.joinToString(" ")}" }
         return try {
             val pb = ProcessBuilder(cmd).redirectErrorStream(true)
             val proc = pb.start()
@@ -88,15 +90,19 @@ class AdbService {
             val ok = proc.waitFor(timeoutSeconds, TimeUnit.SECONDS)
             if (!ok) {
                 proc.destroyForcibly()
+                log.warn { "adb timed out after ${timeoutSeconds}s: ${cmd.joinToString(" ")}" }
                 AdbCommandResult(success = false, error = "ADB command timed out after ${timeoutSeconds}s")
             } else if (proc.exitValue() != 0) {
+                log.warn { "adb exit ${proc.exitValue()}: ${output.lines().firstOrNull { it.isNotBlank() }}" }
                 AdbCommandResult(success = false, error = output.lines().firstOrNull { it.isNotBlank() } ?: "exit code ${proc.exitValue()}")
             } else {
                 AdbCommandResult(success = true, output = output)
             }
         } catch (e: IOException) {
+            log.warn(e) { "adb io error" }
             AdbCommandResult(success = false, error = "ADB not found or failed: ${e.message}")
         } catch (e: Exception) {
+            log.warn(e) { "adb error" }
             AdbCommandResult(success = false, error = e.message ?: "unknown error")
         }
     }
@@ -138,11 +144,16 @@ data class AdbCommandResult(
         if (deviceLines.isEmpty()) return AdbDevicesResult(success = true, devices = emptyList())
 
         val devices = deviceLines.mapNotNull { line ->
-            // Format: <serial>\t<status> [product:...] [model:...] [transport_id:...]
-            val parts = line.split("\t", limit = 2)
-            if (parts.size < 2) return@mapNotNull null
-            val serial = parts[0].trim()
-            val rest = parts[1].trim()
+            // Format: <serial>  <status> [product:...] [model:...] [transport_id:...]
+            // Serial and status are separated by whitespace (spaces or tabs).
+            // Find the first significant whitespace separator.
+            val sep = line.indexOfFirst { it.isWhitespace() && it != ' ' }
+                .takeIf { it >= 0 }
+                ?: line.indexOf("  ")
+                ?: line.indexOf(' ')
+            if (sep == null || sep < 0) return@mapNotNull null
+            val serial = line.substring(0, sep).trim()
+            val rest = line.substring(sep).trim()
             val status = rest.substringBefore(" ").trim()
             val props = rest.substringAfter(" ", "").trim()
             val model = Regex("""model:(\S+)""").find(props)?.groupValues?.get(1)
