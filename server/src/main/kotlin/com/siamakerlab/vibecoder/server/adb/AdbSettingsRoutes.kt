@@ -107,12 +107,12 @@ $errHtml
 
 <div class="card" style="margin-bottom:14px">
   <h2 style="margin-top:0">ADB Host</h2>
-  <form method="post" action="/settings/adb" style="display:flex;gap:8px;align-items:center">
+  <form method="post" action="/settings/adb" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     ${CsrfTokens.hiddenInput(csrf)}
     <input type="text" name="host" value="${esc(adb.adbHost)}"
            placeholder="Leave empty for local ADB"
-           style="flex:1;padding:8px;font-family:monospace">
-    <button type="submit" class="primary" style="padding:8px 16px">Save</button>
+           style="width:280px;padding:8px;font-family:monospace">
+    <button type="submit" class="primary" style="padding:8px 16px;flex-shrink:0">Save</button>
   </form>
   <p class="dim" style="font-size:12px;margin:6px 0 0">
     Format: <code>host:port</code> (e.g. <code>192.168.1.100:5037</code>).
