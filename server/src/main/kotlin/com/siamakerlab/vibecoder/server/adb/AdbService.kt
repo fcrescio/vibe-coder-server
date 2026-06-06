@@ -48,6 +48,39 @@ class AdbService {
         return runCommand(cmd, timeoutSeconds = 30)
     }
 
+    /**
+     * Run `adb [-H <host>] <args...>` and return raw binary stdout.
+     * Use this for commands that produce binary output (e.g. screencap -p).
+     */
+    fun rawBinary(vararg args: String): ByteArray? {
+        val cmd = buildList {
+            add(resolveAdb())
+            addHostAndPort(this)
+            args.forEach { add(it) }
+        }
+        log.info { "adb binary cmd: ${cmd.joinToString(" ")}" }
+        return try {
+            val pb = ProcessBuilder(cmd).redirectErrorStream(false)
+            val proc = pb.start()
+            val output = proc.inputStream.readAllBytes()
+            val ok = proc.waitFor(30, TimeUnit.SECONDS)
+            if (!ok) {
+                proc.destroyForcibly()
+                log.warn { "adb binary timed out: ${cmd.joinToString(" ")}" }
+                null
+            } else if (proc.exitValue() != 0) {
+                val err = proc.errorStream.bufferedReader().readText()
+                log.warn { "adb binary exit ${proc.exitValue()}: $err" }
+                null
+            } else {
+                output
+            }
+        } catch (e: Exception) {
+            log.warn(e) { "adb binary error" }
+            null
+        }
+    }
+
     /** Get a human-readable summary of connected devices for agent context. */
     fun deviceSummary(): String {
         val result = listDevices()
