@@ -22,8 +22,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -968,13 +969,16 @@ class MistralVibeAcpSessionManager(
                 put("params", params)
             })
             val response = awaitWithIdleTimeout(deferred, method, timeoutMs)
-            response["error"]?.jsonObject?.let {
-                val msg = it["message"]?.jsonPrimitive?.contentOrNull ?: "ACP request failed"
-                val code = it["code"]?.jsonPrimitive?.intOrNull
-                val data = it["data"]?.jsonObject
+            val errorEl = response["error"]
+            if (errorEl != null && errorEl !is JsonNull) {
+                val err = errorEl.jsonObject
+                val msg = err["message"]?.jsonPrimitive?.contentOrNull ?: "ACP request failed"
+                val code = err["code"]?.jsonPrimitive?.intOrNull
+                val data = err["data"]?.jsonObject
                 throw AcpRequestException(code = code, detail = msg, data = data)
             }
-            return response["result"]?.jsonObject ?: JsonObject(emptyMap())
+            val resultEl = response["result"]
+            return if (resultEl != null && resultEl !is JsonNull) resultEl.jsonObject else JsonObject(emptyMap())
         }
 
         private suspend fun awaitWithIdleTimeout(
