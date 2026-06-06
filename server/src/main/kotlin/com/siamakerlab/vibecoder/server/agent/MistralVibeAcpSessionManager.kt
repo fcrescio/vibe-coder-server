@@ -281,10 +281,35 @@ class MistralVibeAcpSessionManager(
         } else {
             text.trimEnd() + "\n\n[session_logging]\nsave_dir = \"$sessionDir\"\nsession_prefix = \"session\"\nenabled = true\n"
         }
-        return forceLocalAgentConfig(replaced)
+        val withDeviceTools = ensureDeviceToolPaths(replaced)
+        return forceLocalAgentConfig(withDeviceTools)
             .replace(Regex("""(?m)^enable_telemetry\s*=\s*true\s*$"""), "enable_telemetry = false")
             .replace(Regex("""(?m)^enable_update_checks\s*=\s*true\s*$"""), "enable_update_checks = false")
             .replace(Regex("""(?m)^enable_auto_update\s*=\s*true\s*$"""), "enable_auto_update = false")
+    }
+
+    /**
+     * Ensure [tool_paths] includes the device tools file so vibe-acp loads
+     * DeviceScreencap, DeviceTap, DeviceSwipe as available tools.
+     */
+    private fun ensureDeviceToolPaths(text: String): String {
+        val deviceToolPath = "/home/vibe/.vibe/tools/device.py"
+        val toolPathsLine = Regex("""(?m)^tool_paths\s*=\s*\[(.*)\]$""")
+        val match = toolPathsLine.find(text)
+        if (match == null) {
+            // No tool_paths key at all — append one
+            return text.trimEnd() + "\ntool_paths = [\"$deviceToolPath\"]\n"
+        }
+        val existing = match.groupValues[1].trim()
+        if (existing.contains(deviceToolPath, ignoreCase = true)) {
+            return text // already present
+        }
+        val updated = if (existing.isBlank()) {
+            "tool_paths = [\"$deviceToolPath\"]"
+        } else {
+            "tool_paths = [$existing, \"$deviceToolPath\"]"
+        }
+        return text.replace(match.value, updated)
     }
 
     private fun defaultLocalConfig(runtimeHome: Path): String {
@@ -309,6 +334,7 @@ class MistralVibeAcpSessionManager(
             name = "$modelName"
             provider = "llamacpp"
             alias = "$modelAlias"
+            supports_images = true
             auto_compact_threshold = 200000
 
             [session_logging]
@@ -351,6 +377,7 @@ class MistralVibeAcpSessionManager(
                 name = "$modelName"
                 provider = "llamacpp"
                 alias = "$modelAlias"
+                supports_images = true
                 auto_compact_threshold = 200000
             """.trimIndent() + "\n"
         }
