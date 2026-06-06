@@ -89,7 +89,6 @@ $deviceCards
       <span class="$statusClass" style="margin-left:8px">$status</span>
     </div>
     <div style="display:flex;gap:6px">
-      <a href="/devices/$serial/screencap" class="button secondary" style="padding:6px 12px;font-size:12px">📷 Screenshot</a>
     </div>
   </div>
   <div style="margin-top:6px;font-size:12px;color:var(--dim)">

@@ -28,10 +28,25 @@ class DeviceService(private val adb: AdbService) {
     }
 
     /**
+     * Wake up and unlock the device screen.
+     * Sends KEYCODE_WAKEUP + swipe to unlock + KEYCODE_MENU as fallback.
+     */
+    fun wakeUpAndUnlock(serial: String) {
+        // KEYCODE_WAKEUP = 224, KEYCODE_MENU = 82
+        adb.rawCommand("-s", serial, "shell", "input", "keyevent", "224")
+        // Small swipe to dismiss lock screen (if swipe-to-unlock)
+        adb.rawCommand("-s", serial, "shell", "input", "swipe", "500", "1500", "500", "500")
+        // KEYCODE_MENU as fallback for pattern/PIN (just wakes the lock screen)
+        adb.rawCommand("-s", serial, "shell", "input", "keyevent", "82")
+    }
+
+    /**
      * Capture a screenshot from [serial] via `adb exec-out screencap -p`.
+     * Wakes and unlocks the device first.
      * Returns the raw PNG bytes, or null on failure.
      */
     fun screencap(serial: String): ByteArray? {
+        wakeUpAndUnlock(serial)
         return adb.rawBinary("-s", serial, "exec-out", "screencap", "-p")
     }
 
