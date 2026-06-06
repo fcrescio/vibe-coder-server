@@ -11,7 +11,7 @@ import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
 
 fun Routing.deviceRoutes(authDeps: AdminRoutesDeps, devices: DeviceService) {
-    get("/devices") {
+    get("/devices/adb") {
         val sess = requireSessionOrRedirect(authDeps) ?: return@get
         if (!requireAdminOrRedirect(sess)) return@get
         call.respondText(
@@ -46,7 +46,7 @@ object DeviceTemplates {
         return AdminTemplates.shell(
             title = "Devices",
             username = username,
-            currentPath = "/devices",
+            currentPath = "/devices/adb",
             csrf = csrf,
             body = """
 <header>

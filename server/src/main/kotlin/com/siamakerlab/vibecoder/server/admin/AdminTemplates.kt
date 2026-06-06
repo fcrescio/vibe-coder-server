@@ -160,7 +160,7 @@ object AdminTemplates {
     ${link("/projects", t("nav.projects"), "projects", "folder")}
     ${link("/chat", t("nav.chat"), "chat", "chat")}
     ${link("/tools/tabs", t("nav.tools"), "tools", "tools")}
-    ${link("/devices", t("nav.devices"), "devices", "device")}
+    ${link("/devices/adb", t("nav.devices"), "devices", "device")}
     ${link("/settings/tabs", t("nav.settings"), "settings", "settings")}
   </div>
   <!-- v1.3.2 — 전역 Claude 쿼타 pill. v1.6.2 — header 에 refresh 버튼 + 타임존 제거. -->
