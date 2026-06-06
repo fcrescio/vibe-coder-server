@@ -7,6 +7,7 @@ import com.siamakerlab.vibecoder.server.projects.ProjectScaffolder
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -27,13 +28,17 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import java.io.BufferedReader
 import java.io.BufferedWriter
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.io.path.exists
 import kotlin.io.path.notExists
 import kotlin.io.path.readText
@@ -55,6 +60,9 @@ class AcpAgentProcessFactory(
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val assistantBuffers = ConcurrentHashMap<String, StringBuilder>()
+    private val requestIds = AtomicLong(1)
+    private val nextTerminalId = AtomicLong(1)
+    private val terminals = ConcurrentHashMap<String, TerminalProcess>()
 
     override suspend fun spawn(
         projectRoot: Path,
@@ -141,12 +149,31 @@ class AcpAgentProcessFactory(
                 stdout = stdout,
                 stderr = stderr,
                 sessionId = sessionId,
+                projectRoot = projectRoot.toAbsolutePath().normalize(),
             )
         } catch (e: Exception) {
             readerJob.cancel()
             proc.destroy()
             throw e
         }
+    }
+
+    override suspend fun handleLine(process: AgentProcess, line: String): List<ClaudeEvent> {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || !trimmed.startsWith("{")) return emptyList()
+
+        val obj = runCatching { json.parseToJsonElement(trimmed).jsonObject }.getOrNull() ?: return emptyList()
+        val idElement = obj["id"]
+        val method = obj["method"]?.jsonPrimitive?.contentOrNull
+
+        if (idElement != null && method == "session/request_permission") {
+            respondPermission(process, idElement)
+            return emptyList()
+        }
+        if (idElement != null && handleFsRequest(process, idElement, obj)) return emptyList()
+        if (idElement != null && handleTerminalRequest(process, idElement, obj)) return emptyList()
+
+        return parseLine(line)
     }
 
     override fun parseLine(line: String): List<ClaudeEvent> {
@@ -242,7 +269,7 @@ class AcpAgentProcessFactory(
 
         return buildJsonObject {
             put("jsonrpc", "2.0")
-            put("id", java.util.concurrent.atomic.AtomicLong(1).incrementAndGet().toString())
+            put("id", requestIds.getAndIncrement().toString())
             put("method", "session/prompt")
             putJsonObject("params") {
                 put("sessionId", sessionId)
@@ -263,7 +290,7 @@ class AcpAgentProcessFactory(
         params: JsonObject,
         timeoutMs: Long,
     ): JsonObject {
-        val id = java.util.concurrent.atomic.AtomicLong(1).incrementAndGet().toString()
+        val id = requestIds.getAndIncrement().toString()
         val deferred = CompletableDeferred<JsonObject>()
         pending[id] = deferred
         val request = buildJsonObject {
@@ -285,6 +312,212 @@ class AcpAgentProcessFactory(
             throw IOException("ACP $method error: $msg")
         }
         return response["result"]?.jsonObject ?: JsonObject(emptyMap())
+    }
+
+    private suspend fun respondPermission(process: AgentProcess, id: JsonElement) {
+        write(process, result(id) {
+            putJsonObject("outcome") {
+                put("outcome", "selected")
+                put("optionId", "allow_once")
+            }
+        })
+    }
+
+    private suspend fun handleFsRequest(process: AgentProcess, id: JsonElement, obj: JsonObject): Boolean {
+        return when (val method = obj["method"]?.jsonPrimitive?.contentOrNull) {
+            "fs/read_text_file" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val path = safeProjectPath(process, params["path"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                    val line = params["line"]?.jsonPrimitive?.intOrNull?.takeIf { it > 0 } ?: 1
+                    val limit = params["limit"]?.jsonPrimitive?.intOrNull?.takeIf { it >= 0 }
+                    val content = withContext(Dispatchers.IO) {
+                        val lines = Files.readAllLines(path, StandardCharsets.UTF_8)
+                        val selected = lines.asSequence()
+                            .drop((line - 1).coerceAtLeast(0))
+                            .let { seq -> if (limit != null) seq.take(limit) else seq }
+                            .joinToString("\n")
+                        if (selected.isEmpty()) selected else "$selected\n"
+                    }
+                    write(process, result(id) { put("content", content) })
+                }.onFailure {
+                    respondRequestError(process, id, method, it.message ?: "read failed")
+                }
+                true
+            }
+            "fs/write_text_file" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val path = safeProjectPath(process, params["path"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                    val content = params["content"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    withContext(Dispatchers.IO) {
+                        path.parent?.let { Files.createDirectories(it) }
+                        Files.writeString(
+                            path,
+                            content,
+                            StandardCharsets.UTF_8,
+                            StandardOpenOption.CREATE,
+                            StandardOpenOption.TRUNCATE_EXISTING,
+                            StandardOpenOption.WRITE,
+                        )
+                    }
+                    write(process, result(id) {})
+                }.onFailure {
+                    respondRequestError(process, id, method, it.message ?: "write failed")
+                }
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun safeProjectPath(process: AgentProcess, rawPath: String): Path {
+        require(rawPath.isNotBlank()) { "path is required" }
+        val candidate = Path.of(rawPath).let {
+            if (it.isAbsolute) it else process.projectRoot.resolve(it)
+        }.toAbsolutePath().normalize()
+        if (!candidate.startsWith(process.projectRoot)) {
+            throw IllegalArgumentException("path outside project workspace: $candidate")
+        }
+        return candidate
+    }
+
+    private suspend fun handleTerminalRequest(process: AgentProcess, id: JsonElement, obj: JsonObject): Boolean {
+        return when (val method = obj["method"]?.jsonPrimitive?.contentOrNull) {
+            "terminal/create" -> {
+                val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                val command = params["command"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val cwd = params["cwd"]?.jsonPrimitive?.contentOrNull
+                    ?.let { Path.of(it).toAbsolutePath().normalize() }
+                    ?: process.projectRoot
+                require(cwd.startsWith(process.projectRoot)) { "cwd outside project workspace: $cwd" }
+                val maxBytes = params["outputByteLimit"]?.jsonPrimitive?.intOrNull
+                    ?: params["output_byte_limit"]?.jsonPrimitive?.intOrNull
+                    ?: 200_000
+                val terminalId = "subagent-terminal-${nextTerminalId.getAndIncrement()}"
+                val child = ProcessBuilder("/bin/sh", "-lc", command)
+                    .directory(cwd.toFile())
+                    .redirectErrorStream(true)
+                    .also { pb ->
+                        pb.environment()["ANDROID_HOME"] = System.getenv("ANDROID_HOME") ?: "/opt/android-sdk"
+                        pb.environment()["ANDROID_SDK_ROOT"] = System.getenv("ANDROID_SDK_ROOT") ?: "/opt/android-sdk"
+                        pb.environment()["PATH"] = System.getenv("PATH").orEmpty()
+                    }
+                    .start()
+                val terminal = TerminalProcess(child, maxBytes.coerceAtLeast(4096))
+                terminals[terminalId] = terminal
+                terminal.readerJob = kotlinx.coroutines.CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                    child.inputStream.use { input ->
+                        val buffer = ByteArray(8192)
+                        while (true) {
+                            val n = withContext(Dispatchers.IO) { input.read(buffer) }
+                            if (n <= 0) break
+                            terminal.append(buffer, n)
+                        }
+                    }
+                }
+                write(process, result(id) { put("terminalId", terminalId) })
+                true
+            }
+            "terminal/wait_for_exit" -> {
+                val terminal = terminals[terminalId(obj)]
+                var exit: Int? = null
+                val child = terminal?.process
+                if (child != null) {
+                    while (exit == null) {
+                        val done = withContext(Dispatchers.IO) { child.waitFor(1, TimeUnit.SECONDS) }
+                        if (done) exit = child.exitValue()
+                    }
+                }
+                terminal?.readerJob?.join()
+                write(process, result(id) {
+                    if (exit != null) put("exitCode", exit)
+                })
+                true
+            }
+            "terminal/output" -> {
+                val terminal = terminals[terminalId(obj)]
+                write(process, result(id) {
+                    put("output", terminal?.output().orEmpty())
+                    put("truncated", terminal?.truncated == true)
+                    terminal?.process?.takeIf { !it.isAlive }?.let { child ->
+                        putJsonObject("exitStatus") {
+                            put("exitCode", child.exitValue())
+                        }
+                    }
+                })
+                true
+            }
+            "terminal/release" -> {
+                terminals.remove(terminalId(obj))?.let { terminal ->
+                    if (terminal.process.isAlive) terminal.process.destroy()
+                    terminal.readerJob?.cancel()
+                }
+                write(process, result(id) {})
+                true
+            }
+            "terminal/kill" -> {
+                terminals[terminalId(obj)]?.process?.destroyForcibly()
+                write(process, result(id) {})
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun terminalId(obj: JsonObject): String =
+        obj["params"]?.jsonObject?.get("terminalId")?.jsonPrimitive?.contentOrNull
+            ?: obj["params"]?.jsonObject?.get("terminal_id")?.jsonPrimitive?.contentOrNull
+            ?: ""
+
+    private suspend fun respondRequestError(process: AgentProcess, id: JsonElement, method: String, message: String) {
+        write(process, buildJsonObject {
+            put("jsonrpc", "2.0")
+            put("id", id)
+            putJsonObject("error") {
+                put("code", -32000)
+                put("message", "$method failed: $message")
+            }
+        })
+    }
+
+    private fun result(id: JsonElement, block: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit): JsonObject =
+        buildJsonObject {
+            put("jsonrpc", "2.0")
+            put("id", id)
+            putJsonObject("result", block)
+        }
+
+    private suspend fun write(process: AgentProcess, obj: JsonObject) {
+        withContext(Dispatchers.IO) {
+            process.stdin.write(obj.toString())
+            process.stdin.newLine()
+            process.stdin.flush()
+        }
+    }
+
+    private class TerminalProcess(
+        val process: Process,
+        private val maxBytes: Int,
+    ) {
+        private val bytes = ByteArrayOutputStream()
+        @Volatile var truncated: Boolean = false
+        @Volatile var readerJob: Job? = null
+
+        @Synchronized
+        fun append(buffer: ByteArray, length: Int) {
+            val available = maxBytes - bytes.size()
+            if (available <= 0) {
+                truncated = true
+                return
+            }
+            val toWrite = minOf(length, available)
+            bytes.write(buffer, 0, toWrite)
+            if (toWrite < length) truncated = true
+        }
+
+        @Synchronized
+        fun output(): String = bytes.toString(StandardCharsets.UTF_8)
     }
 
     private fun readResponses(

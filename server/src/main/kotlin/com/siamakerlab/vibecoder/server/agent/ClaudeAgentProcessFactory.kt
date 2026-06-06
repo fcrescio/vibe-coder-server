@@ -83,6 +83,7 @@ class ClaudeAgentProcessFactory(
             stdout = stdout,
             stderr = stderr,
             sessionId = sessionId.orEmpty(),
+            projectRoot = projectRoot,
         )
     }
 

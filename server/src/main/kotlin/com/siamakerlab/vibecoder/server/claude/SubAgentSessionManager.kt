@@ -193,7 +193,7 @@ class SubAgentSessionManager(
                 while (isActive) {
                     val line = withContext(Dispatchers.IO) { agentProcess.stdout.readLine() } ?: break
                     if (line.isBlank()) continue
-                    handleStdoutLine(key, line)
+                    handleStdoutLine(key, agentProcess, line)
                 }
             } catch (e: IOException) {
                 log.debug(e) { "[${key.id}] sub-agent stdout reader ended" }
@@ -215,8 +215,12 @@ class SubAgentSessionManager(
         return session
     }
 
-    private suspend fun handleStdoutLine(key: AgentKey, line: String) {
-        val events = factory.parseLine(line)
+    private suspend fun handleStdoutLine(
+        key: AgentKey,
+        agentProcess: com.siamakerlab.vibecoder.server.agent.AgentProcess,
+        line: String,
+    ) {
+        val events = factory.handleLine(agentProcess, line)
         if (events.isEmpty()) return
         for (event in events) {
             if (event is ClaudeEvent.SessionStarted) {

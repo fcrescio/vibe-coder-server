@@ -37,6 +37,15 @@ interface AgentProcessFactory {
     fun parseLine(line: String): List<ClaudeEvent>
 
     /**
+     * Handle a single stdout line from [process].
+     *
+     * Providers that only emit assistant events can rely on [parseLine]. Providers with
+     * bidirectional stdout JSON-RPC, such as ACP, override this to also answer client
+     * tool requests before returning events to the common sub-agent pipeline.
+     */
+    suspend fun handleLine(process: AgentProcess, line: String): List<ClaudeEvent> = parseLine(line)
+
+    /**
      * Build the text envelope to write to stdin for a user prompt.
      *
      * @param text  The raw prompt text.
@@ -60,4 +69,6 @@ data class AgentProcess(
     val stderr: BufferedReader,
     /** The session ID returned by the agent after initialisation / resume. */
     val sessionId: String,
+    /** The project root used as the safety boundary for provider-side tool requests. */
+    val projectRoot: Path,
 )
