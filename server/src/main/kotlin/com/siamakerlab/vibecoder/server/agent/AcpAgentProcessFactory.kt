@@ -174,9 +174,10 @@ class AcpAgentProcessFactory(
 
         val obj = runCatching { json.parseToJsonElement(trimmed).jsonObject }.getOrNull() ?: return emptyList()
 
-        // Skip JSON-RPC responses (have "id" + "result"/"error")
         val id = obj["id"]
-        if (id != null && (obj["result"] != null || obj["error"] != null)) return emptyList()
+        if (id != null && (obj["result"] != null || obj["error"] != null)) {
+            return parseResponse(obj)
+        }
 
         val method = obj["method"]?.jsonPrimitive?.contentOrNull
         if (method != "session/update") return emptyList()
@@ -194,12 +195,12 @@ class AcpAgentProcessFactory(
             ?: update["session_update"]?.jsonPrimitive?.contentOrNull) {
 
             "agent_message_chunk" -> {
-                val text = update["content"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull ?: return out
+                val text = textContent(update["content"]) ?: return out
                 out += ClaudeEvent.AssistantMessage(text = text, isPartial = true)
             }
 
             "agent_thought_chunk" -> {
-                val text = update["content"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull ?: return out
+                val text = textContent(update["content"]) ?: return out
                 out += ClaudeEvent.Unknown(update)
             }
 
@@ -232,6 +233,22 @@ class AcpAgentProcessFactory(
         }
 
         return out
+    }
+
+    private fun parseResponse(obj: JsonObject): List<ClaudeEvent> {
+        val result = obj["result"]?.jsonObject ?: return emptyList()
+        val stopReason = result["stopReason"]?.jsonPrimitive?.contentOrNull
+            ?: result["stop_reason"]?.jsonPrimitive?.contentOrNull
+            ?: return emptyList()
+        return listOf(ClaudeEvent.Done(reason = stopReason))
+    }
+
+    private fun textContent(element: JsonElement?): String? {
+        val obj = runCatching { element?.jsonObject }.getOrNull()
+            ?: return runCatching { element?.jsonPrimitive?.contentOrNull }.getOrNull()
+        return obj["text"]?.jsonPrimitive?.contentOrNull
+            ?: obj["content"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
+            ?: obj["content"]?.jsonPrimitive?.contentOrNull
     }
 
     private fun acpToolName(update: JsonObject): String {
