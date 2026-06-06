@@ -4,6 +4,7 @@ import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.claude.ConversationHistoryService
 import com.siamakerlab.vibecoder.server.projects.ProjectScaffolder
+import com.siamakerlab.vibecoder.server.adb.AdbService
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.ws.WsFrame
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -56,6 +57,7 @@ class MistralVibeAcpSessionManager(
     private val workspace: WorkspacePath,
     private val hub: LogHub,
     private val history: ConversationHistoryService? = null,
+    private val adbService: AdbService? = null,
 ) : AgentRuntime {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -622,6 +624,7 @@ class MistralVibeAcpSessionManager(
     private fun environmentPreamble(projectId: String, projectRoot: Path): String {
         val androidHome = System.getenv("ANDROID_HOME")?.takeIf { it.isNotBlank() } ?: "/opt/android-sdk"
         val gradleHint = "/home/vibe/.local/gradle/bin/gradle"
+        val adbInfo = adbService?.deviceSummary()?.let { "\n- ADB devices: $it" } ?: ""
         return """
             Vibe Coder environment context:
             - You are editing Android project `$projectId` at `$projectRoot`.
@@ -631,7 +634,7 @@ class MistralVibeAcpSessionManager(
             - Prefer `./gradlew :app:assembleDebug --no-daemon` when a wrapper exists.
             - If `gradlew` is missing, use installed Gradle on PATH or `$gradleHint` to create the wrapper; do not download toolchains manually.
             - Before coding, inspect the project briefly with file reads or short shell commands. Before finishing, run a targeted build when practical and report the result.
-            - Keep responses concise: changed files, key decisions, build status, next blocker if any.
+            - Keep responses concise: changed files, key decisions, build status, next blocker if any.$adbInfo
         """.trimIndent()
     }
 

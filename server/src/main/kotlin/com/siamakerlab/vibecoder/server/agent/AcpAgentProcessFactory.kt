@@ -4,6 +4,7 @@ import com.siamakerlab.vibecoder.server.claude.ClaudeEvent
 import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.projects.ProjectScaffolder
+import com.siamakerlab.vibecoder.server.adb.AdbService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -58,6 +59,7 @@ private const val VIBE_CONTEXT_TOO_LONG_CODE = -31004
 class AcpAgentProcessFactory(
     private val config: ServerConfig,
     private val workspace: WorkspacePath,
+    private val adbService: AdbService? = null,
 ) : AgentProcessFactory {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -310,6 +312,7 @@ class AcpAgentProcessFactory(
     ): String {
         val actualText = if (firstPrompt) {
             val instructions = readAgentInstructions(agentName)
+            val adbInfo = adbService?.deviceSummary()?.let { "\nADB devices: $it" } ?: ""
             buildString {
                 append("You are running as the `")
                 append(agentName)
@@ -320,7 +323,12 @@ class AcpAgentProcessFactory(
                     append("\n")
                 }
                 append("\nUse the available filesystem and terminal tools when project inspection is needed. ")
-                append("Do not invent file contents or command output.\n\n")
+                append("Do not invent file contents or command output.\n")
+                if (adbInfo.isNotBlank()) {
+                    append(adbInfo)
+                    append("\n")
+                }
+                append("\n")
                 append(text)
             }
         } else text
