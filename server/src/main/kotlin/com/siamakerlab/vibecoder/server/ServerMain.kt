@@ -194,7 +194,7 @@ fun main(args: Array<String>) {
     val deviceService = com.siamakerlab.vibecoder.server.devices.DeviceService(adbService)
     val claudeSessionManager = ClaudeSessionManager(config, workspace, hub, history = conversationHistory)
     val sessionManager: AgentRuntime = when (config.agent.provider.lowercase()) {
-        "mistral-vibe-acp" -> MistralVibeAcpSessionManager(config, workspace, hub, history = conversationHistory, adbService = adbService)
+        "mistral-vibe-acp" -> MistralVibeAcpSessionManager(config, workspace, hub, history = conversationHistory, deviceService = deviceService)
         else -> claudeSessionManager
     }
     // v1.1.0 — ProjectDto.busy 필드를 위해 sessionManager 를 lambda 로 주입.

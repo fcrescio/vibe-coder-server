@@ -5,6 +5,7 @@ import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.claude.ConversationHistoryService
 import com.siamakerlab.vibecoder.server.projects.ProjectScaffolder
 import com.siamakerlab.vibecoder.server.adb.AdbService
+import com.siamakerlab.vibecoder.server.devices.DeviceService
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.ws.WsFrame
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -57,7 +58,7 @@ class MistralVibeAcpSessionManager(
     private val workspace: WorkspacePath,
     private val hub: LogHub,
     private val history: ConversationHistoryService? = null,
-    private val adbService: AdbService? = null,
+    private val deviceService: DeviceService? = null,
 ) : AgentRuntime {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -433,6 +434,9 @@ class MistralVibeAcpSessionManager(
                 if (idElement != null && handleTerminalRequest(session, idElement, obj)) {
                     continue
                 }
+                if (idElement != null && handleDeviceRequest(session, idElement, obj)) {
+                    continue
+                }
                 if (idElement != null && method != null) {
                     log.debug { "[${session.projectId}][vibe-acp] unsupported client request: $method" }
                     respondMethodNotFound(session, idElement, method)
@@ -465,6 +469,11 @@ class MistralVibeAcpSessionManager(
                 put("writeTextFile", true)
             }
             put("terminal", true)
+            putJsonObject("device") {
+                put("screencap", true)
+                put("tap", true)
+                put("swipe", true)
+            }
             putJsonObject("auth") {
                 put("terminal", false)
             }
@@ -621,10 +630,82 @@ class MistralVibeAcpSessionManager(
         }
     }
 
+    private suspend fun handleDeviceRequest(session: AcpProjectSession, id: JsonElement, obj: JsonObject): Boolean {
+        val svc = deviceService ?: return false
+        return when (val method = obj["method"]?.jsonPrimitive?.contentOrNull) {
+            "device/screencap" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    if (serial == null) {
+                        respondRequestError(session, id, method, "no device serial provided and no device connected")
+                        return@runCatching
+                    }
+                    val b64 = svc.screencapBase64(serial)
+                    if (b64 == null) {
+                        respondRequestError(session, id, method, "screencap failed")
+                        return@runCatching
+                    }
+                    session.write(result(id) {
+                        put("serial", serial)
+                        put("mimeType", "image/png")
+                        put("data", b64)
+                    })
+                }
+                true
+            }
+            "device/tap" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    val x = params["x"]?.jsonPrimitive?.intOrNull
+                    val y = params["y"]?.jsonPrimitive?.intOrNull
+                    if (serial == null) {
+                        respondRequestError(session, id, method, "no device serial provided and no device connected")
+                    } else if (x == null || y == null) {
+                        respondRequestError(session, id, method, "x and y are required")
+                    } else {
+                        svc.tap(serial, x, y)
+                        session.write(result(id) {
+                            put("ok", true)
+                        })
+                    }
+                }
+                true
+            }
+            "device/swipe" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    val x1 = params["x1"]?.jsonPrimitive?.intOrNull
+                    val y1 = params["y1"]?.jsonPrimitive?.intOrNull
+                    val x2 = params["x2"]?.jsonPrimitive?.intOrNull
+                    val y2 = params["y2"]?.jsonPrimitive?.intOrNull
+                    val duration = params["duration"]?.jsonPrimitive?.intOrNull ?: 300
+                    if (serial == null) {
+                        respondRequestError(session, id, method, "no device serial provided and no device connected")
+                    } else if (x1 == null || y1 == null || x2 == null || y2 == null) {
+                        respondRequestError(session, id, method, "x1, y1, x2, y2 are required")
+                    } else {
+                        svc.swipe(serial, x1, y1, x2, y2, duration)
+                        session.write(result(id) {
+                            put("ok", true)
+                        })
+                    }
+                }
+                true
+            }
+            else -> false
+        }
+    }
+
     private fun environmentPreamble(projectId: String, projectRoot: Path): String {
         val androidHome = System.getenv("ANDROID_HOME")?.takeIf { it.isNotBlank() } ?: "/opt/android-sdk"
         val gradleHint = "/home/vibe/.local/gradle/bin/gradle"
-        val adbInfo = adbService?.deviceSummary()?.let { "\n- ADB devices: $it" } ?: ""
+        val adbInfo = deviceService?.deviceSummary()?.let { "\n- ADB devices: $it" } ?: ""
         return """
             Vibe Coder environment context:
             - You are editing Android project `$projectId` at `$projectRoot`.

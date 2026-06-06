@@ -54,6 +54,35 @@ class DeviceService(private val adb: AdbService) {
         val b64 = Base64.getEncoder().encodeToString(bytes)
         return "data:image/png;base64,$b64"
     }
+
+    /** Delegate to [AdbService.deviceSummary]. */
+    fun deviceSummary(): String = adb.deviceSummary()
+
+    /**
+     * Send a tap event at (x, y) on [serial].
+     * Uses `input tap x y`.
+     */
+    fun tap(serial: String, x: Int, y: Int) {
+        adb.rawCommand("-s", serial, "shell", "input", "tap", x.toString(), y.toString())
+    }
+
+    /**
+     * Send a swipe gesture from (x1, y1) to (x2, y2) over [durationMs] milliseconds.
+     * Uses `input swipe x1 y1 x2 y2 [duration]`.
+     */
+    fun swipe(serial: String, x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int = 300) {
+        adb.rawCommand("-s", serial, "shell", "input", "swipe",
+            x1.toString(), y1.toString(), x2.toString(), y2.toString(), durationMs.toString())
+    }
+
+    /**
+     * Capture a screenshot and return the raw PNG bytes as a base64-encoded string.
+     * Returns null on failure.
+     */
+    fun screencapBase64(serial: String): String? {
+        val bytes = screencap(serial) ?: return null
+        return Base64.getEncoder().encodeToString(bytes)
+    }
 }
 
 data class DeviceInfo(
