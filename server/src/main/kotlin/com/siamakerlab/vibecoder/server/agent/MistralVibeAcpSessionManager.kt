@@ -632,7 +632,10 @@ class MistralVibeAcpSessionManager(
 
     private suspend fun handleDeviceRequest(session: AcpProjectSession, id: JsonElement, obj: JsonObject): Boolean {
         val svc = deviceService ?: return false
-        return when (val method = obj["method"]?.jsonPrimitive?.contentOrNull) {
+        val rawMethod = obj["method"]?.jsonPrimitive?.contentOrNull ?: return false
+        // Strip leading underscore added by ACP extension request routing
+        val method = if (rawMethod.startsWith("_")) rawMethod.substring(1) else rawMethod
+        return when (method) {
             "device/screencap" -> {
                 runCatching {
                     val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
