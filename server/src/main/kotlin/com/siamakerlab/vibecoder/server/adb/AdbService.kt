@@ -1,0 +1,143 @@
+package com.siamakerlab.vibecoder.server.adb
+
+import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+
+private val log = KotlinLogging.logger {}
+
+/**
+ * Manages ADB device discovery and host configuration.
+ *
+ * The ADB host is persisted in-memory (per server run) and can be configured
+ * via the `/settings/adb` UI. When empty, `adb devices` is called without `-H`.
+ */
+class AdbService {
+
+    @Volatile
+    var adbHost: String = ""
+        private set
+
+    /** Persisted host from config — set once at startup. */
+    fun initHost(host: String) {
+        adbHost = host
+    }
+
+    fun updateHost(host: String) {
+        adbHost = host.trim()
+    }
+
+    /** Run `adb [-H <host>] devices -l` and parse the output. */
+    fun listDevices(): AdbDevicesResult {
+        val cmd = buildList {
+            add(resolveAdb())
+            if (adbHost.isNotBlank()) {
+                add("-H"); add(adbHost)
+            }
+            add("devices"); add("-l")
+        }
+        return runCommand(cmd, timeoutSeconds = 10)
+    }
+
+    /** Run `adb [-H <host>] <args...>` and return raw output. */
+    fun rawCommand(vararg args: String): AdbCommandResult {
+        val cmd = buildList {
+            add(resolveAdb())
+            if (adbHost.isNotBlank()) {
+                add("-H"); add(adbHost)
+            }
+            args.forEach { add(it) }
+        }
+        return runCommand(cmd, timeoutSeconds = 30)
+    }
+
+    /** Get a human-readable summary of connected devices for agent context. */
+    fun deviceSummary(): String {
+        val result = listDevices()
+        if (!result.success) return "ADB: ${result.error ?: "unknown error"}"
+        if (result.devices.isEmpty()) {
+            val hostInfo = if (adbHost.isNotBlank()) " (host: $adbHost)" else ""
+            return "No ADB devices connected$hostInfo."
+        }
+        val hostInfo = if (adbHost.isNotBlank()) " (ADB host: $adbHost)" else ""
+        return result.devices.joinToString("; ") { d ->
+            val model = d.model?.let { " $it" } ?: ""
+            "${d.serial}$model (${d.status})"
+        } + hostInfo
+    }
+
+    // region internals
+
+    private fun runCommand(cmd: List<String>, timeoutSeconds: Long): AdbCommandResult {
+        return try {
+            val pb = ProcessBuilder(cmd).redirectErrorStream(true)
+            val proc = pb.start()
+            val output = proc.inputStream.bufferedReader().readText()
+            val ok = proc.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+            if (!ok) {
+                proc.destroyForcibly()
+                AdbCommandResult(success = false, error = "ADB command timed out after ${timeoutSeconds}s")
+            } else if (proc.exitValue() != 0) {
+                AdbCommandResult(success = false, error = output.lines().firstOrNull { it.isNotBlank() } ?: "exit code ${proc.exitValue()}")
+            } else {
+                AdbCommandResult(success = true, output = output)
+            }
+        } catch (e: IOException) {
+            AdbCommandResult(success = false, error = "ADB not found or failed: ${e.message}")
+        } catch (e: Exception) {
+            AdbCommandResult(success = false, error = e.message ?: "unknown error")
+        }
+    }
+
+    private fun resolveAdb(): String {
+        val env = System.getenv("ANDROID_HOME")?.takeIf { it.isNotBlank() }
+        if (env != null) return "$env/platform-tools/adb"
+        return "adb"
+    }
+
+    // endregion
+}
+
+data class AdbDevice(
+    val serial: String,
+    val status: String,
+    val model: String?,
+    val product: String?,
+    val transportId: String?,
+)
+
+data class AdbDevicesResult(
+    val success: Boolean,
+    val devices: List<AdbDevice> = emptyList(),
+    val error: String? = null,
+)
+
+data class AdbCommandResult(
+    val success: Boolean,
+    val output: String = "",
+    val error: String? = null,
+) {
+    /** Parse `adb devices -l` output into structured device list. */
+    fun parseDevices(): AdbDevicesResult {
+        if (!success) return AdbDevicesResult(success = false, error = error)
+        val lines = output.lines()
+        // First line should be "List of devices attached"
+        val deviceLines = lines.drop(1).filter { it.isNotBlank() && !it.startsWith("*") }
+        if (deviceLines.isEmpty()) return AdbDevicesResult(success = true, devices = emptyList())
+
+        val devices = deviceLines.mapNotNull { line ->
+            // Format: <serial>\t<status> [product:...] [model:...] [transport_id:...]
+            val parts = line.split("\t", limit = 2)
+            if (parts.size < 2) return@mapNotNull null
+            val serial = parts[0].trim()
+            val rest = parts[1].trim()
+            val status = rest.substringBefore(" ").trim()
+            val props = rest.substringAfter(" ", "").trim()
+            val model = Regex("""model:(\S+)""").find(props)?.groupValues?.get(1)
+            val product = Regex("""product:(\S+)""").find(props)?.groupValues?.get(1)
+            val transportId = Regex("""transport_id:(\S+)""").find(props)?.groupValues?.get(1)
+            AdbDevice(serial, status, model, product, transportId)
+        }
+        return AdbDevicesResult(success = true, devices = devices)
+    }
+}
