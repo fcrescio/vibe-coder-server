@@ -1,7 +1,7 @@
 package com.siamakerlab.vibecoder.server.claude
 
+import com.siamakerlab.vibecoder.server.agent.AgentProcessFactory
 import com.siamakerlab.vibecoder.server.config.ServerConfig
-import com.siamakerlab.vibecoder.server.core.OsType
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.ws.WsFrame
@@ -17,16 +17,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.addJsonObject
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.IOException
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -41,23 +34,26 @@ import kotlin.io.path.writeText
 private val log = KotlinLogging.logger {}
 
 /**
- * v0.44.0 — Owns a separate `claude` child process per (projectId, agentName) tuple so a project
- * can have multiple Claude sessions running in parallel, each acting as a different sub-agent.
+ * v0.44.0 — Owns a separate agent child process per (projectId, agentName) tuple so a project
+ * can have multiple agent sessions running in parallel, each acting as a different sub-agent.
  *
- * The main project console keeps using [ClaudeSessionManager]. Sub-agent consoles use this
+ * The main project console keeps using [AgentRuntime]. Sub-agent consoles use this
  * manager. The two are completely independent: they spawn their own processes, write their own
  * session-id files (under `.vibecoder/agent-sessions/`), and broadcast on their own LogHub topic
  * ([LogHub.subAgentConsoleTopic]).
  *
- * The agent identity is communicated to Claude by prefixing the very first prompt of a fresh
+ * The agent identity is communicated by prefixing the very first prompt of a fresh
  * session with `Use the <agentName> sub-agent to ...`. Subsequent prompts inside the same
  * session reuse the spawned child process directly — no extra fork per turn.
+ *
+ * The actual agent process (Claude CLI or Mistral Vibe ACP) is abstracted behind
+ * [AgentProcessFactory], allowing the same manager to work with any provider.
  */
 class SubAgentSessionManager(
     private val config: ServerConfig,
     private val workspace: WorkspacePath,
     private val hub: LogHub,
-    private val parser: ClaudeStreamParser = ClaudeStreamParser(),
+    private val factory: AgentProcessFactory,
     private val idleTimeout: Duration = Duration.ofMinutes(30),
     /** v0.49.0 — conversation_turns 영구 적재. null 이면 history persistence 비활성. */
     private val history: ConversationHistoryService? = null,
@@ -87,23 +83,13 @@ class SubAgentSessionManager(
         // v0.49.0 — user prompt 영구 적재 (sub-agent name 으로 태깅; sub-agent 인지된 채로 history 페이지에 보임).
         history?.userPrompt(projectId, session.sessionId, text, agentName)
 
-        val actualText = if (!session.firstPromptSent) {
-            session.firstPromptSent = true
-            "Use the $agentName sub-agent to do the following:\n\n$text"
-        } else text
-
-        val envelope = buildJsonObject {
-            put("type", "user")
-            put("message", buildJsonObject {
-                put("role", "user")
-                put("content", buildJsonArray {
-                    addJsonObject {
-                        put("type", "text")
-                        put("text", actualText)
-                    }
-                })
-            })
-        }.toString()
+        val envelope = factory.buildPromptEnvelope(
+            text = text,
+            firstPrompt = !session.firstPromptSent,
+            agentName = agentName,
+            sessionId = session.sessionId ?: "",
+        )
+        session.firstPromptSent = true
 
         session.stdinMutex.withLock {
             try {
@@ -115,7 +101,7 @@ class SubAgentSessionManager(
                 session.lastActivity = Instant.now()
             } catch (e: IOException) {
                 log.warn(e) { "[${key.id}] stdin write failed; will respawn on next prompt" }
-                emitSystem(key, "process_crashed", "Sub-agent claude is no longer accepting input (${e.message}). Retrying on next prompt.")
+                emitSystem(key, "process_crashed", "Sub-agent is no longer accepting input (${e.message}). Retrying on next prompt.")
                 terminateSession(key)
                 throw e
             }
@@ -186,44 +172,15 @@ class SubAgentSessionManager(
         if (!projectRoot.exists()) {
             throw IllegalStateException("project root not found: $projectRoot")
         }
-        com.siamakerlab.vibecoder.server.projects.ProjectScaffolder.ensureClaudeFiles(projectRoot)
 
         val savedId = readSessionId(key)
-        val cmd = resolveClaudeCmd()
-        val args = buildList {
-            add(cmd)
-            add("--output-format"); add("stream-json")
-            add("--input-format"); add("stream-json")
-            add("--verbose")
-            add("--dangerously-skip-permissions")
-            add("--disallowedTools")
-            add("AskUserQuestion ExitPlanMode EnterPlanMode NotebookEdit")
-            if (savedId != null) {
-                add("--resume"); add(savedId)
-            }
-        }
-        log.info { "[${key.id}] spawning sub-agent: ${args.joinToString(" ")} (cwd=$projectRoot)" }
-
-        val proc = try {
-            val pb = ProcessBuilder(args)
-                .directory(projectRoot.toFile())
-                .redirectErrorStream(false)
-            com.siamakerlab.vibecoder.server.env.ClaudeProcessEnv.applyApiKey(pb.environment())
-            pb.start()
-        } catch (e: IOException) {
-            emitSystem(key, "claude_unavailable", "Failed to spawn sub-agent claude: ${e.message}")
-            throw e
-        }
-
-        val stdin = BufferedWriter(OutputStreamWriter(proc.outputStream, StandardCharsets.UTF_8))
-        val stdout = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8))
-        val stderr = BufferedReader(InputStreamReader(proc.errorStream, StandardCharsets.UTF_8))
+        val agentProcess = factory.spawn(projectRoot, savedId, key.agentName)
 
         val session = AgentSession(
             key = key,
-            process = proc,
-            stdin = stdin,
-            sessionId = savedId,
+            process = agentProcess.process,
+            stdin = agentProcess.stdin,
+            sessionId = agentProcess.sessionId.ifBlank { savedId },
             lastActivity = Instant.now(),
             // savedId 가 있다는 건 이전 세션 이어감 → agent prefix 이미 주입된 적 있음.
             firstPromptSent = savedId != null,
@@ -234,20 +191,20 @@ class SubAgentSessionManager(
         session.readerJob = scope.launch {
             try {
                 while (isActive) {
-                    val line = withContext(Dispatchers.IO) { stdout.readLine() } ?: break
+                    val line = withContext(Dispatchers.IO) { agentProcess.stdout.readLine() } ?: break
                     if (line.isBlank()) continue
-                    handleStdoutLine(key, line)
+                    handleStdoutLine(key, agentProcess, line)
                 }
             } catch (e: IOException) {
                 log.debug(e) { "[${key.id}] sub-agent stdout reader ended" }
             } finally {
-                onProcessExit(key, proc, session)
+                onProcessExit(key, agentProcess.process, session)
             }
         }
         session.stderrJob = scope.launch {
             try {
                 while (isActive) {
-                    val line = withContext(Dispatchers.IO) { stderr.readLine() } ?: break
+                    val line = withContext(Dispatchers.IO) { agentProcess.stderr.readLine() } ?: break
                     if (line.isBlank()) continue
                     log.debug { "[${key.id}][stderr] $line" }
                 }
@@ -258,8 +215,12 @@ class SubAgentSessionManager(
         return session
     }
 
-    private suspend fun handleStdoutLine(key: AgentKey, line: String) {
-        val events = parser.parseLine(line)
+    private suspend fun handleStdoutLine(
+        key: AgentKey,
+        agentProcess: com.siamakerlab.vibecoder.server.agent.AgentProcess,
+        line: String,
+    ) {
+        val events = factory.handleLine(agentProcess, line)
         if (events.isEmpty()) return
         for (event in events) {
             if (event is ClaudeEvent.SessionStarted) {
@@ -374,13 +335,6 @@ class SubAgentSessionManager(
         val f = sessionIdFile(key)
         Files.createDirectories(f.parent)
         f.writeText(id)
-    }
-
-    private fun resolveClaudeCmd(): String {
-        val override = System.getenv("CLAUDE_CMD")
-        if (!override.isNullOrBlank()) return override
-        if (config.claude.path != "auto") return config.claude.path
-        return if (OsType.detect() == OsType.WINDOWS) "claude.cmd" else "claude"
     }
 
     private data class AgentKey(val projectId: String, val agentName: String) {

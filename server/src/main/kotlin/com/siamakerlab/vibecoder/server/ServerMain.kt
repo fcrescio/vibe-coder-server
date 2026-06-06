@@ -214,8 +214,18 @@ fun main(args: Array<String>) {
     // v0.44.0 — Phase 23 sub-agent process pool (real multi-agent). Independent of the main
     // ClaudeSessionManager so a project can run its primary console plus multiple sub-agents
     // (reviewer / frontend / backend / ...) concurrently in the same workspace.
+    val subAgentFactory: com.siamakerlab.vibecoder.server.agent.AgentProcessFactory =
+        when (config.agent.provider.lowercase()) {
+            "mistral-vibe-acp" -> com.siamakerlab.vibecoder.server.agent.AcpAgentProcessFactory(
+                config = config, workspace = workspace,
+            )
+            else -> com.siamakerlab.vibecoder.server.agent.ClaudeAgentProcessFactory(
+                config = config,
+            )
+        }
     val subAgentManager = com.siamakerlab.vibecoder.server.claude.SubAgentSessionManager(
-        config = config, workspace = workspace, hub = hub, history = conversationHistory,
+        config = config, workspace = workspace, hub = hub,
+        factory = subAgentFactory, history = conversationHistory,
     )
     val gradle = GradleBuilder(config)
     val artifacts = ArtifactService(config, workspace, artifactRepo, buildRepo, clock)
