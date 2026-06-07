@@ -724,11 +724,13 @@ class AcpAgentProcessFactory(
                         return@runCatching
                     }
                     val prepared = prepareScreenshotForVision(b64)
-                    val answer = analyzeImageWithEndpoint(
+                    val rawAnswer = analyzeImageWithEndpoint(
                         question = prepared.navigationQuestion(question),
                         base64Image = prepared.base64,
                         mimeType = "image/png",
                     )
+                    val answer = convertCoordinatesInAnswer(rawAnswer, prepared)
+                    val adbCoords = extractAdbCoordinates(rawAnswer, prepared)
                     write(process, result(id) {
                         put("serial", serial)
                         put("mimeType", "image/png")
@@ -742,6 +744,9 @@ class AcpAgentProcessFactory(
                             put("offsetY", prepared.offsetY)
                             put("scale", prepared.scale)
                             put("coordinateHint", prepared.coordinateHint)
+                        }
+                        if (adbCoords != null) {
+                            put("adbCoordinates", adbCoords)
                         }
                         put("answer", answer)
                     })
@@ -768,34 +773,140 @@ class AcpAgentProcessFactory(
                 scale = 1.0,
             )
         val target = 1000
-        val scale = minOf(target.toDouble() / source.width, target.toDouble() / source.height)
-        val scaledWidth = (source.width * scale).toInt().coerceAtLeast(1)
-        val scaledHeight = (source.height * scale).toInt().coerceAtLeast(1)
-        val offsetX = (target - scaledWidth) / 2
-        val offsetY = (target - scaledHeight) / 2
         val canvas = BufferedImage(target, target, BufferedImage.TYPE_INT_RGB)
         val g = canvas.createGraphics()
         try {
-            g.color = Color.BLACK
-            g.fillRect(0, 0, target, target)
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
-            g.drawImage(source, offsetX, offsetY, scaledWidth, scaledHeight, null)
+            g.drawImage(source, 0, 0, target, target, null)
         } finally {
             g.dispose()
         }
         val out = ByteArrayOutputStream()
         ImageIO.write(canvas, "png", out)
+        val scaleX = target.toDouble() / source.width
+        val scaleY = target.toDouble() / source.height
         return VisionPreparedImage(
             base64 = Base64.getEncoder().encodeToString(out.toByteArray()),
             width = target,
             height = target,
             originalWidth = source.width,
             originalHeight = source.height,
-            offsetX = offsetX,
-            offsetY = offsetY,
-            scale = scale,
+            offsetX = 0,
+            offsetY = 0,
+            scale = scaleX,
+            scaleY = scaleY,
         )
+    }
+
+    /**
+     * Post-processes the LLM answer to convert any preview coordinates (1000x1000)
+     * to real ADB screenshot coordinates. Handles patterns like:
+     *   (x, y), (x,y)  →  (adb_x, adb_y)
+     *   x=123, y=456  →  x=adb_x, y=adb_y
+     */
+    private fun convertCoordinatesInAnswer(answer: String, prepared: VisionPreparedImage): String {
+        if (prepared.originalWidth == 0 || prepared.originalHeight == 0) return answer
+        val ow = prepared.originalWidth
+        val oh = prepared.originalHeight
+        val pw = prepared.width  // 1000
+
+        fun convertPreviewToAdb(px: Int, py: Int): Pair<Int, Int> {
+            val adbX = (px * ow / pw).coerceIn(0, ow - 1)
+            val adbY = (py * oh / pw).coerceIn(0, oh - 1)
+            return adbX to adbY
+        }
+
+        // Pattern 1: JSON array [digits, digits]
+        val jsonArrayPattern = Regex("""\[(\d{1,4})\s*,\s*(\d{1,4})\]""")
+        var result = jsonArrayPattern.replace(answer) { match ->
+            val px = match.groupValues[1].toInt()
+            val py = match.groupValues[2].toInt()
+            if (px in 0..1000 && py in 0..1000) {
+                val (ax, ay) = convertPreviewToAdb(px, py)
+                "[$ax, $ay]"
+            } else {
+                match.value
+            }
+        }
+
+        // Pattern 2: (digits, digits) or (digits,digits)
+        val parenPattern = Regex("""\((\d{1,4})\s*,\s*(\d{1,4})\)""")
+        result = parenPattern.replace(result) { match ->
+            val px = match.groupValues[1].toInt()
+            val py = match.groupValues[2].toInt()
+            if (px in 0..1000 && py in 0..1000) {
+                val (ax, ay) = convertPreviewToAdb(px, py)
+                "($ax, $ay)"
+            } else {
+                match.value
+            }
+        }
+
+        // Pattern 3: x=digits, y=digits or x=digits y=digits
+        val xyPattern = Regex("""x\s*=\s*(\d{1,4})\s*[,;]?\s*y\s*=\s*(\d{1,4})""", RegexOption.IGNORE_CASE)
+        result = xyPattern.replace(result) { match ->
+            val px = match.groupValues[1].toInt()
+            val py = match.groupValues[2].toInt()
+            if (px in 0..1000 && py in 0..1000) {
+                val (ax, ay) = convertPreviewToAdb(px, py)
+                "x=$ax, y=$ay"
+            } else {
+                match.value
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * Extracts preview coordinates from the LLM's JSON response and converts them to ADB coordinates.
+     * Returns a JsonObject like {"increment": [adb_x, adb_y], "reset": [adb_x, adb_y]} or null.
+     */
+    private fun extractAdbCoordinates(answer: String, prepared: VisionPreparedImage): JsonObject? {
+        if (prepared.originalWidth == 0 || prepared.originalHeight == 0) return null
+        val ow = prepared.originalWidth
+        val oh = prepared.originalHeight
+        val pw = prepared.width
+
+        val coordPattern = Regex(""""(\w+)"\s*:\s*\[(\d{1,4})\s*,\s*(\d{1,4})\]""")
+        val matches = coordPattern.findAll(answer).toList()
+        if (matches.isEmpty()) return null
+
+        var incX: Int? = null
+        var incY: Int? = null
+        var resX: Int? = null
+        var resY: Int? = null
+
+        for (m in matches) {
+            val key = m.groupValues[1]
+            val x = m.groupValues[2].toIntOrNull() ?: continue
+            val y = m.groupValues[3].toIntOrNull() ?: continue
+            when (key) {
+                "increment" -> { incX = x; incY = y }
+                "reset" -> { resX = x; resY = y }
+            }
+        }
+
+        if (incX == null || incY == null) return null
+
+        val adbIncX = (incX * ow / pw).coerceIn(0, ow - 1)
+        val adbIncY = (incY * oh / pw).coerceIn(0, oh - 1)
+
+        return buildJsonObject {
+            putJsonArray("increment") {
+                add(adbIncX)
+                add(adbIncY)
+            }
+            if (resX != null && resY != null) {
+                val adbResX = (resX * ow / pw).coerceIn(0, ow - 1)
+                val adbResY = (resY * oh / pw).coerceIn(0, oh - 1)
+                putJsonArray("reset") {
+                    add(adbResX)
+                    add(adbResY)
+                }
+            }
+        }
     }
 
     private suspend fun analyzeImageWithEndpoint(question: String, base64Image: String, mimeType: String): String =
@@ -916,24 +1027,22 @@ class AcpAgentProcessFactory(
         val offsetX: Int,
         val offsetY: Int,
         val scale: Double,
+        val scaleY: Double = scale,
     ) {
         val coordinateHint: String
             get() = "Vision image is ${width}x${height}. Original ADB screenshot is " +
-                "${originalWidth}x${originalHeight}. Original coordinate transform: " +
-                "adb_x=(vision_x-$offsetX)/$scale, adb_y=(vision_y-$offsetY)/$scale."
+                "${originalWidth}x${originalHeight}. Stretched to fill preview. " +
+                "adb_x=vision_x*${originalWidth}/$width, adb_y=vision_y*${originalHeight}/$height."
 
         fun navigationQuestion(question: String): String =
             """
             $question
 
-            Coordinate note for phone UI navigation:
-            - The attached image is a square ${width}x${height} preview generated from the real ADB screenshot.
-            - The real ADB screenshot/device coordinate system is ${originalWidth}x${originalHeight}, origin at top-left.
-            - The preview preserves aspect ratio with black padding: offsetX=$offsetX, offsetY=$offsetY, scale=$scale.
-            - If you identify tap targets, first locate them in preview coordinates, then convert to ADB coordinates with:
-              adb_x = (preview_x - $offsetX) / $scale
-              adb_y = (preview_y - $offsetY) / $scale
-            - Report ADB coordinates for any tap recommendation. Do not report coordinates in the square preview unless explicitly asked.
+            The image is a ${width}x${height} stretched version of the real device screen (${originalWidth}x${originalHeight}).
+            First describe where elements are (top, middle, bottom).
+            Then return JSON: {"increment": [preview_x, preview_y], "reset": [preview_x, preview_y], "counter": "value"}
+            preview_x and preview_y must be integers between 0 and $width.
+            Do NOT convert to device coordinates — the server does that automatically.
             """.trimIndent()
     }
 
