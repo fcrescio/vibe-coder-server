@@ -106,58 +106,65 @@ class MistralVibeAcpSessionManager(
         }
         session.stdinMutex.withLock {
             setBusy(projectId, true)
-            val response = try {
-                session.request(
-                    "session/prompt",
-                    buildJsonObject {
-                        put("sessionId", session.sessionId)
-                        putJsonArray("prompt") {
-                            add(buildJsonObject {
-                                put("type", "text")
-                                put("text", promptText)
-                            })
-                            if (images.isNotEmpty() && agentSupportsImages()) {
-                                images.forEach { image ->
-                                    add(buildJsonObject {
-                                        put("type", "image")
-                                        put("mimeType", image.mimeType)
-                                        put("data", image.data)
-                                    })
+            val maxAttempts = if (sessionRetried.add(projectId)) 2 else 1
+            var lastError: Exception? = null
+            for (attempt in 1..maxAttempts) {
+                if (attempt > 1) {
+                    log.info { "[$projectId] LLM call failed but vibe-acp alive; retrying once (attempt $attempt/$maxAttempts)" }
+                    emitSystem(projectId, "retry", "LLM call failed, retrying…")
+                    delay(2_000L)
+                }
+                try {
+                    val response = session.request(
+                        "session/prompt",
+                        buildJsonObject {
+                            put("sessionId", session.sessionId)
+                            putJsonArray("prompt") {
+                                add(buildJsonObject {
+                                    put("type", "text")
+                                    put("text", promptText)
+                                })
+                                if (images.isNotEmpty() && agentSupportsImages()) {
+                                    images.forEach { image ->
+                                        add(buildJsonObject {
+                                            put("type", "image")
+                                            put("mimeType", image.mimeType)
+                                            put("data", image.data)
+                                        })
+                                    }
                                 }
                             }
-                        }
-                    },
-                    timeoutMs = config.agent.timeoutMinutes.coerceAtLeast(1) * 60_000L,
-                )
-            } catch (e: Exception) {
-                setBusy(projectId, false)
-                if (e is AcpRequestException && e.isContextTooLong) {
-                    flushAssistant(projectId)
-                    emitSystem(
-                        projectId,
-                        "context_too_long",
-                        e.message ?: "Context too long. Send /compact to summarize the conversation, then retry.",
+                        },
+                        timeoutMs = config.agent.timeoutMinutes.coerceAtLeast(1) * 60_000L,
                     )
-                } else {
-                    emitSystem(projectId, "agent_send_failed", e.message ?: "Mistral Vibe ACP prompt failed")
-                    // If vibe-acp is still alive, retry once (llama.cpp may have been in sleep).
-                    val s = sessions[projectId]
-                    if (s != null && s.process.isAlive && !sessionRetried.contains(projectId)) {
-                        sessionRetried.add(projectId)
-                        log.info { "[$projectId] LLM call failed but vibe-acp alive; retrying once" }
-                        emitSystem(projectId, "retry", "LLM call failed, retrying…")
-                        delay(2_000L)
-                        return sendPrompt(projectId, text, images)
+                    val stopReason = response["stop_reason"]?.jsonPrimitive?.contentOrNull ?: "end_turn"
+                    flushAssistant(projectId)
+                    history?.systemNotice(projectId, session.sessionId.ifBlank { readSessionId(projectId) }, "done", "Mistral Vibe ACP turn finished: $stopReason")
+                    setBusy(projectId, false)
+                    hub.emitConsole(topic(projectId)) { seq -> WsFrame.ConsoleDone(reason = stopReason, seq = seq) }
+                    return
+                } catch (e: Exception) {
+                    lastError = e
+                    setBusy(projectId, false)
+                    if (e is AcpRequestException && e.isContextTooLong) {
+                        flushAssistant(projectId)
+                        emitSystem(
+                            projectId,
+                            "context_too_long",
+                            e.message ?: "Context too long. Send /compact to summarize the conversation, then retry.",
+                        )
+                        throw e
                     }
-                    terminateSession(projectId)
+                    emitSystem(projectId, "agent_send_failed", e.message ?: "Mistral Vibe ACP prompt failed")
+                    val s = sessions[projectId]
+                    if (s == null || !s.process.isAlive || attempt >= maxAttempts) {
+                        terminateSession(projectId)
+                        throw e
+                    }
+                    // Otherwise: loop to retry
                 }
-                throw e
             }
-            val stopReason = response["stop_reason"]?.jsonPrimitive?.contentOrNull ?: "end_turn"
-            flushAssistant(projectId)
-            history?.systemNotice(projectId, session.sessionId.ifBlank { readSessionId(projectId) }, "done", "Mistral Vibe ACP turn finished: $stopReason")
-            setBusy(projectId, false)
-            hub.emitConsole(topic(projectId)) { seq -> WsFrame.ConsoleDone(reason = stopReason, seq = seq) }
+            throw lastError ?: IllegalStateException("unreachable")
         }
     }
 
