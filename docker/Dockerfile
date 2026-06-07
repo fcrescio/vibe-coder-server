@@ -106,8 +106,11 @@ ENV PIPX_BIN_DIR=/usr/local/bin
 ARG MISTRAL_VIBE_VERSION=2.14.0
 RUN pipx install "mistral-vibe==${MISTRAL_VIBE_VERSION}"
 COPY --chown=root:root docker/scripts/patch-mistral-vibe-sse.py /tmp/patch-mistral-vibe-sse.py
+COPY --chown=root:root docker/scripts/patch-mistral-vibe-acp-images.py /tmp/patch-mistral-vibe-acp-images.py
 RUN /opt/pipx/venvs/mistral-vibe/bin/python /tmp/patch-mistral-vibe-sse.py \
-    && rm /tmp/patch-mistral-vibe-sse.py
+    && /opt/pipx/venvs/mistral-vibe/bin/python /tmp/patch-mistral-vibe-acp-images.py \
+    && rm /tmp/patch-mistral-vibe-sse.py /tmp/patch-mistral-vibe-acp-images.py
+COPY --chown=root:root docker/vibe-tools/device.py /opt/vibe-coder/vibe-tools/device.py
 
 # ---- User / directories ------------------------------------------------------
 # The entrypoint adjusts this to the host UID when requested. These are defaults.

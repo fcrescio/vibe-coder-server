@@ -5,6 +5,7 @@ import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.projects.ProjectScaffolder
 import com.siamakerlab.vibecoder.server.adb.AdbService
+import com.siamakerlab.vibecoder.server.devices.DeviceService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,19 +27,28 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
 import java.io.BufferedReader
 import java.io.BufferedWriter
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import javax.imageio.ImageIO
 import kotlin.io.path.exists
 import kotlin.io.path.notExists
 import kotlin.io.path.readText
@@ -60,6 +70,7 @@ class AcpAgentProcessFactory(
     private val config: ServerConfig,
     private val workspace: WorkspacePath,
     private val adbService: AdbService? = null,
+    private val deviceService: DeviceService? = null,
 ) : AgentProcessFactory {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -74,10 +85,11 @@ class AcpAgentProcessFactory(
         agentName: String,
     ): AgentProcess {
         ProjectScaffolder.ensureClaudeFiles(projectRoot)
+        val policy = SubAgentToolPolicy.forAgent(agentName)
 
         val cmd = System.getenv("VIBECODER_AGENT_COMMAND")?.takeIf { it.isNotBlank() }
             ?: config.agent.command
-        val vibeHome = prepareRuntimeVibeHome()
+        val vibeHome = prepareRuntimeVibeHome(agentName, policy)
 
         val proc = ProcessBuilder(cmd)
             .directory(projectRoot.toFile())
@@ -98,10 +110,18 @@ class AcpAgentProcessFactory(
                 put("protocol_version", 1)
                 putJsonObject("client_capabilities") {
                     putJsonObject("fs") {
-                        put("readTextFile", true)
-                        put("writeTextFile", true)
+                        put("readTextFile", policy.allowFsRead)
+                        put("writeTextFile", policy.allowFsWrite)
                     }
-                    put("terminal", true)
+                    put("terminal", policy.allowTerminal)
+                    putJsonObject("device") {
+                        val enabled = policy.allowDevice && deviceService != null
+                        put("screencap", enabled)
+                        put("analyzeScreenshot", enabled)
+                        put("tap", enabled)
+                        put("swipe", enabled)
+                        put("launchApp", enabled)
+                    }
                     putJsonObject("auth") {
                         put("terminal", false)
                     }
@@ -147,6 +167,7 @@ class AcpAgentProcessFactory(
                 stderr = stderr,
                 sessionId = sessionId,
                 projectRoot = projectRoot.toAbsolutePath().normalize(),
+                agentName = agentName,
             )
         } catch (e: Exception) {
             proc.destroy()
@@ -168,6 +189,7 @@ class AcpAgentProcessFactory(
         }
         if (idElement != null && handleFsRequest(process, idElement, obj)) return emptyList()
         if (idElement != null && handleTerminalRequest(process, idElement, obj)) return emptyList()
+        if (idElement != null && handleDeviceRequest(process, idElement, obj)) return emptyList()
 
         return parseLine(line)
     }
@@ -312,17 +334,23 @@ class AcpAgentProcessFactory(
     ): String {
         val actualText = if (firstPrompt) {
             val instructions = readAgentInstructions(agentName)
-            val adbInfo = adbService?.deviceSummary()?.let { "\nADB devices: $it" } ?: ""
+            val policy = SubAgentToolPolicy.forAgent(agentName)
+            val adbInfo = (deviceService?.deviceSummary() ?: adbService?.deviceSummary())?.let { "\nADB devices: $it" } ?: ""
             buildString {
                 append("You are running as the `")
                 append(agentName)
                 append("` sub-agent inside Vibe Coder Server.\n")
+                if (policy.extraInstructions.isNotBlank()) {
+                    append("\n")
+                    append(policy.extraInstructions)
+                    append("\n")
+                }
                 if (!instructions.isNullOrBlank()) {
                     append("\nSub-agent instructions:\n")
                     append(instructions.trim())
                     append("\n")
                 }
-                append("\nUse the available filesystem and terminal tools when project inspection is needed. ")
+                append("\nUse only the tools enabled for this sub-agent. ")
                 append("Do not invent file contents or command output.\n")
                 if (adbInfo.isNotBlank()) {
                     append(adbInfo)
@@ -420,6 +448,11 @@ class AcpAgentProcessFactory(
     private suspend fun handleFsRequest(process: AgentProcess, id: JsonElement, obj: JsonObject): Boolean {
         return when (val method = obj["method"]?.jsonPrimitive?.contentOrNull) {
             "fs/read_text_file" -> {
+                val policy = SubAgentToolPolicy.forAgent(process.agentName)
+                if (!policy.allowFsRead) {
+                    respondRequestError(process, id, method, "filesystem reads are disabled for ${process.agentName}")
+                    return true
+                }
                 runCatching {
                     val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
                     val path = safeProjectPath(process, params["path"]?.jsonPrimitive?.contentOrNull.orEmpty())
@@ -440,6 +473,11 @@ class AcpAgentProcessFactory(
                 true
             }
             "fs/write_text_file" -> {
+                val policy = SubAgentToolPolicy.forAgent(process.agentName)
+                if (!policy.allowFsWrite) {
+                    respondRequestError(process, id, method, "filesystem writes are disabled for ${process.agentName}")
+                    return true
+                }
                 runCatching {
                     val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
                     val path = safeProjectPath(process, params["path"]?.jsonPrimitive?.contentOrNull.orEmpty())
@@ -477,8 +515,13 @@ class AcpAgentProcessFactory(
     }
 
     private suspend fun handleTerminalRequest(process: AgentProcess, id: JsonElement, obj: JsonObject): Boolean {
+        val policy = SubAgentToolPolicy.forAgent(process.agentName)
         return when (val method = obj["method"]?.jsonPrimitive?.contentOrNull) {
             "terminal/create" -> {
+                if (!policy.allowTerminal) {
+                    respondRequestError(process, id, method, "terminal/shell commands are disabled for ${process.agentName}; use permitted device tools or stop with a blocked trace")
+                    return true
+                }
                 val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
                 val command = params["command"]?.jsonPrimitive?.contentOrNull.orEmpty()
                 val cwd = params["cwd"]?.jsonPrimitive?.contentOrNull
@@ -514,6 +557,10 @@ class AcpAgentProcessFactory(
                 true
             }
             "terminal/wait_for_exit" -> {
+                if (!policy.allowTerminal) {
+                    respondRequestError(process, id, method, "terminal/shell commands are disabled for ${process.agentName}")
+                    return true
+                }
                 val terminal = terminals[terminalId(obj)]
                 var exit: Int? = null
                 val child = terminal?.process
@@ -530,6 +577,10 @@ class AcpAgentProcessFactory(
                 true
             }
             "terminal/output" -> {
+                if (!policy.allowTerminal) {
+                    respondRequestError(process, id, method, "terminal/shell commands are disabled for ${process.agentName}")
+                    return true
+                }
                 val terminal = terminals[terminalId(obj)]
                 write(process, result(id) {
                     put("output", terminal?.output().orEmpty())
@@ -543,6 +594,10 @@ class AcpAgentProcessFactory(
                 true
             }
             "terminal/release" -> {
+                if (!policy.allowTerminal) {
+                    respondRequestError(process, id, method, "terminal/shell commands are disabled for ${process.agentName}")
+                    return true
+                }
                 terminals.remove(terminalId(obj))?.let { terminal ->
                     if (terminal.process.isAlive) terminal.process.destroy()
                     terminal.readerJob?.cancel()
@@ -551,6 +606,10 @@ class AcpAgentProcessFactory(
                 true
             }
             "terminal/kill" -> {
+                if (!policy.allowTerminal) {
+                    respondRequestError(process, id, method, "terminal/shell commands are disabled for ${process.agentName}")
+                    return true
+                }
                 terminals[terminalId(obj)]?.process?.destroyForcibly()
                 write(process, result(id) {})
                 true
@@ -558,6 +617,377 @@ class AcpAgentProcessFactory(
             else -> false
         }
     }
+
+    private suspend fun handleDeviceRequest(process: AgentProcess, id: JsonElement, obj: JsonObject): Boolean {
+        val rawMethod = obj["method"]?.jsonPrimitive?.contentOrNull ?: return false
+        val method = if (rawMethod.startsWith("_")) rawMethod.substring(1) else rawMethod
+        if (!method.startsWith("device/")) return false
+
+        val policy = SubAgentToolPolicy.forAgent(process.agentName)
+        if (!policy.allowDevice) {
+            respondRequestError(process, id, method, "device tools are disabled for ${process.agentName}")
+            return true
+        }
+        val svc = deviceService ?: run {
+            respondRequestError(process, id, method, "device tools are not configured for sub-agents")
+            return true
+        }
+
+        return when (method) {
+            "device/screencap" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    if (serial == null) {
+                        respondRequestError(process, id, method, "no device serial provided and no device connected")
+                        return@runCatching
+                    }
+                    val b64 = svc.screencapBase64(serial)
+                    if (b64 == null) {
+                        respondRequestError(process, id, method, "screencap failed")
+                        return@runCatching
+                    }
+                    write(process, result(id) {
+                        put("serial", serial)
+                        put("mimeType", "image/png")
+                        put("data", b64)
+                    })
+                }.onFailure {
+                    respondRequestError(process, id, method, it.message ?: "screencap failed")
+                }
+                true
+            }
+            "device/tap" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    val x = params["x"]?.jsonPrimitive?.intOrNull
+                    val y = params["y"]?.jsonPrimitive?.intOrNull
+                    if (serial == null) {
+                        respondRequestError(process, id, method, "no device serial provided and no device connected")
+                    } else if (x == null || y == null) {
+                        respondRequestError(process, id, method, "x and y are required")
+                    } else {
+                        val tap = svc.tap(serial, x, y)
+                        if (!tap.success) {
+                            respondRequestError(process, id, method, tap.error ?: tap.output.ifBlank { "tap failed" })
+                        } else {
+                            write(process, result(id) {
+                                put("ok", true)
+                                put("message", "Tapped $x,$y.")
+                                if (tap.output.isNotBlank()) put("output", tap.output.take(2000))
+                            })
+                        }
+                    }
+                }.onFailure {
+                    respondRequestError(process, id, method, it.message ?: "tap failed")
+                }
+                true
+            }
+            "device/swipe" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    val x1 = params["x1"]?.jsonPrimitive?.intOrNull
+                    val y1 = params["y1"]?.jsonPrimitive?.intOrNull
+                    val x2 = params["x2"]?.jsonPrimitive?.intOrNull
+                    val y2 = params["y2"]?.jsonPrimitive?.intOrNull
+                    val duration = params["duration"]?.jsonPrimitive?.intOrNull ?: 300
+                    if (serial == null) {
+                        respondRequestError(process, id, method, "no device serial provided and no device connected")
+                    } else if (x1 == null || y1 == null || x2 == null || y2 == null) {
+                        respondRequestError(process, id, method, "x1, y1, x2, y2 are required")
+                    } else {
+                        val swipe = svc.swipe(serial, x1, y1, x2, y2, duration)
+                        if (!swipe.success) {
+                            respondRequestError(process, id, method, swipe.error ?: swipe.output.ifBlank { "swipe failed" })
+                        } else {
+                            write(process, result(id) {
+                                put("ok", true)
+                                put("message", "Swiped $x1,$y1 to $x2,$y2.")
+                                if (swipe.output.isNotBlank()) put("output", swipe.output.take(2000))
+                            })
+                        }
+                    }
+                }.onFailure {
+                    respondRequestError(process, id, method, it.message ?: "swipe failed")
+                }
+                true
+            }
+            "device/launch_app" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    val packageName = params["packageName"]?.jsonPrimitive?.contentOrNull
+                        ?: params["package_name"]?.jsonPrimitive?.contentOrNull
+                    val activity = params["activity"]?.jsonPrimitive?.contentOrNull
+                    if (serial == null) {
+                        respondRequestError(process, id, method, "no device serial provided and no device connected")
+                    } else if (packageName.isNullOrBlank()) {
+                        respondRequestError(process, id, method, "packageName is required")
+                    } else {
+                        val launch = svc.launchApp(serial, packageName, activity)
+                        if (!launch.success) {
+                            respondRequestError(process, id, method, launch.error ?: launch.output.ifBlank { "launch failed" })
+                        } else {
+                            Thread.sleep(800)
+                            write(process, result(id) {
+                                put("ok", true)
+                                put("serial", serial)
+                                put("packageName", packageName)
+                                if (!activity.isNullOrBlank()) put("activity", activity)
+                                put("message", "Launched $packageName${activity?.let { "/$it" } ?: ""} on $serial.")
+                                put("output", launch.output.take(2000))
+                            })
+                        }
+                    }
+                }.onFailure {
+                    respondRequestError(process, id, method, it.message ?: "launch failed")
+                }
+                true
+            }
+            "device/analyze_screenshot" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    val question = params["question"]?.jsonPrimitive?.contentOrNull
+                        ?: "Describe the current Android device screen and mention visible UI issues."
+                    if (serial == null) {
+                        respondRequestError(process, id, method, "no device serial provided and no device connected")
+                        return@runCatching
+                    }
+                    val b64 = svc.screencapBase64(serial)
+                    if (b64 == null) {
+                        respondRequestError(process, id, method, "screencap failed")
+                        return@runCatching
+                    }
+                    val prepared = prepareScreenshotForVision(b64)
+                    val rawAnswer = analyzeImageWithEndpoint(
+                        question = prepared.navigationQuestion(question),
+                        base64Image = prepared.base64,
+                        mimeType = "image/png",
+                    )
+                    val answer = convertCoordinatesInAnswer(rawAnswer, prepared)
+                    val adbCoords = extractAdbCoordinates(rawAnswer, prepared)
+                    write(process, result(id) {
+                        put("serial", serial)
+                        put("mimeType", "image/png")
+                        put("data", b64)
+                        putJsonObject("visionPreview") {
+                            put("width", prepared.width)
+                            put("height", prepared.height)
+                            put("originalWidth", prepared.originalWidth)
+                            put("originalHeight", prepared.originalHeight)
+                            put("offsetX", prepared.offsetX)
+                            put("offsetY", prepared.offsetY)
+                            put("scale", prepared.scale)
+                            put("coordinateHint", prepared.coordinateHint)
+                        }
+                        if (adbCoords != null) {
+                            put("adbCoordinates", adbCoords)
+                        }
+                        put("answer", answer)
+                    })
+                }.onFailure {
+                    respondRequestError(process, id, method, it.message ?: "visual analysis failed")
+                }
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun prepareScreenshotForVision(base64Image: String): VisionPreparedImage {
+        val sourceBytes = Base64.getDecoder().decode(base64Image)
+        val source = ImageIO.read(ByteArrayInputStream(sourceBytes))
+            ?: return VisionPreparedImage(
+                base64 = base64Image,
+                width = 0,
+                height = 0,
+                originalWidth = 0,
+                originalHeight = 0,
+                offsetX = 0,
+                offsetY = 0,
+                scale = 1.0,
+            )
+        val target = 1000
+        val canvas = BufferedImage(target, target, BufferedImage.TYPE_INT_RGB)
+        val g = canvas.createGraphics()
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+            g.drawImage(source, 0, 0, target, target, null)
+        } finally {
+            g.dispose()
+        }
+        val out = ByteArrayOutputStream()
+        ImageIO.write(canvas, "png", out)
+        val scaleX = target.toDouble() / source.width
+        val scaleY = target.toDouble() / source.height
+        return VisionPreparedImage(
+            base64 = Base64.getEncoder().encodeToString(out.toByteArray()),
+            width = target,
+            height = target,
+            originalWidth = source.width,
+            originalHeight = source.height,
+            offsetX = 0,
+            offsetY = 0,
+            scale = scaleX,
+            scaleY = scaleY,
+        )
+    }
+
+    /**
+     * Post-processes the LLM answer to convert any preview coordinates (1000x1000)
+     * to real ADB screenshot coordinates. Handles patterns like:
+     *   (x, y), (x,y)  →  (adb_x, adb_y)
+     *   x=123, y=456  →  x=adb_x, y=adb_y
+     */
+    private fun convertCoordinatesInAnswer(answer: String, prepared: VisionPreparedImage): String {
+        if (prepared.originalWidth == 0 || prepared.originalHeight == 0) return answer
+        val ow = prepared.originalWidth
+        val oh = prepared.originalHeight
+        val pw = prepared.width  // 1000
+
+        fun convertPreviewToAdb(px: Int, py: Int): Pair<Int, Int> {
+            val adbX = (px * ow / pw).coerceIn(0, ow - 1)
+            val adbY = (py * oh / pw).coerceIn(0, oh - 1)
+            return adbX to adbY
+        }
+
+        // Pattern 1: JSON array [digits, digits]
+        val jsonArrayPattern = Regex("""\[(\d{1,4})\s*,\s*(\d{1,4})\]""")
+        var result = jsonArrayPattern.replace(answer) { match ->
+            val px = match.groupValues[1].toInt()
+            val py = match.groupValues[2].toInt()
+            if (px in 0..1000 && py in 0..1000) {
+                val (ax, ay) = convertPreviewToAdb(px, py)
+                "[$ax, $ay]"
+            } else {
+                match.value
+            }
+        }
+
+        // Pattern 2: (digits, digits) or (digits,digits)
+        val parenPattern = Regex("""\((\d{1,4})\s*,\s*(\d{1,4})\)""")
+        result = parenPattern.replace(result) { match ->
+            val px = match.groupValues[1].toInt()
+            val py = match.groupValues[2].toInt()
+            if (px in 0..1000 && py in 0..1000) {
+                val (ax, ay) = convertPreviewToAdb(px, py)
+                "($ax, $ay)"
+            } else {
+                match.value
+            }
+        }
+
+        // Pattern 3: x=digits, y=digits or x=digits y=digits
+        val xyPattern = Regex("""x\s*=\s*(\d{1,4})\s*[,;]?\s*y\s*=\s*(\d{1,4})""", RegexOption.IGNORE_CASE)
+        result = xyPattern.replace(result) { match ->
+            val px = match.groupValues[1].toInt()
+            val py = match.groupValues[2].toInt()
+            if (px in 0..1000 && py in 0..1000) {
+                val (ax, ay) = convertPreviewToAdb(px, py)
+                "x=$ax, y=$ay"
+            } else {
+                match.value
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * Extracts semantic preview coordinates from the LLM answer and converts them
+     * to real ADB coordinates. Any top-level JSON-style `"key": [x, y]` pair is
+     * preserved with the same key in the returned object.
+     */
+    private fun extractAdbCoordinates(answer: String, prepared: VisionPreparedImage): JsonObject? {
+        if (prepared.originalWidth == 0 || prepared.originalHeight == 0) return null
+        val ow = prepared.originalWidth
+        val oh = prepared.originalHeight
+        val pw = prepared.width
+
+        val coordPattern = Regex(""""(\w+)"\s*:\s*\[(\d{1,4})\s*,\s*(\d{1,4})\]""")
+        val matches = coordPattern.findAll(answer).toList()
+        if (matches.isEmpty()) return null
+
+        var found = false
+        return buildJsonObject {
+            for (m in matches) {
+                val key = m.groupValues[1]
+                val x = m.groupValues[2].toIntOrNull() ?: continue
+                val y = m.groupValues[3].toIntOrNull() ?: continue
+                if (x !in 0..prepared.width || y !in 0..prepared.height) continue
+                val adbX = (x * ow / pw).coerceIn(0, ow - 1)
+                val adbY = (y * oh / prepared.height).coerceIn(0, oh - 1)
+                putJsonArray(key) {
+                    add(adbX)
+                    add(adbY)
+                }
+                found = true
+            }
+        }.takeIf { found }
+    }
+
+    private suspend fun analyzeImageWithEndpoint(question: String, base64Image: String, mimeType: String): String =
+        withContext(Dispatchers.IO) {
+            val endpoint = visionEndpoint().trimEnd('/')
+            val url = if (endpoint.endsWith("/chat/completions")) endpoint else "$endpoint/chat/completions"
+            val payload = buildJsonObject {
+                put("model", visionModelName())
+                put("max_tokens", 1200)
+                putJsonArray("messages") {
+                    add(buildJsonObject {
+                        put("role", "user")
+                        putJsonArray("content") {
+                            add(buildJsonObject {
+                                put("type", "text")
+                                put("text", question)
+                            })
+                            add(buildJsonObject {
+                                put("type", "image_url")
+                                putJsonObject("image_url") {
+                                    put("url", "data:$mimeType;base64,$base64Image")
+                                }
+                            })
+                        }
+                    })
+                }
+            }.toString()
+            val request = HttpRequest.newBuilder(URI.create(url))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
+                .build()
+            val response = HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(10))
+                .build()
+                .send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+            if (response.statusCode() !in 200..299) {
+                throw IOException("vision endpoint returned HTTP ${response.statusCode()}: ${response.body().take(300)}")
+            }
+            val root = json.parseToJsonElement(response.body()).jsonObject
+            root["choices"]?.jsonArray?.firstOrNull()
+                ?.jsonObject?.get("message")?.jsonObject?.get("content")
+                ?.jsonPrimitive?.contentOrNull
+                ?: root["content"]?.jsonPrimitive?.contentOrNull
+                ?: response.body().take(2000)
+        }
+
+    private fun visionEndpoint(): String =
+        System.getenv("VIBECODER_VISION_ENDPOINT")?.takeIf { it.isNotBlank() }
+            ?: System.getenv("VIBECODER_AGENT_ENDPOINT")?.takeIf { it.isNotBlank() }
+            ?: "http://10.89.0.3:8080/v1"
+
+    private fun visionModelName(): String =
+        System.getenv("VIBECODER_VISION_MODEL_NAME")?.takeIf { it.isNotBlank() }
+            ?: System.getenv("VIBECODER_AGENT_MODEL_NAME")?.takeIf { it.isNotBlank() }
+            ?: "qwen3.6-A3B-spec"
 
     private fun terminalId(obj: JsonObject): String =
         obj["params"]?.jsonObject?.get("terminalId")?.jsonPrimitive?.contentOrNull
@@ -614,12 +1044,45 @@ class AcpAgentProcessFactory(
         fun output(): String = bytes.toString(StandardCharsets.UTF_8)
     }
 
-    private fun prepareRuntimeVibeHome(): Path {
+    private data class VisionPreparedImage(
+        val base64: String,
+        val width: Int,
+        val height: Int,
+        val originalWidth: Int,
+        val originalHeight: Int,
+        val offsetX: Int,
+        val offsetY: Int,
+        val scale: Double,
+        val scaleY: Double = scale,
+    ) {
+        val coordinateHint: String
+            get() = "Vision image is ${width}x${height}. Original ADB screenshot is " +
+                "${originalWidth}x${originalHeight}. Stretched to fill preview. " +
+                "adb_x=vision_x*${originalWidth}/$width, adb_y=vision_y*${originalHeight}/$height."
+
+        fun navigationQuestion(question: String): String =
+            """
+            $question
+
+            The image is a ${width}x${height} stretched version of the real device screen (${originalWidth}x${originalHeight}).
+            First describe where elements are (top, middle, bottom).
+            If the question asks for tap targets or if you recommend an action, include a compact JSON object with semantic target names and preview coordinates, for example:
+            {"playButton": [preview_x, preview_y], "settingsButton": [preview_x, preview_y]}
+            Only include coordinates for real visible UI targets. Omit JSON coordinates when no actionable target is visible.
+            preview_x and preview_y must be integers between 0 and $width/$height in the stretched preview.
+            Do NOT convert to device coordinates — the server does that automatically.
+            """.trimIndent()
+    }
+
+    private fun prepareRuntimeVibeHome(agentName: String, policy: SubAgentToolPolicy): Path {
         val sourceHome = Path.of(
             System.getenv("VIBE_HOME")?.takeIf { it.isNotBlank() }
                 ?: config.agent.home
         )
-        val runtimeHome = workspace.root.resolve(".vibecoder/agent/vibe-home").toAbsolutePath().normalize()
+        val runtimeHome = workspace.root
+            .resolve(".vibecoder/agent/vibe-home-${agentName.replace(Regex("[^A-Za-z0-9._-]"), "_")}")
+            .toAbsolutePath()
+            .normalize()
         Files.createDirectories(runtimeHome)
         Files.createDirectories(runtimeHome.resolve("logs/session"))
 
@@ -627,12 +1090,12 @@ class AcpAgentProcessFactory(
         val targetConfig = runtimeHome.resolve("config.toml")
         if (sourceConfig.exists()) {
             val text = sourceConfig.readText()
-            val sanitized = sanitizeConfigToml(text, runtimeHome)
+            val sanitized = sanitizeConfigToml(text, runtimeHome, policy)
             if (targetConfig.notExists() || targetConfig.readText() != sanitized) {
                 targetConfig.writeText(sanitized)
             }
         } else if (targetConfig.notExists()) {
-            targetConfig.writeText(defaultLocalConfig(runtimeHome))
+            targetConfig.writeText(applyToolPolicy(ensureDeviceToolPaths(defaultLocalConfig(runtimeHome)), policy))
         }
 
         val sourceEnv = sourceHome.resolve(".env")
@@ -642,7 +1105,7 @@ class AcpAgentProcessFactory(
         return runtimeHome
     }
 
-    private fun sanitizeConfigToml(text: String, runtimeHome: Path): String {
+    private fun sanitizeConfigToml(text: String, runtimeHome: Path, policy: SubAgentToolPolicy): String {
         val sessionDir = runtimeHome.resolve("logs/session").toString().replace("\\", "\\\\")
         val saveDirLine = Regex("""(?m)^save_dir\s*=\s*".*"$""")
         val replaced = if (saveDirLine.containsMatchIn(text)) {
@@ -650,10 +1113,69 @@ class AcpAgentProcessFactory(
         } else {
             text.trimEnd() + "\n\n[session_logging]\nsave_dir = \"$sessionDir\"\nsession_prefix = \"session\"\nenabled = true\n"
         }
-        return forceLocalAgentConfig(replaced)
+        val withDeviceTools = ensureDeviceToolPaths(replaced)
+        return applyToolPolicy(forceLocalAgentConfig(withDeviceTools), policy)
             .replace(Regex("""(?m)^enable_telemetry\s*=\s*true\s*$"""), "enable_telemetry = false")
             .replace(Regex("""(?m)^enable_update_checks\s*=\s*true\s*$"""), "enable_update_checks = false")
             .replace(Regex("""(?m)^enable_auto_update\s*=\s*true\s*$"""), "enable_auto_update = false")
+    }
+
+    private fun ensureDeviceToolPaths(text: String): String {
+        val deviceToolPath = "/opt/vibe-coder/vibe-tools/device.py"
+        val toolPathsLine = Regex("""(?m)^tool_paths\s*=\s*\[(.*)]$""")
+        val match = toolPathsLine.find(text)
+        if (match == null) return text.trimEnd() + "\ntool_paths = [\"$deviceToolPath\"]\n"
+        val existing = match.groupValues[1].trim()
+        if (existing.contains(deviceToolPath, ignoreCase = true)) return text
+        val updated = if (existing.isBlank()) {
+            "tool_paths = [\"$deviceToolPath\"]"
+        } else {
+            "tool_paths = [$existing, \"$deviceToolPath\"]"
+        }
+        return text.replace(match.value, updated)
+    }
+
+    private fun applyToolPolicy(text: String, policy: SubAgentToolPolicy): String {
+        val enabled = when {
+            policy.allowDevice && !policy.allowTerminal && !policy.allowFsWrite ->
+                listOf("device_launch_app", "device_screencap", "device_analyze_screenshot", "device_tap", "device_swipe")
+            else -> emptyList()
+        }
+        val disabled = buildSet {
+            if (!policy.allowTerminal) add("bash")
+            if (!policy.allowFsRead) {
+                add("read")
+                add("grep")
+            }
+            if (!policy.allowFsWrite) {
+                add("write_file")
+                add("edit")
+            }
+            if (!policy.allowDevice) {
+                add("device_screencap")
+                add("device_analyze_screenshot")
+                add("device_launch_app")
+                add("device_tap")
+                add("device_swipe")
+            }
+            if (!policy.allowTerminal && !policy.allowFsRead && !policy.allowFsWrite && !policy.allowDevice) {
+                addAll(listOf("task", "web_fetch", "web_search", "todo", "skill", "ask_user_question", "exit_plan_mode"))
+            }
+        }.toList()
+
+        fun tomlList(values: List<String>): String = values.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
+        fun replaceListLine(input: String, key: String, values: List<String>): String {
+            val line = Regex("""(?m)^$key\s*=\s*\[.*]$""")
+            val replacement = "$key = ${tomlList(values)}"
+            return if (line.containsMatchIn(input)) input.replace(line, replacement)
+            else input.trimEnd() + "\n$replacement\n"
+        }
+
+        return replaceListLine(
+            replaceListLine(text, "enabled_tools", enabled),
+            "disabled_tools",
+            disabled,
+        )
     }
 
     private fun defaultLocalConfig(runtimeHome: Path): String {

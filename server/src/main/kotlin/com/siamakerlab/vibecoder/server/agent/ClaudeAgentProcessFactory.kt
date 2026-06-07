@@ -84,6 +84,7 @@ class ClaudeAgentProcessFactory(
             stderr = stderr,
             sessionId = sessionId.orEmpty(),
             projectRoot = projectRoot,
+            agentName = agentName,
         )
     }
 

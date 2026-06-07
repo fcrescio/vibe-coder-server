@@ -71,4 +71,6 @@ data class AgentProcess(
     val sessionId: String,
     /** The project root used as the safety boundary for provider-side tool requests. */
     val projectRoot: Path,
+    /** Sub-agent identity used by provider-side tool policy. */
+    val agentName: String,
 )

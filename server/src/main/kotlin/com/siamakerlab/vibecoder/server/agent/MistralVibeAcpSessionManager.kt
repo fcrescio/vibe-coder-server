@@ -4,7 +4,7 @@ import com.siamakerlab.vibecoder.server.config.ServerConfig
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.claude.ConversationHistoryService
 import com.siamakerlab.vibecoder.server.projects.ProjectScaffolder
-import com.siamakerlab.vibecoder.server.adb.AdbService
+import com.siamakerlab.vibecoder.server.devices.DeviceService
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.ws.WsFrame
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -21,22 +21,33 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.ByteArrayOutputStream
+import java.io.ByteArrayInputStream
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.util.Base64
+import javax.imageio.ImageIO
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -57,7 +68,7 @@ class MistralVibeAcpSessionManager(
     private val workspace: WorkspacePath,
     private val hub: LogHub,
     private val history: ConversationHistoryService? = null,
-    private val adbService: AdbService? = null,
+    private val deviceService: DeviceService? = null,
 ) : AgentRuntime {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -68,20 +79,28 @@ class MistralVibeAcpSessionManager(
     private val terminals = ConcurrentHashMap<String, TerminalProcess>()
     private val nextTerminalId = AtomicLong(1)
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val httpClient = HttpClient.newBuilder()
+        .connectTimeout(java.time.Duration.ofSeconds(10))
+        .build()
 
-    override suspend fun sendPrompt(projectId: String, text: String) {
+    override suspend fun sendPrompt(projectId: String, text: String, images: List<AgentPromptImage>) {
         require(text.isNotBlank()) { "prompt text is required" }
-        val bytes = text.toByteArray(Charsets.UTF_8).size
+        val promptInputText = if (images.isNotEmpty() && !agentSupportsImages()) {
+            text + analyzePromptImageAttachments(text, images)
+        } else {
+            text
+        }
+        val bytes = promptInputText.toByteArray(Charsets.UTF_8).size
         require(bytes <= AgentRuntime.MAX_PROMPT_BYTES) {
             "prompt too large ($bytes bytes UTF-8 > ${AgentRuntime.MAX_PROMPT_BYTES})"
         }
         val session = ensureSession(projectId)
-        history?.userPrompt(projectId, session.sessionId.ifBlank { readSessionId(projectId) }, text)
+        history?.userPrompt(projectId, session.sessionId.ifBlank { readSessionId(projectId) }, promptInputText)
         val promptText = if (session.environmentPreambleSent) {
-            text
+            promptInputText
         } else {
             session.environmentPreambleSent = true
-            environmentPreamble(projectId, session.projectRoot) + "\n\nUser request:\n" + text
+            environmentPreamble(projectId, session.projectRoot) + "\n\nUser request:\n" + promptInputText
         }
         session.stdinMutex.withLock {
             setBusy(projectId, true)
@@ -95,6 +114,15 @@ class MistralVibeAcpSessionManager(
                                 put("type", "text")
                                 put("text", promptText)
                             })
+                            if (images.isNotEmpty() && agentSupportsImages()) {
+                                images.forEach { image ->
+                                    add(buildJsonObject {
+                                        put("type", "image")
+                                        put("mimeType", image.mimeType)
+                                        put("data", image.data)
+                                    })
+                                }
+                            }
                         }
                     },
                     timeoutMs = config.agent.timeoutMinutes.coerceAtLeast(1) * 60_000L,
@@ -280,16 +308,42 @@ class MistralVibeAcpSessionManager(
         } else {
             text.trimEnd() + "\n\n[session_logging]\nsave_dir = \"$sessionDir\"\nsession_prefix = \"session\"\nenabled = true\n"
         }
-        return forceLocalAgentConfig(replaced)
+        val withDeviceTools = ensureDeviceToolPaths(replaced)
+        return forceLocalAgentConfig(withDeviceTools)
             .replace(Regex("""(?m)^enable_telemetry\s*=\s*true\s*$"""), "enable_telemetry = false")
             .replace(Regex("""(?m)^enable_update_checks\s*=\s*true\s*$"""), "enable_update_checks = false")
             .replace(Regex("""(?m)^enable_auto_update\s*=\s*true\s*$"""), "enable_auto_update = false")
+    }
+
+    /**
+     * Ensure [tool_paths] includes the device tools file so vibe-acp loads
+     * DeviceScreencap, DeviceTap, DeviceSwipe as available tools.
+     */
+    private fun ensureDeviceToolPaths(text: String): String {
+        val deviceToolPath = "/opt/vibe-coder/vibe-tools/device.py"
+        val toolPathsLine = Regex("""(?m)^tool_paths\s*=\s*\[(.*)\]$""")
+        val match = toolPathsLine.find(text)
+        if (match == null) {
+            // No tool_paths key at all — append one
+            return text.trimEnd() + "\ntool_paths = [\"$deviceToolPath\"]\n"
+        }
+        val existing = match.groupValues[1].trim()
+        if (existing.contains(deviceToolPath, ignoreCase = true)) {
+            return text // already present
+        }
+        val updated = if (existing.isBlank()) {
+            "tool_paths = [\"$deviceToolPath\"]"
+        } else {
+            "tool_paths = [$existing, \"$deviceToolPath\"]"
+        }
+        return text.replace(match.value, updated)
     }
 
     private fun defaultLocalConfig(runtimeHome: Path): String {
         val endpoint = agentEndpoint()
         val modelName = agentModelName()
         val modelAlias = agentModelAlias()
+        val supportsImages = agentSupportsImages()
         return """
             active_model = "$modelAlias"
             enable_telemetry = false
@@ -308,6 +362,7 @@ class MistralVibeAcpSessionManager(
             name = "$modelName"
             provider = "llamacpp"
             alias = "$modelAlias"
+            supports_images = $supportsImages
             auto_compact_threshold = 200000
 
             [session_logging]
@@ -321,6 +376,7 @@ class MistralVibeAcpSessionManager(
         val endpoint = agentEndpoint()
         val modelName = agentModelName()
         val modelAlias = agentModelAlias()
+        val supportsImages = agentSupportsImages()
         val withActive = if (Regex("""(?m)^active_model\s*=\s*".*"$""").containsMatchIn(text)) {
             text.replace(Regex("""(?m)^active_model\s*=\s*".*"$"""), """active_model = "$modelAlias"""")
         } else {
@@ -350,6 +406,7 @@ class MistralVibeAcpSessionManager(
                 name = "$modelName"
                 provider = "llamacpp"
                 alias = "$modelAlias"
+                supports_images = $supportsImages
                 auto_compact_threshold = 200000
             """.trimIndent() + "\n"
         }
@@ -403,6 +460,13 @@ class MistralVibeAcpSessionManager(
     private fun agentModelName(): String =
         System.getenv("VIBECODER_AGENT_MODEL_NAME")?.takeIf { it.isNotBlank() } ?: "qwen3.6-A3B-spec"
 
+    private fun agentSupportsImages(): Boolean =
+        System.getenv("VIBECODER_AGENT_SUPPORTS_IMAGES")
+            ?.trim()
+            ?.lowercase()
+            ?.let { it in setOf("1", "true", "yes", "on") }
+            ?: true
+
     private suspend fun readStdout(session: AcpProjectSession) {
         try {
             while (true) {
@@ -431,6 +495,9 @@ class MistralVibeAcpSessionManager(
                     continue
                 }
                 if (idElement != null && handleTerminalRequest(session, idElement, obj)) {
+                    continue
+                }
+                if (idElement != null && handleDeviceRequest(session, idElement, obj)) {
                     continue
                 }
                 if (idElement != null && method != null) {
@@ -465,6 +532,13 @@ class MistralVibeAcpSessionManager(
                 put("writeTextFile", true)
             }
             put("terminal", true)
+            putJsonObject("device") {
+                put("screencap", true)
+                put("analyzeScreenshot", true)
+                put("launchApp", true)
+                put("tap", true)
+                put("swipe", true)
+            }
             putJsonObject("auth") {
                 put("terminal", false)
             }
@@ -621,10 +695,391 @@ class MistralVibeAcpSessionManager(
         }
     }
 
+    private suspend fun handleDeviceRequest(session: AcpProjectSession, id: JsonElement, obj: JsonObject): Boolean {
+        val svc = deviceService ?: return false
+        val rawMethod = obj["method"]?.jsonPrimitive?.contentOrNull ?: return false
+        // Strip leading underscore added by ACP extension request routing
+        val method = if (rawMethod.startsWith("_")) rawMethod.substring(1) else rawMethod
+        return when (method) {
+            "device/screencap" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    if (serial == null) {
+                        respondRequestError(session, id, method, "no device serial provided and no device connected")
+                        return@runCatching
+                    }
+                    val b64 = svc.screencapBase64(serial)
+                    if (b64 == null) {
+                        respondRequestError(session, id, method, "screencap failed")
+                        return@runCatching
+                    }
+                    session.write(result(id) {
+                        put("serial", serial)
+                        put("mimeType", "image/png")
+                        put("data", b64)
+                    })
+                }
+                true
+            }
+            "device/tap" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    val x = params["x"]?.jsonPrimitive?.intOrNull
+                    val y = params["y"]?.jsonPrimitive?.intOrNull
+                    if (serial == null) {
+                        respondRequestError(session, id, method, "no device serial provided and no device connected")
+                    } else if (x == null || y == null) {
+                        respondRequestError(session, id, method, "x and y are required")
+                    } else {
+                        val tap = svc.tap(serial, x, y)
+                        if (!tap.success) {
+                            respondRequestError(session, id, method, tap.error ?: tap.output.ifBlank { "tap failed" })
+                        } else {
+                            session.write(result(id) {
+                                put("ok", true)
+                                put("message", "Tapped $x,$y.")
+                                if (tap.output.isNotBlank()) put("output", tap.output.take(2000))
+                            })
+                        }
+                    }
+                }
+                true
+            }
+            "device/swipe" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    val x1 = params["x1"]?.jsonPrimitive?.intOrNull
+                    val y1 = params["y1"]?.jsonPrimitive?.intOrNull
+                    val x2 = params["x2"]?.jsonPrimitive?.intOrNull
+                    val y2 = params["y2"]?.jsonPrimitive?.intOrNull
+                    val duration = params["duration"]?.jsonPrimitive?.intOrNull ?: 300
+                    if (serial == null) {
+                        respondRequestError(session, id, method, "no device serial provided and no device connected")
+                    } else if (x1 == null || y1 == null || x2 == null || y2 == null) {
+                        respondRequestError(session, id, method, "x1, y1, x2, y2 are required")
+                    } else {
+                        val swipe = svc.swipe(serial, x1, y1, x2, y2, duration)
+                        if (!swipe.success) {
+                            respondRequestError(session, id, method, swipe.error ?: swipe.output.ifBlank { "swipe failed" })
+                        } else {
+                            session.write(result(id) {
+                                put("ok", true)
+                                put("message", "Swiped $x1,$y1 to $x2,$y2.")
+                                if (swipe.output.isNotBlank()) put("output", swipe.output.take(2000))
+                            })
+                        }
+                    }
+                }
+                true
+            }
+            "device/launch_app" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    val packageName = params["packageName"]?.jsonPrimitive?.contentOrNull
+                        ?: params["package_name"]?.jsonPrimitive?.contentOrNull
+                    val activity = params["activity"]?.jsonPrimitive?.contentOrNull
+                    if (serial == null) {
+                        respondRequestError(session, id, method, "no device serial provided and no device connected")
+                    } else if (packageName.isNullOrBlank()) {
+                        respondRequestError(session, id, method, "packageName is required")
+                    } else {
+                        val launch = svc.launchApp(serial, packageName, activity)
+                        if (!launch.success) {
+                            respondRequestError(session, id, method, launch.error ?: launch.output.ifBlank { "launch failed" })
+                        } else {
+                            Thread.sleep(800)
+                            session.write(result(id) {
+                                put("ok", true)
+                                put("serial", serial)
+                                put("packageName", packageName)
+                                if (!activity.isNullOrBlank()) put("activity", activity)
+                                put("message", "Launched $packageName${activity?.let { "/$it" } ?: ""} on $serial.")
+                                put("output", launch.output.take(2000))
+                            })
+                        }
+                    }
+                }.onFailure {
+                    respondRequestError(session, id, method, it.message ?: "launch failed")
+                }
+                true
+            }
+            "device/analyze_screenshot" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    val question = params["question"]?.jsonPrimitive?.contentOrNull
+                        ?: "Describe the current Android device screen and mention visible UI issues."
+                    if (serial == null) {
+                        respondRequestError(session, id, method, "no device serial provided and no device connected")
+                        return@runCatching
+                    }
+                    val b64 = svc.screencapBase64(serial)
+                    if (b64 == null) {
+                        respondRequestError(session, id, method, "screencap failed")
+                        return@runCatching
+                    }
+                    val prepared = prepareScreenshotForVision(b64)
+                    val rawAnswer = analyzeImageWithEndpoint(
+                        question = prepared.navigationQuestion(question),
+                        base64Image = prepared.base64,
+                        mimeType = "image/png",
+                    )
+                    val answer = convertCoordinatesInAnswer(rawAnswer, prepared)
+                    val adbCoords = extractAdbCoordinates(rawAnswer, prepared)
+                    session.write(result(id) {
+                        put("serial", serial)
+                        put("mimeType", "image/png")
+                        put("data", b64)
+                        putJsonObject("visionPreview") {
+                            put("width", prepared.width)
+                            put("height", prepared.height)
+                            put("originalWidth", prepared.originalWidth)
+                            put("originalHeight", prepared.originalHeight)
+                            put("offsetX", prepared.offsetX)
+                            put("offsetY", prepared.offsetY)
+                            put("scale", prepared.scale)
+                            put("coordinateHint", prepared.coordinateHint)
+                        }
+                        if (adbCoords != null) {
+                            put("adbCoordinates", adbCoords)
+                        }
+                        put("answer", answer)
+                    })
+                }.onFailure {
+                    respondRequestError(session, id, method, it.message ?: "visual analysis failed")
+                }
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun prepareScreenshotForVision(base64Image: String): VisionPreparedImage {
+        val sourceBytes = Base64.getDecoder().decode(base64Image)
+        val source = ImageIO.read(ByteArrayInputStream(sourceBytes))
+            ?: return VisionPreparedImage(
+                base64 = base64Image,
+                width = 0,
+                height = 0,
+                originalWidth = 0,
+                originalHeight = 0,
+                offsetX = 0,
+                offsetY = 0,
+                scale = 1.0,
+            )
+        val target = 1000
+        val canvas = BufferedImage(target, target, BufferedImage.TYPE_INT_RGB)
+        val g = canvas.createGraphics()
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+            g.drawImage(source, 0, 0, target, target, null)
+        } finally {
+            g.dispose()
+        }
+        val out = ByteArrayOutputStream()
+        ImageIO.write(canvas, "png", out)
+        val scaleX = target.toDouble() / source.width
+        val scaleY = target.toDouble() / source.height
+        return VisionPreparedImage(
+            base64 = Base64.getEncoder().encodeToString(out.toByteArray()),
+            width = target,
+            height = target,
+            originalWidth = source.width,
+            originalHeight = source.height,
+            offsetX = 0,
+            offsetY = 0,
+            scale = scaleX,
+            scaleY = scaleY,
+        )
+    }
+
+    /**
+     * Post-processes the LLM answer to convert any preview coordinates (1000x1000)
+     * to real ADB screenshot coordinates. Handles patterns like:
+     *   (x, y), (x,y), (x, y), (x, y)  →  (adb_x, adb_y)
+     *   x=123, y=456  →  x=adb_x, y=adb_y
+     */
+    private fun convertCoordinatesInAnswer(answer: String, prepared: VisionPreparedImage): String {
+        if (prepared.originalWidth == 0 || prepared.originalHeight == 0) return answer
+        val ow = prepared.originalWidth
+        val oh = prepared.originalHeight
+        val pw = prepared.width  // 1000
+
+        fun convertPreviewToAdb(px: Int, py: Int): Pair<Int, Int> {
+            val adbX = (px * ow / pw).coerceIn(0, ow - 1)
+            val adbY = (py * oh / pw).coerceIn(0, oh - 1)
+            return adbX to adbY
+        }
+
+        // Pattern 1: JSON array [digits, digits]
+        val jsonArrayPattern = Regex("""\[(\d{1,4})\s*,\s*(\d{1,4})\]""")
+        var result = jsonArrayPattern.replace(answer) { match ->
+            val px = match.groupValues[1].toInt()
+            val py = match.groupValues[2].toInt()
+            if (px in 0..1000 && py in 0..1000) {
+                val (ax, ay) = convertPreviewToAdb(px, py)
+                "[$ax, $ay]"
+            } else {
+                match.value
+            }
+        }
+
+        // Pattern 2: (digits, digits) or (digits,digits)
+        val parenPattern = Regex("""\((\d{1,4})\s*,\s*(\d{1,4})\)""")
+        result = parenPattern.replace(result) { match ->
+            val px = match.groupValues[1].toInt()
+            val py = match.groupValues[2].toInt()
+            if (px in 0..1000 && py in 0..1000) {
+                val (ax, ay) = convertPreviewToAdb(px, py)
+                "($ax, $ay)"
+            } else {
+                match.value
+            }
+        }
+
+        // Pattern 3: x=digits, y=digits or x=digits y=digits
+        val xyPattern = Regex("""x\s*=\s*(\d{1,4})\s*[,;]?\s*y\s*=\s*(\d{1,4})""", RegexOption.IGNORE_CASE)
+        result = xyPattern.replace(result) { match ->
+            val px = match.groupValues[1].toInt()
+            val py = match.groupValues[2].toInt()
+            if (px in 0..1000 && py in 0..1000) {
+                val (ax, ay) = convertPreviewToAdb(px, py)
+                "x=$ax, y=$ay"
+            } else {
+                match.value
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * Extracts semantic preview coordinates from the LLM answer and converts them
+     * to real ADB coordinates. Any top-level JSON-style `"key": [x, y]` pair is
+     * preserved with the same key in the returned object.
+     */
+    private fun extractAdbCoordinates(answer: String, prepared: VisionPreparedImage): JsonObject? {
+        if (prepared.originalWidth == 0 || prepared.originalHeight == 0) return null
+        val ow = prepared.originalWidth
+        val oh = prepared.originalHeight
+        val pw = prepared.width
+
+        val coordPattern = Regex(""""(\w+)"\s*:\s*\[(\d{1,4})\s*,\s*(\d{1,4})\]""")
+        val matches = coordPattern.findAll(answer).toList()
+        if (matches.isEmpty()) return null
+
+        var found = false
+        return buildJsonObject {
+            for (m in matches) {
+                val key = m.groupValues[1]
+                val x = m.groupValues[2].toIntOrNull() ?: continue
+                val y = m.groupValues[3].toIntOrNull() ?: continue
+                if (x !in 0..prepared.width || y !in 0..prepared.height) continue
+                val adbX = (x * ow / pw).coerceIn(0, ow - 1)
+                val adbY = (y * oh / prepared.height).coerceIn(0, oh - 1)
+                putJsonArray(key) {
+                    add(adbX)
+                    add(adbY)
+                }
+                found = true
+            }
+        }.takeIf { found }
+    }
+
+    private suspend fun analyzePromptImageAttachments(text: String, images: List<AgentPromptImage>): String =
+        withContext(Dispatchers.IO) {
+            val analyses = images.mapIndexed { index, image ->
+                runCatching {
+                    val answer = analyzeImageWithEndpoint(
+                        question = "Analyze this image attachment for the following user request. Focus only on visual facts that help answer it.\n\nUser request:\n$text",
+                        base64Image = image.data,
+                        mimeType = image.mimeType,
+                    )
+                    "Image ${index + 1} (${image.mimeType}): $answer"
+                }.getOrElse { e ->
+                    "Image ${index + 1} (${image.mimeType}): external visual analysis failed: ${e.message ?: e::class.simpleName}"
+                }
+            }
+            "\n\n[${images.size} image attachment(s) were provided. Native ACP image forwarding is disabled, so the server analyzed them externally before this prompt.]\n" +
+                analyses.joinToString("\n\n")
+        }
+
+    private suspend fun analyzeImageWithEndpoint(question: String, base64Image: String, mimeType: String): String =
+        withContext(Dispatchers.IO) {
+            val endpoint = visionEndpoint().trimEnd('/')
+            val url = if (endpoint.endsWith("/chat/completions")) endpoint else "$endpoint/chat/completions"
+            val payload = buildJsonObject {
+                put("model", visionModelName())
+                put("max_tokens", 1200)
+                putJsonArray("messages") {
+                    add(buildJsonObject {
+                        put("role", "user")
+                        putJsonArray("content") {
+                            add(buildJsonObject {
+                                put("type", "text")
+                                put("text", question)
+                            })
+                            add(buildJsonObject {
+                                put("type", "image_url")
+                                putJsonObject("image_url") {
+                                    put("url", "data:$mimeType;base64,$base64Image")
+                                }
+                            })
+                        }
+                    })
+                }
+            }.toString()
+            val request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(java.time.Duration.ofSeconds(90))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer ${visionApiKey()}")
+                .POST(HttpRequest.BodyPublishers.ofString(payload))
+                .build()
+            val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+            if (response.statusCode() !in 200..299) {
+                throw IllegalStateException("vision endpoint HTTP ${response.statusCode()}: ${response.body().take(300)}")
+            }
+            val body = json.parseToJsonElement(response.body()).jsonObject
+            val message = body["choices"]?.jsonArray?.firstOrNull()
+                ?.jsonObject?.get("message")?.jsonObject
+            message?.get("content")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                ?: message?.get("reasoning_content")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                ?: response.body().take(2000)
+        }
+
+    private fun visionEndpoint(): String =
+        System.getenv("VIBECODER_VISION_ENDPOINT")?.takeIf { it.isNotBlank() } ?: agentEndpoint()
+
+    private fun visionModelName(): String =
+        System.getenv("VIBECODER_VISION_MODEL")?.takeIf { it.isNotBlank() } ?: agentModelName()
+
+    private fun visionApiKey(): String =
+        System.getenv("VIBECODER_VISION_API_KEY")?.takeIf { it.isNotBlank() }
+            ?: System.getenv("VIBECODER_AGENT_API_KEY")
+            ?: "dummy"
+
     private fun environmentPreamble(projectId: String, projectRoot: Path): String {
         val androidHome = System.getenv("ANDROID_HOME")?.takeIf { it.isNotBlank() } ?: "/opt/android-sdk"
         val gradleHint = "/home/vibe/.local/gradle/bin/gradle"
-        val adbInfo = adbService?.deviceSummary()?.let { "\n- ADB devices: $it" } ?: ""
+        val adbInfo = deviceService?.deviceSummary()?.let { "\n- ADB devices: $it" } ?: ""
+        val deviceTools = if (deviceService != null) """
+            - You have device tools available: device_screencap (capture and show screenshot),
+              device_launch_app (wake/unlock and launch the app under test by package/activity),
+              device_analyze_screenshot (visual assertion through the vision endpoint),
+              device_tap (tap at x,y coordinates), device_swipe (swipe gesture).
+              Use device_analyze_screenshot to close visual test loops on real/emulated devices.
+        """.trimIndent() else ""
         return """
             Vibe Coder environment context:
             - You are editing Android project `$projectId` at `$projectRoot`.
@@ -634,7 +1089,7 @@ class MistralVibeAcpSessionManager(
             - Prefer `./gradlew :app:assembleDebug --no-daemon` when a wrapper exists.
             - If `gradlew` is missing, use installed Gradle on PATH or `$gradleHint` to create the wrapper; do not download toolchains manually.
             - Before coding, inspect the project briefly with file reads or short shell commands. Before finishing, run a targeted build when practical and report the result.
-            - Keep responses concise: changed files, key decisions, build status, next blocker if any.$adbInfo
+            - Keep responses concise: changed files, key decisions, build status, next blocker if any.$adbInfo$deviceTools
         """.trimIndent()
     }
 
@@ -852,13 +1307,16 @@ class MistralVibeAcpSessionManager(
                 put("params", params)
             })
             val response = awaitWithIdleTimeout(deferred, method, timeoutMs)
-            response["error"]?.jsonObject?.let {
-                val msg = it["message"]?.jsonPrimitive?.contentOrNull ?: "ACP request failed"
-                val code = it["code"]?.jsonPrimitive?.intOrNull
-                val data = it["data"]?.jsonObject
+            val errorEl = response["error"]
+            if (errorEl != null && errorEl !is JsonNull) {
+                val err = errorEl.jsonObject
+                val msg = err["message"]?.jsonPrimitive?.contentOrNull ?: "ACP request failed"
+                val code = err["code"]?.jsonPrimitive?.intOrNull
+                val data = err["data"]?.takeIf { it !is JsonNull }?.jsonObject
                 throw AcpRequestException(code = code, detail = msg, data = data)
             }
-            return response["result"]?.jsonObject ?: JsonObject(emptyMap())
+            val resultEl = response["result"]
+            return if (resultEl != null && resultEl !is JsonNull) resultEl.jsonObject else JsonObject(emptyMap())
         }
 
         private suspend fun awaitWithIdleTimeout(
@@ -902,6 +1360,36 @@ class MistralVibeAcpSessionManager(
             get() = code == VIBE_CONTEXT_TOO_LONG_CODE ||
                 message.orEmpty().contains("context too long", ignoreCase = true) ||
                 message.orEmpty().contains("maximum context", ignoreCase = true)
+    }
+
+    private data class VisionPreparedImage(
+        val base64: String,
+        val width: Int,
+        val height: Int,
+        val originalWidth: Int,
+        val originalHeight: Int,
+        val offsetX: Int,
+        val offsetY: Int,
+        val scale: Double,
+        val scaleY: Double = scale,
+    ) {
+        val coordinateHint: String
+            get() = "Vision image is ${width}x${height}. Original ADB screenshot is " +
+                "${originalWidth}x${originalHeight}. Stretched to fill preview. " +
+                "adb_x=vision_x*${originalWidth}/$width, adb_y=vision_y*${originalHeight}/$height."
+
+        fun navigationQuestion(question: String): String =
+            """
+            $question
+
+            The image is a ${width}x${height} stretched version of the real device screen (${originalWidth}x${originalHeight}).
+            First describe where elements are (top, middle, bottom).
+            If the question asks for tap targets or if you recommend an action, include a compact JSON object with semantic target names and preview coordinates, for example:
+            {"playButton": [preview_x, preview_y], "settingsButton": [preview_x, preview_y]}
+            Only include coordinates for real visible UI targets. Omit JSON coordinates when no actionable target is visible.
+            preview_x and preview_y must be integers between 0 and $width/$height in the stretched preview.
+            Do NOT convert to device coordinates — the server does that automatically.
+            """.trimIndent()
     }
 
     companion object {

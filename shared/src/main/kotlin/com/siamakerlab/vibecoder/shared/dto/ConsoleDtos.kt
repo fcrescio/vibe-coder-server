@@ -7,7 +7,16 @@ import kotlinx.serialization.Serializable
  * — `text` is the raw user prompt (≤ 32 KB enforced server-side).
  */
 @Serializable
-data class PromptRequestDto(val text: String)
+data class PromptImageDto(
+    val mimeType: String,
+    val data: String,
+)
+
+@Serializable
+data class PromptRequestDto(
+    val text: String,
+    val images: List<PromptImageDto> = emptyList(),
+)
 
 /**
  * Response body for POST .../prompt. `seq` is the next sequence number the

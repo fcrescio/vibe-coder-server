@@ -72,7 +72,12 @@ class SubAgentSessionManager(
         }
     }
 
-    suspend fun sendPrompt(projectId: String, agentName: String, text: String) {
+    suspend fun sendPrompt(
+        projectId: String,
+        agentName: String,
+        text: String,
+        limits: SubAgentRunLimits = SubAgentRunLimits.defaultsFor(agentName),
+    ) {
         require(text.isNotBlank()) { "prompt text is required" }
         val bytes = text.toByteArray(Charsets.UTF_8).size
         require(bytes <= MAX_PROMPT_BYTES) {
@@ -80,11 +85,15 @@ class SubAgentSessionManager(
         }
         val key = AgentKey(projectId, agentName)
         val session = ensureSession(key)
+        session.runLimits = limits
+        session.toolCallsThisRun = 0
+        session.assistantMessagesThisRun = 0
+        session.toolCallIdsThisRun.clear()
         // v0.49.0 — user prompt 영구 적재 (sub-agent name 으로 태깅; sub-agent 인지된 채로 history 페이지에 보임).
         history?.userPrompt(projectId, session.sessionId, text, agentName)
 
         val envelope = factory.buildPromptEnvelope(
-            text = text,
+            text = prependRunLimits(text, limits),
             firstPrompt = !session.firstPromptSent,
             agentName = agentName,
             sessionId = session.sessionId ?: "",
@@ -223,6 +232,7 @@ class SubAgentSessionManager(
         val events = factory.handleLine(agentProcess, line)
         if (events.isEmpty()) return
         for (event in events) {
+            if (!applyRunLimits(key, event)) return
             if (event is ClaudeEvent.SessionStarted) {
                 sessions[key]?.sessionId = event.sessionId
                 runCatching { writeSessionId(key, event.sessionId) }
@@ -236,6 +246,56 @@ class SubAgentSessionManager(
             }
             history?.event(key.projectId, sidForRow, event, key.agentName)
         }
+    }
+
+    private suspend fun applyRunLimits(key: AgentKey, event: ClaudeEvent): Boolean {
+        val session = sessions[key] ?: return false
+        val limits = session.runLimits
+        when (event) {
+            is ClaudeEvent.ToolUse -> {
+                if (!session.toolCallIdsThisRun.add(event.toolUseId)) return true
+                session.toolCallsThisRun += 1
+                val max = limits.maxToolCalls
+                if (max != null && session.toolCallsThisRun > max) {
+                    terminateForLimit(
+                        key,
+                        "tool_call_limit",
+                        "Sub-agent stopped after ${session.toolCallsThisRun - 1} tool call(s); maxToolCalls=$max.",
+                    )
+                    return false
+                }
+            }
+            is ClaudeEvent.AssistantMessage -> {
+                if (!event.isPartial) {
+                    session.assistantMessagesThisRun += 1
+                    val max = limits.maxAssistantMessages
+                    if (max != null && session.assistantMessagesThisRun > max) {
+                        terminateForLimit(
+                            key,
+                            "assistant_message_limit",
+                            "Sub-agent stopped after ${session.assistantMessagesThisRun - 1} assistant message(s); maxTurns=$max.",
+                        )
+                        return false
+                    }
+                }
+            }
+            else -> {}
+        }
+        return true
+    }
+
+    private suspend fun terminateForLimit(key: AgentKey, code: String, message: String) {
+        log.warn { "[${key.id}] $message" }
+        emitSystem(key, code, message)
+        terminateSession(key)
+    }
+
+    private fun prependRunLimits(text: String, limits: SubAgentRunLimits): String = buildString {
+        append("Run limits enforced by server: ")
+        append("maxToolCalls=${limits.maxToolCalls?.toString() ?: "unlimited"}, ")
+        append("maxTurns=${limits.maxAssistantMessages?.toString() ?: "unlimited"}. ")
+        append("If you cannot finish within these limits, stop early and return blocked/partial results.\n\n")
+        append(text)
     }
 
     private fun toWsFrame(event: ClaudeEvent, seq: Long): WsFrame = when (event) {
@@ -352,10 +412,27 @@ class SubAgentSessionManager(
         @Volatile var readerJob: Job? = null,
         @Volatile var stderrJob: Job? = null,
         val startedAt: Instant = Instant.now(),
+        @Volatile var runLimits: SubAgentRunLimits = SubAgentRunLimits(),
+        @Volatile var toolCallsThisRun: Int = 0,
+        @Volatile var assistantMessagesThisRun: Int = 0,
+        val toolCallIdsThisRun: MutableSet<String> = mutableSetOf(),
     )
 
     companion object {
         const val MAX_PROMPT_BYTES = 32 * 1024
         const val IDLE_CHECK_INTERVAL_MS = 60_000L
+    }
+}
+
+data class SubAgentRunLimits(
+    val maxToolCalls: Int? = null,
+    val maxAssistantMessages: Int? = null,
+) {
+    companion object {
+        fun defaultsFor(agentName: String): SubAgentRunLimits = when (agentName) {
+            "phone-ui-navigator" -> SubAgentRunLimits(maxToolCalls = 40, maxAssistantMessages = 8)
+            "phone-ui-run-summarizer" -> SubAgentRunLimits(maxToolCalls = 0, maxAssistantMessages = 2)
+            else -> SubAgentRunLimits(maxToolCalls = 120, maxAssistantMessages = 20)
+        }
     }
 }

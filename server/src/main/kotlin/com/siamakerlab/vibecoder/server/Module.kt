@@ -458,7 +458,7 @@ fun Application.module(ctx: ServerContext) {
         vncProxyRoutes(adminDeps)
         // v0.44.0 — Phase 23 sub-agent process pool (real multi-agent).
         subAgentRoutes(adminDeps, ctx.projects, ctx.subAgentManager, ctx.agentRegistry,
-            ctx.tokens, ctx.deviceRepo)
+            ctx.tokens, ctx.deviceRepo, ctx.conversationRepo)
         // v0.65.0 — Phase 44 `/api/projects/{id}/zip` JSON variant (Bearer 토큰 인증).
         jsonProjectZipRoutes(ctx.projects, ctx.projectArchiver)
         // v0.66.0 — Phase 45 신규 프로젝트 starter 템플릿 카탈로그 (Bearer).

@@ -2,6 +2,7 @@ package com.siamakerlab.vibecoder.server.claude
 
 import com.siamakerlab.vibecoder.server.audit.AuditLogger
 import com.siamakerlab.vibecoder.server.agent.AgentRuntime
+import com.siamakerlab.vibecoder.server.agent.AgentPromptImage
 import com.siamakerlab.vibecoder.server.auth.AUTH_BEARER
 import com.siamakerlab.vibecoder.server.auth.requireApiWrite
 import com.siamakerlab.vibecoder.server.auth.requireDevice
@@ -25,6 +26,10 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 
 private val log = KotlinLogging.logger {}
+
+private const val MAX_PROMPT_IMAGES = 4
+private const val MAX_PROMPT_IMAGE_CHARS_PER_IMAGE = 5_000_000
+private const val MAX_PROMPT_IMAGE_CHARS = 8_000_000
 
 /**
  * Routes for the persistent Claude console session attached to a project.
@@ -81,8 +86,25 @@ fun Routing.consoleRoutes(
                     args = listOf(AgentRuntime.MAX_PROMPT_BYTES, byteSize))
             }
 
+            if (body.images.size > MAX_PROMPT_IMAGES) {
+                throw ApiException.localized(400, "prompt_too_large", messageKey = "api.console.promptTooLarge", args = listOf(MAX_PROMPT_IMAGES, body.images.size))
+            }
+            val totalImageBytes = body.images.sumOf { it.data.length }
+            if (totalImageBytes > MAX_PROMPT_IMAGE_CHARS) {
+                throw ApiException.localized(400, "prompt_too_large", messageKey = "api.console.promptTooLarge", args = listOf(MAX_PROMPT_IMAGE_CHARS, totalImageBytes))
+            }
+            val images = body.images.map {
+                if (!it.mimeType.startsWith("image/")) {
+                    throw ApiException.localized(400, "bad_request", messageKey = "api.console.textRequired", detail = "Only image attachments are supported.")
+                }
+                if (it.data.length > MAX_PROMPT_IMAGE_CHARS_PER_IMAGE) {
+                    throw ApiException.localized(400, "prompt_too_large", messageKey = "api.console.promptTooLarge", args = listOf(MAX_PROMPT_IMAGE_CHARS_PER_IMAGE, it.data.length))
+                }
+                AgentPromptImage(mimeType = it.mimeType, data = it.data)
+            }
+
             try {
-                sessionManager.sendPrompt(projectId, text)
+                sessionManager.sendPrompt(projectId, text, images)
             } catch (e: Exception) {
                 log.warn(e) { "[$projectId] prompt failed" }
                 throw ApiException.localized(500, "claude_send_failed",

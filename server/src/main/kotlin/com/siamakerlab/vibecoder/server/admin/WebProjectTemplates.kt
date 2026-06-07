@@ -1037,6 +1037,12 @@ $authBannerHtml
       ${esc(t("console.voice.autoSend"))}
     </label>
   </div>
+  <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+    <label class="chip chip-link" for="prompt-images" style="cursor:pointer;font-size:11px">Attach image</label>
+    <input type="file" id="prompt-images" accept="image/*" multiple style="display:none">
+    <span id="prompt-images-summary" class="dim" style="font-size:11px"></span>
+    <button type="button" id="prompt-images-clear" class="chip chip-link" style="font-size:11px;display:none">Clear images</button>
+  </div>
 </form>
 <script src="/static/voice-input.js" defer></script>
 <style>
@@ -1074,6 +1080,10 @@ $authBannerHtml
   var form = document.getElementById('prompt-form');
   var input = document.getElementById('prompt-input');
   var sendBtn = document.getElementById('send-btn');
+  var imageInput = document.getElementById('prompt-images');
+  var imageSummary = document.getElementById('prompt-images-summary');
+  var imageClear = document.getElementById('prompt-images-clear');
+  var promptImages = [];
 
   function escHtml(s) {
     return String(s == null ? '' : s)
@@ -1177,6 +1187,55 @@ $authBannerHtml
     }
   });
 
+  function updateImageSummary() {
+    if (!imageSummary || !imageClear) return;
+    if (promptImages.length === 0) {
+      imageSummary.textContent = '';
+      imageClear.style.display = 'none';
+      return;
+    }
+    var total = promptImages.reduce(function(acc, img) { return acc + Math.ceil((img.data || '').length * 3 / 4); }, 0);
+    imageSummary.textContent = promptImages.length + ' image(s), ~' + Math.ceil(total / 1024) + 'KB';
+    imageClear.style.display = '';
+  }
+
+  function clearPromptImages() {
+    promptImages = [];
+    if (imageInput) imageInput.value = '';
+    updateImageSummary();
+  }
+
+  function fileToPromptImage(file) {
+    return new Promise(function(resolve, reject) {
+      if (!file.type || file.type.indexOf('image/') !== 0) {
+        reject(new Error('Only images can be attached'));
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function() {
+        var value = String(reader.result || '');
+        var comma = value.indexOf(',');
+        resolve({ mimeType: file.type, data: comma >= 0 ? value.slice(comma + 1) : value });
+      };
+      reader.onerror = function() { reject(reader.error || new Error('Failed to read image')); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (imageInput) {
+    imageInput.addEventListener('change', async function() {
+      try {
+        var files = Array.prototype.slice.call(imageInput.files || []);
+        promptImages = await Promise.all(files.map(fileToPromptImage));
+        updateImageSummary();
+      } catch (e) {
+        append('err', 'image', String(e.message || e), 'error');
+        clearPromptImages();
+      }
+    });
+  }
+  if (imageClear) imageClear.addEventListener('click', clearPromptImages);
+
   // v1.7.7 — 시각 포맷 HH:mm:ss. ISO string 받으면 parse, 없으면 now.
   function fmtTime(input) {
     var d;
@@ -1242,6 +1301,48 @@ $authBannerHtml
       logEl.scrollTop = logEl.scrollHeight;
     } else if (row.style.display !== 'none') {
       // 사용자가 위로 스크롤 중 — unread 카운트 + jump 버튼 표시.
+      setUnread(unreadCount + 1);
+      setJumpVisible(true);
+    }
+  }
+
+  function appendHtml(cls, label, bodyHtml, copyText, cat, opts) {
+    cat = cat || 'ws';
+    opts = opts || {};
+    var atBottom = shouldStick();
+    var row = document.createElement('div');
+    row.className = 'log-line ' + cls;
+    row.dataset.filterCat = cat;
+    if (!isVisible(cat)) row.style.display = 'none';
+    var timeStr = fmtTime(opts.ts);
+    row.innerHTML =
+      '<span class="log-label">' + escHtml(label) + '</span>' +
+      '<div class="log-content">' +
+        '<div class="log-body">' + bodyHtml + '</div>' +
+        '<div class="log-meta">' +
+          '<span class="log-time" title="' + escHtml(timeStr) + '">' + escHtml(timeStr) + '</span>' +
+          '<button type="button" class="log-copy" title="Copy" aria-label="Copy">' + COPY_SVG + '</button>' +
+        '</div>' +
+      '</div>';
+    var btn = row.querySelector('.log-copy');
+    if (btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var txt = copyText == null ? '' : String(copyText);
+        var doneOk = function() {
+          btn.classList.add('copied');
+          setTimeout(function(){ btn.classList.remove('copied'); }, 1200);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(doneOk).catch(function(){});
+        }
+      });
+    }
+    logEl.appendChild(row);
+    if (atBottom && row.style.display !== 'none') {
+      logEl.scrollTop = logEl.scrollHeight;
+    } else if (row.style.display !== 'none') {
       setUnread(unreadCount + 1);
       setJumpVisible(true);
     }
@@ -1476,6 +1577,60 @@ $authBannerHtml
     }
   }
 
+  function tryParseJson(value) {
+    if (typeof value !== 'string') return value;
+    try { return JSON.parse(value); } catch (e) { return value; }
+  }
+
+  function extractToolImage(output) {
+    var o = tryParseJson(output);
+    if (o && typeof o === 'object' && typeof o.raw_output === 'string') {
+      o = tryParseJson(o.raw_output);
+    } else if (o && typeof o === 'object' && typeof o.rawOutput === 'string') {
+      o = tryParseJson(o.rawOutput);
+    }
+    if (!o || typeof o !== 'object') return null;
+    var data = o.data || o.imageData || o.base64 || null;
+    var mime = o.mimeType || o.mime_type || 'image/png';
+    if (!data || typeof data !== 'string' || String(mime).indexOf('image/') !== 0) return null;
+    return {
+      src: 'data:' + mime + ';base64,' + data,
+      mime: mime,
+      serial: o.serial || '',
+      text: o.answer || o.analysis || o.message || '',
+      copy: o.answer || o.analysis || o.message || ('image ' + mime)
+    };
+  }
+
+  function renderImageToolResult(image, isError, opts) {
+    var meta = [];
+    if (image.serial) meta.push('device ' + image.serial);
+    meta.push(image.mime);
+    var html =
+      (image.text ? '<div style="white-space:pre-wrap;margin-bottom:8px">' + escHtml(image.text) + '</div>' : '') +
+      '<div class="console-image-result">' +
+        '<img src="' + image.src + '" alt="' + escHtml(meta.join(' · ')) + '" loading="lazy">' +
+      '</div>' +
+      '<div class="dim" style="font-size:11px;margin-top:6px">' + escHtml(meta.join(' · ')) + '</div>';
+    appendHtml(isError ? 'tool-err' : 'tool-out', isError ? 'tool-err' : 'image result', html, image.copy, 'tool_result', opts);
+  }
+
+  function renderUserPrompt(text, images) {
+    images = images || [];
+    if (!images.length) {
+      append('user', 'user', text, 'assistant');
+      return;
+    }
+    var html = '<div style="white-space:pre-wrap;margin-bottom:8px">' + escHtml(text) + '</div>';
+    for (var i = 0; i < images.length; i++) {
+      var img = images[i];
+      html += '<div class="console-image-result" style="margin-top:8px">' +
+        '<img src="data:' + escHtml(img.mimeType || 'image/png') + ';base64,' + escHtml(img.data || '') + '" alt="Attached image" loading="lazy">' +
+        '</div>';
+    }
+    appendHtml('user', 'user', html, text, 'assistant');
+  }
+
   function renderFrame(f) {
     var t = f.type;
     if (t === 'console_session_started') {
@@ -1490,6 +1645,12 @@ $authBannerHtml
       append('tool', rendered.label, rendered.body, isTodoTool ? 'todo' : 'tool_use');
       if (isTodoTool) updateTodoStore(f.toolName, f.input);
     } else if (t === 'console_tool_result') {
+      var image = extractToolImage(f.output);
+      if (image) {
+        renderImageToolResult(image, !!f.isError);
+        detectAuthFailure(image.text);
+        return;
+      }
       var out = typeof f.output === 'string' ? f.output : JSON.stringify(f.output);
       var resultLabel = f.isError ? 'tool-err' : '✓ result';
       append(f.isError ? 'tool-err' : 'tool-out', resultLabel,
@@ -1549,6 +1710,11 @@ $authBannerHtml
         var isTodoTool = (label === 'TaskCreate' || label === 'TaskUpdate' || label === 'TodoWrite');
         append('tool', label, body, isTodoTool ? 'todo' : 'tool_use', opts);
       } else if (role === 'tool_result') {
+        var histImage = extractToolImage(text);
+        if (histImage) {
+          renderImageToolResult(histImage, false, opts);
+          continue;
+        }
         var out = text.length > 500 ? text.slice(0, 500) + ' …(+' + (text.length - 500) + ')' : text;
         append('tool-out', '✓ result', out, 'tool_result', opts);
       } else if (role === 'system') {
@@ -1660,20 +1826,22 @@ $authBannerHtml
   async function sendPrompt(text) {
     sendBtn.disabled = true;
     setInFlight(true);
+    var imagesToSend = promptImages.slice();
     try {
       var res = await fetch('/api/projects/' + projectId + '/claude/console/prompt', {
         method: 'POST',
         credentials: 'same-origin',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({text: text}),
+        body: JSON.stringify({text: text, images: imagesToSend}),
       });
       if (!res.ok) {
         var msg = await res.text();
         append('err', 'send', res.status + ' ' + msg, 'error');
         setInFlight(false);
       } else {
-        append('user', 'user', text, 'assistant');
+        renderUserPrompt(text, imagesToSend);
         input.value = '';
+        clearPromptImages();
         // v1.20.0 — prompt 전송 직후엔 토글 모드 무관 항상 최하단으로 jump.
         // 사용자가 자기 prompt + 응답을 바로 봐야 함이 명확.
         scrollToBottom();
@@ -2852,4 +3020,3 @@ $bodyHtml
     /** highlight.js 적용 최대 길이 — 그 이상이면 적용 skip (브라우저 freeze 방지). */
     private const val MAX_HL_CHARS = 200_000
 }
-
