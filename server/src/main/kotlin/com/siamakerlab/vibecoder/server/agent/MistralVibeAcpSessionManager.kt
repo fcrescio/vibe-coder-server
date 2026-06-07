@@ -1218,6 +1218,14 @@ class MistralVibeAcpSessionManager(
         }
         session.readerJob?.cancel()
         session.stderrJob?.cancel()
+        // Kill any orphaned terminal processes left behind by timed-out bash commands.
+        terminals.values.forEach { terminal ->
+            if (terminal.process.isAlive) {
+                terminal.process.destroyForcibly()
+                terminal.readerJob?.cancel()
+            }
+        }
+        terminals.clear()
         setBusy(projectId, false)
     }
 
