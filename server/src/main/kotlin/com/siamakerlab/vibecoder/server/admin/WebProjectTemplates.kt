@@ -1073,7 +1073,7 @@ $authBannerHtml
   <a href="/agents" class="chip chip-link" style="font-size:11px;margin-left:0;flex-shrink:0">${esc(t("console.agent.manage"))}</a>
 </div>
 
-<script src="/static/admin/console-render.js"></script>
+<script src="/static/console-render.js"></script>
 <script>
 (function() {
   var projectId = $projectIdJs;
