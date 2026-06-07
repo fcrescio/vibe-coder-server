@@ -34,11 +34,17 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import java.awt.Color
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.ByteArrayOutputStream
+import java.io.ByteArrayInputStream
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.util.Base64
+import javax.imageio.ImageIO
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -776,11 +782,26 @@ class MistralVibeAcpSessionManager(
                         respondRequestError(session, id, method, "screencap failed")
                         return@runCatching
                     }
-                    val answer = analyzeImageWithEndpoint(question, b64, "image/png")
+                    val prepared = prepareScreenshotForVision(b64)
+                    val answer = analyzeImageWithEndpoint(
+                        question = prepared.navigationQuestion(question),
+                        base64Image = prepared.base64,
+                        mimeType = "image/png",
+                    )
                     session.write(result(id) {
                         put("serial", serial)
                         put("mimeType", "image/png")
                         put("data", b64)
+                        putJsonObject("visionPreview") {
+                            put("width", prepared.width)
+                            put("height", prepared.height)
+                            put("originalWidth", prepared.originalWidth)
+                            put("originalHeight", prepared.originalHeight)
+                            put("offsetX", prepared.offsetX)
+                            put("offsetY", prepared.offsetY)
+                            put("scale", prepared.scale)
+                            put("coordinateHint", prepared.coordinateHint)
+                        }
                         put("answer", answer)
                     })
                 }.onFailure {
@@ -790,6 +811,50 @@ class MistralVibeAcpSessionManager(
             }
             else -> false
         }
+    }
+
+    private fun prepareScreenshotForVision(base64Image: String): VisionPreparedImage {
+        val sourceBytes = Base64.getDecoder().decode(base64Image)
+        val source = ImageIO.read(ByteArrayInputStream(sourceBytes))
+            ?: return VisionPreparedImage(
+                base64 = base64Image,
+                width = 0,
+                height = 0,
+                originalWidth = 0,
+                originalHeight = 0,
+                offsetX = 0,
+                offsetY = 0,
+                scale = 1.0,
+            )
+        val target = 1000
+        val scale = minOf(target.toDouble() / source.width, target.toDouble() / source.height)
+        val scaledWidth = (source.width * scale).toInt().coerceAtLeast(1)
+        val scaledHeight = (source.height * scale).toInt().coerceAtLeast(1)
+        val offsetX = (target - scaledWidth) / 2
+        val offsetY = (target - scaledHeight) / 2
+        val canvas = BufferedImage(target, target, BufferedImage.TYPE_INT_RGB)
+        val g = canvas.createGraphics()
+        try {
+            g.color = Color.BLACK
+            g.fillRect(0, 0, target, target)
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+            g.drawImage(source, offsetX, offsetY, scaledWidth, scaledHeight, null)
+        } finally {
+            g.dispose()
+        }
+        val out = ByteArrayOutputStream()
+        ImageIO.write(canvas, "png", out)
+        return VisionPreparedImage(
+            base64 = Base64.getEncoder().encodeToString(out.toByteArray()),
+            width = target,
+            height = target,
+            originalWidth = source.width,
+            originalHeight = source.height,
+            offsetX = offsetX,
+            offsetY = offsetY,
+            scale = scale,
+        )
     }
 
     private suspend fun analyzePromptImageAttachments(text: String, images: List<AgentPromptImage>): String =
@@ -1155,6 +1220,36 @@ class MistralVibeAcpSessionManager(
             get() = code == VIBE_CONTEXT_TOO_LONG_CODE ||
                 message.orEmpty().contains("context too long", ignoreCase = true) ||
                 message.orEmpty().contains("maximum context", ignoreCase = true)
+    }
+
+    private data class VisionPreparedImage(
+        val base64: String,
+        val width: Int,
+        val height: Int,
+        val originalWidth: Int,
+        val originalHeight: Int,
+        val offsetX: Int,
+        val offsetY: Int,
+        val scale: Double,
+    ) {
+        val coordinateHint: String
+            get() = "Vision image is ${width}x${height}. Original ADB screenshot is " +
+                "${originalWidth}x${originalHeight}. Original coordinate transform: " +
+                "adb_x=(vision_x-$offsetX)/$scale, adb_y=(vision_y-$offsetY)/$scale."
+
+        fun navigationQuestion(question: String): String =
+            """
+            $question
+
+            Coordinate note for phone UI navigation:
+            - The attached image is a square ${width}x${height} preview generated from the real ADB screenshot.
+            - The real ADB screenshot/device coordinate system is ${originalWidth}x${originalHeight}, origin at top-left.
+            - The preview preserves aspect ratio with black padding: offsetX=$offsetX, offsetY=$offsetY, scale=$scale.
+            - If you identify tap targets, first locate them in preview coordinates, then convert to ADB coordinates with:
+              adb_x = (preview_x - $offsetX) / $scale
+              adb_y = (preview_y - $offsetY) / $scale
+            - Report ADB coordinates for any tap recommendation. Do not report coordinates in the square preview unless explicitly asked.
+            """.trimIndent()
     }
 
     companion object {
