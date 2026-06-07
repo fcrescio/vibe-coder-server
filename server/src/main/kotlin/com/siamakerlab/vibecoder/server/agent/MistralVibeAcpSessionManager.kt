@@ -654,10 +654,21 @@ class MistralVibeAcpSessionManager(
                 var exit: Int? = null
                 val process = terminal?.process
                 if (process != null) {
-                    while (exit == null) {
+                    val deadline = System.currentTimeMillis() + 30_000L
+                    while (exit == null && System.currentTimeMillis() < deadline) {
                         session.touch()
                         val done = withContext(Dispatchers.IO) { process.waitFor(1, TimeUnit.SECONDS) }
                         if (done) exit = process.exitValue()
+                    }
+                    if (exit == null) {
+                        // Timeout — kill the terminal process group and report error to agent.
+                        val pid = process.pid()
+                        runCatching { ProcessBuilder("kill", "--", "-${pid}").start().waitFor(3, TimeUnit.SECONDS) }
+                        process.destroyForcibly()
+                        terminal?.readerJob?.cancel()
+                        terminals.remove(terminalId(obj))
+                        respondRequestError(session, id, method, "command timed out after 30s")
+                        return@handleTerminalRequest true
                     }
                 }
                 terminal?.readerJob?.join()
@@ -1219,17 +1230,6 @@ class MistralVibeAcpSessionManager(
         }
         session.readerJob?.cancel()
         session.stderrJob?.cancel()
-        // Kill any orphaned terminal processes left behind by timed-out bash commands.
-        // Use process group (negative PID) to kill all children spawned via setsid.
-        terminals.values.forEach { terminal ->
-            if (terminal.process.isAlive) {
-                val pid = terminal.process.pid()
-                runCatching { ProcessBuilder("kill", "--", "-${pid}").start().waitFor(3, TimeUnit.SECONDS) }
-                terminal.process.destroyForcibly()
-                terminal.readerJob?.cancel()
-            }
-        }
-        terminals.clear()
         setBusy(projectId, false)
     }
 

@@ -565,9 +565,19 @@ class AcpAgentProcessFactory(
                 var exit: Int? = null
                 val child = terminal?.process
                 if (child != null) {
-                    while (exit == null) {
+                    val deadline = System.currentTimeMillis() + 30_000L
+                    while (exit == null && System.currentTimeMillis() < deadline) {
                         val done = withContext(Dispatchers.IO) { child.waitFor(1, TimeUnit.SECONDS) }
                         if (done) exit = child.exitValue()
+                    }
+                    if (exit == null) {
+                        val pid = child.pid()
+                        runCatching { ProcessBuilder("kill", "--", "-${pid}").start().waitFor(3, TimeUnit.SECONDS) }
+                        child.destroyForcibly()
+                        terminal?.readerJob?.cancel()
+                        terminals.remove(terminalId(obj))
+                        respondRequestError(process, id, method, "command timed out after 30s")
+                        return true
                     }
                 }
                 terminal?.readerJob?.join()
