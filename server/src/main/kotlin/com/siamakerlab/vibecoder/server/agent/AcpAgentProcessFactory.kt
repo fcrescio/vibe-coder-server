@@ -670,11 +670,16 @@ class AcpAgentProcessFactory(
                     } else if (x == null || y == null) {
                         respondRequestError(process, id, method, "x and y are required")
                     } else {
-                        svc.tap(serial, x, y)
-                        write(process, result(id) {
-                            put("ok", true)
-                            put("message", "Tapped $x,$y.")
-                        })
+                        val tap = svc.tap(serial, x, y)
+                        if (!tap.success) {
+                            respondRequestError(process, id, method, tap.error ?: tap.output.ifBlank { "tap failed" })
+                        } else {
+                            write(process, result(id) {
+                                put("ok", true)
+                                put("message", "Tapped $x,$y.")
+                                if (tap.output.isNotBlank()) put("output", tap.output.take(2000))
+                            })
+                        }
                     }
                 }.onFailure {
                     respondRequestError(process, id, method, it.message ?: "tap failed")
@@ -696,11 +701,16 @@ class AcpAgentProcessFactory(
                     } else if (x1 == null || y1 == null || x2 == null || y2 == null) {
                         respondRequestError(process, id, method, "x1, y1, x2, y2 are required")
                     } else {
-                        svc.swipe(serial, x1, y1, x2, y2, duration)
-                        write(process, result(id) {
-                            put("ok", true)
-                            put("message", "Swiped $x1,$y1 to $x2,$y2.")
-                        })
+                        val swipe = svc.swipe(serial, x1, y1, x2, y2, duration)
+                        if (!swipe.success) {
+                            respondRequestError(process, id, method, swipe.error ?: swipe.output.ifBlank { "swipe failed" })
+                        } else {
+                            write(process, result(id) {
+                                put("ok", true)
+                                put("message", "Swiped $x1,$y1 to $x2,$y2.")
+                                if (swipe.output.isNotBlank()) put("output", swipe.output.take(2000))
+                            })
+                        }
                     }
                 }.onFailure {
                     respondRequestError(process, id, method, it.message ?: "swipe failed")
