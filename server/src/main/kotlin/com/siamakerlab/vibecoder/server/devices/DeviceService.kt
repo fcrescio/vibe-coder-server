@@ -49,7 +49,7 @@ class DeviceService(private val adb: AdbService) {
     fun launchApp(serial: String, packageName: String, activity: String? = null): AdbCommandResult {
         wakeUpAndUnlock(serial)
         val trimmedActivity = activity?.trim()?.takeIf { it.isNotBlank() }
-        return if (trimmedActivity != null) {
+        val result = if (trimmedActivity != null) {
             val component = when {
                 trimmedActivity.contains("/") -> trimmedActivity
                 trimmedActivity.startsWith(".") -> "$packageName/$trimmedActivity"
@@ -64,6 +64,19 @@ class DeviceService(private val adb: AdbService) {
                 "1",
             )
         }
+        return normalizeLaunchResult(result)
+    }
+
+    private fun normalizeLaunchResult(result: AdbCommandResult): AdbCommandResult {
+        if (!result.success) return result
+        val firstError = result.output.lines().firstOrNull { line ->
+            line.contains("Error:", ignoreCase = true) ||
+                line.contains("Error type", ignoreCase = true) ||
+                line.contains("does not exist", ignoreCase = true) ||
+                line.contains("No activities found", ignoreCase = true) ||
+                line.contains("monkey aborted", ignoreCase = true)
+        } ?: return result
+        return result.copy(success = false, error = firstError)
     }
 
     /**
