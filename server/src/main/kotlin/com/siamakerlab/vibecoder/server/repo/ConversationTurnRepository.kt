@@ -76,6 +76,8 @@ class ConversationTurnRepository(private val clock: Clock) {
         val now = clock.nowIso()
         val id = Ids.taskId()
         val next = nextTurnIdx(projectId, sessionId)
+        val persistedContent = fitForFullTextIndex(content)
+        val persistedRaw = raw?.let(::fitForFullTextIndex)
         ConversationTurns.insert {
             it[ConversationTurns.id] = id
             it[ConversationTurns.projectId] = projectId
@@ -83,18 +85,24 @@ class ConversationTurnRepository(private val clock: Clock) {
             it[turnIdx] = next
             it[ts] = now
             it[ConversationTurns.role] = role
-            it[ConversationTurns.content] = content
+            it[ConversationTurns.content] = persistedContent
             it[ConversationTurns.toolName] = toolName
             it[ConversationTurns.toolUseId] = toolUseId
             it[ConversationTurns.tokensIn] = tokensIn
             it[ConversationTurns.tokensOut] = tokensOut
-            it[ConversationTurns.raw] = raw
+            it[ConversationTurns.raw] = persistedRaw
             it[ConversationTurns.agentName] = agentName
         }
         ConversationTurnRow(
-            id, projectId, sessionId, next, now, role, content,
-            toolName, toolUseId, tokensIn, tokensOut, raw, agentName,
+            id, projectId, sessionId, next, now, role, persistedContent,
+            toolName, toolUseId, tokensIn, tokensOut, persistedRaw, agentName,
         )
+    }
+
+    private fun fitForFullTextIndex(value: String): String {
+        if (value.length <= MAX_INDEXED_CONTENT_CHARS) return value
+        val marker = "\n\n[truncated persisted conversation content: original ${value.length} chars]"
+        return value.take(MAX_INDEXED_CONTENT_CHARS - marker.length) + marker
     }
 
     private fun nextTurnIdx(projectId: String, sessionId: String?): Int {
@@ -224,6 +232,8 @@ class ConversationTurnRepository(private val clock: Clock) {
         /** v0.75.0 — mecab 활성화 flag. 부팅 시 한 번만 평가. */
         private val MECAB_ENABLED: Boolean =
             System.getenv("VIBECODER_MECAB_ENABLED")?.lowercase()?.let { it == "true" || it == "1" } == true
+
+        private const val MAX_INDEXED_CONTENT_CHARS = 512_000
     }
 
     /** ASCII printable 만 포함하면 tsvector (영어), 한 글자라도 non-ASCII 면 trigram. */

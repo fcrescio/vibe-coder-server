@@ -87,7 +87,7 @@ class ConversationHistoryService(
                 projectId = projectId,
                 sessionId = sessionId,
                 role = if (event.isError) "tool_error" else "tool_result",
-                content = jsonString(event.output),
+                content = persistedJsonString(event.output),
                 toolUseId = event.toolUseId,
                 agentName = agentName,
             )
@@ -109,8 +109,8 @@ class ConversationHistoryService(
                 projectId = projectId,
                 sessionId = sessionId,
                 role = "unknown",
-                content = jsonString(event.raw),
-                raw = jsonString(event.raw),
+                content = persistedJsonString(event.raw),
+                raw = persistedJsonString(event.raw),
                 agentName = agentName,
             )
             // v0.63.0 — Phase 42 Anthropic prompt cache usage. JSON 형태로 적재해서
@@ -180,7 +180,7 @@ class ConversationHistoryService(
             projectId = projectId,
             sessionId = sessionId,
             role = if (isError) "tool_error" else "tool_result",
-            content = jsonString(output),
+            content = persistedJsonString(output),
             toolUseId = toolUseId,
             agentName = agentName,
         )
@@ -190,4 +190,7 @@ class ConversationHistoryService(
         if (s == null) "null" else Json.encodeToString(String.serializer(), s)
 
     private fun jsonString(el: JsonElement): String = el.toString()
+
+    private fun persistedJsonString(el: JsonElement): String =
+        ConversationContentSanitizer.jsonString(el)
 }
