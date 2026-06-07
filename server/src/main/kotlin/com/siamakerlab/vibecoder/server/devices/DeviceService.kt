@@ -1,6 +1,7 @@
 package com.siamakerlab.vibecoder.server.devices
 
 import com.siamakerlab.vibecoder.server.adb.AdbService
+import com.siamakerlab.vibecoder.server.adb.AdbCommandResult
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.Base64
 
@@ -36,6 +37,33 @@ class DeviceService(private val adb: AdbService) {
     fun wakeUpAndUnlock(serial: String) {
         adb.rawCommand("-s", serial, "shell", "input", "keyevent", "224") // KEYCODE_WAKEUP
         adb.rawCommand("-s", serial, "shell", "input", "keyevent", "82")  // KEYCODE_MENU
+    }
+
+    /**
+     * Launch an installed application without exposing raw ADB to the agent.
+     *
+     * When [activity] is provided it may be a fully-qualified activity or a short
+     * ".MainActivity" suffix. Without an activity, Android's monkey launcher is
+     * used to resolve the package's default launcher activity.
+     */
+    fun launchApp(serial: String, packageName: String, activity: String? = null): AdbCommandResult {
+        wakeUpAndUnlock(serial)
+        val trimmedActivity = activity?.trim()?.takeIf { it.isNotBlank() }
+        return if (trimmedActivity != null) {
+            val component = when {
+                trimmedActivity.contains("/") -> trimmedActivity
+                trimmedActivity.startsWith(".") -> "$packageName/$trimmedActivity"
+                else -> "$packageName/$trimmedActivity"
+            }
+            adb.rawCommand("-s", serial, "shell", "am", "start", "-W", "-n", component)
+        } else {
+            adb.rawCommand(
+                "-s", serial, "shell", "monkey",
+                "-p", packageName,
+                "-c", "android.intent.category.LAUNCHER",
+                "1",
+            )
+        }
     }
 
     /**

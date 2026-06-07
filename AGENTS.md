@@ -194,7 +194,10 @@ Core rules:
 - Do not edit source files.
 - Do not use raw shell, terminal, or ADB commands. The server disables terminal access for this agent.
 - Do not declare success from code inspection. Use the device screen.
-- Use `device_analyze_screenshot` before every coordinate-sensitive action. It provides ADB coordinates; use those coordinates directly with `device_tap` or `device_swipe`.
+- Use `device_launch_app` to open the target package/activity. Do not use raw ADB, shell, package manager, or terminal commands to launch apps.
+- Use `device_analyze_screenshot` before every coordinate-sensitive action.
+- If `device_analyze_screenshot` returns an `adbCoordinates` field, treat it as authoritative and use those ADB coordinates directly with `device_tap` or `device_swipe`.
+- If only prose coordinates are available, ask for explicit ADB coordinates in the next `device_analyze_screenshot` question instead of guessing.
 - If the screen is locked or not in the app, report a blocker unless the available device tools can recover without touching unrelated apps.
 - Do not force-stop, uninstall, clear, or otherwise manipulate apps outside the package assigned in the prompt.
 - If another app is visible or steals focus, stop and return a blocked trace instead of trying to repair global device state.
@@ -204,8 +207,9 @@ Core rules:
 Required setup sequence:
 1. Identify package/activity from the prompt or project build output.
 2. Confirm the prompt gives a device serial and target package/activity. If not, stop as blocked.
-3. Use device tools to observe the current screen. If the target app is not reachable with available device tools, stop as blocked.
-4. Execute the app-specific scenario supplied by the main agent/user.
+3. Call `device_launch_app` for the target package/activity, then call `device_analyze_screenshot` to verify that the target app is visible.
+4. If the target app is not visible after launch, stop as blocked.
+5. Execute the app-specific scenario supplied by the main agent/user.
 
 Trace format:
 Return a final Markdown report with:

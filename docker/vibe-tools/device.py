@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from typing import ClassVar
 
 from acp.schema import ContentToolCallContent, TextContentBlock, ToolCallProgress
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from vibe.acp.tools.base import AcpToolState, BaseAcpTool
 from vibe.acp.tools.session_update import resolve_kind
@@ -206,6 +206,68 @@ class DeviceSwipe(_DeviceTool, ToolUIData[DeviceSwipeArgs, DeviceSwipeResult]):
         return "Swiping device"
 
 
+class DeviceLaunchAppArgs(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    package_name: str = Field(
+        alias="packageName",
+        description="Android package name to launch, for example com.example.app.",
+    )
+    activity: str | None = Field(
+        default=None,
+        description="Optional activity name. Use only when known, for example .MainActivity.",
+    )
+    serial: str | None = Field(default=None, description="ADB device serial.")
+
+
+class DeviceLaunchAppResult(BaseModel):
+    ok: bool
+    serial: str
+    package_name: str
+    activity: str | None = None
+    message: str
+    output: str = ""
+
+
+class DeviceLaunchApp(_DeviceTool, ToolUIData[DeviceLaunchAppArgs, DeviceLaunchAppResult]):
+    description: ClassVar[str] = (
+        "Wake/unlock an Android device and launch the app under test by package name. "
+        "Use this instead of raw ADB or shell commands before UI navigation."
+    )
+
+    async def run(
+        self, args: DeviceLaunchAppArgs, ctx: InvokeContext | None = None
+    ) -> AsyncGenerator[ToolStreamEvent | DeviceLaunchAppResult, None]:
+        params = args.model_dump(by_alias=True, exclude_none=True)
+        response = await self._call_device("device/launch_app", params)
+        serial = response.get("serial") or args.serial or "unknown"
+        package_name = response.get("packageName") or args.package_name
+        activity = response.get("activity") or args.activity
+        yield DeviceLaunchAppResult(
+            ok=bool(response.get("ok", True)),
+            serial=serial,
+            package_name=package_name,
+            activity=activity,
+            message=response.get("message") or f"Launched {package_name} on {serial}.",
+            output=response.get("output") or "",
+        )
+
+    @classmethod
+    def format_call_display(cls, args: DeviceLaunchAppArgs) -> ToolCallDisplay:
+        target = args.serial or "first connected device"
+        return ToolCallDisplay(summary=f"device launch: {args.package_name} on {target}")
+
+    @classmethod
+    def get_result_display(cls, event: ToolResultEvent) -> ToolResultDisplay:
+        if isinstance(event.result, DeviceLaunchAppResult):
+            return ToolResultDisplay(success=event.result.ok, message=event.result.message)
+        return ToolResultDisplay(success=False, message=event.error or "Launch failed")
+
+    @classmethod
+    def get_status_text(cls) -> str:
+        return "Launching app on device"
+
+
 class DeviceAnalyzeScreenshotArgs(BaseModel):
     question: str = Field(
         description=(
@@ -219,6 +281,7 @@ class DeviceAnalyzeScreenshotArgs(BaseModel):
 class DeviceAnalyzeScreenshotResult(BaseModel):
     serial: str
     answer: str
+    adb_coordinates: dict | None = None
     mime_type: str = "image/png"
     data: str = Field(exclude=True, description="Base64 PNG payload for UI display.")
 
@@ -240,11 +303,13 @@ class DeviceAnalyzeScreenshot(
         data = response.get("data") or ""
         serial = response.get("serial") or args.serial or "unknown"
         answer = response.get("answer") or response.get("analysis") or ""
+        adb_coordinates = response.get("adbCoordinates") or response.get("adb_coordinates")
         if not isinstance(answer, str) or not answer:
             raise ToolError("device/analyze_screenshot returned no analysis")
         yield DeviceAnalyzeScreenshotResult(
             serial=serial,
             answer=answer,
+            adb_coordinates=adb_coordinates if isinstance(adb_coordinates, dict) else None,
             data=data if isinstance(data, str) else "",
         )
 
@@ -277,6 +342,8 @@ class DeviceAnalyzeScreenshot(
         raw_with_image = result.model_dump()
         raw_with_image["data"] = result.data
         raw_with_image["mimeType"] = result.mime_type
+        if result.adb_coordinates is not None:
+            raw_with_image["adbCoordinates"] = result.adb_coordinates
         return ToolCallProgress(
             session_update="tool_call_update",
             tool_call_id=event.tool_call_id,

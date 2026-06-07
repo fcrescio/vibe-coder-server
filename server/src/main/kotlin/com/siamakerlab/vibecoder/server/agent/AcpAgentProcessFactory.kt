@@ -27,7 +27,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
-import java.awt.Color
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.BufferedReader
@@ -121,6 +120,7 @@ class AcpAgentProcessFactory(
                         put("analyzeScreenshot", enabled)
                         put("tap", enabled)
                         put("swipe", enabled)
+                        put("launchApp", enabled)
                     }
                     putJsonObject("auth") {
                         put("terminal", false)
@@ -707,6 +707,39 @@ class AcpAgentProcessFactory(
                 }
                 true
             }
+            "device/launch_app" -> {
+                runCatching {
+                    val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
+                    val serial = params["serial"]?.jsonPrimitive?.contentOrNull
+                        ?: svc.listDevices().firstOrNull()?.serial
+                    val packageName = params["packageName"]?.jsonPrimitive?.contentOrNull
+                        ?: params["package_name"]?.jsonPrimitive?.contentOrNull
+                    val activity = params["activity"]?.jsonPrimitive?.contentOrNull
+                    if (serial == null) {
+                        respondRequestError(process, id, method, "no device serial provided and no device connected")
+                    } else if (packageName.isNullOrBlank()) {
+                        respondRequestError(process, id, method, "packageName is required")
+                    } else {
+                        val launch = svc.launchApp(serial, packageName, activity)
+                        if (!launch.success) {
+                            respondRequestError(process, id, method, launch.error ?: launch.output.ifBlank { "launch failed" })
+                        } else {
+                            Thread.sleep(800)
+                            write(process, result(id) {
+                                put("ok", true)
+                                put("serial", serial)
+                                put("packageName", packageName)
+                                if (!activity.isNullOrBlank()) put("activity", activity)
+                                put("message", "Launched $packageName${activity?.let { "/$it" } ?: ""} on $serial.")
+                                put("output", launch.output.take(2000))
+                            })
+                        }
+                    }
+                }.onFailure {
+                    respondRequestError(process, id, method, it.message ?: "launch failed")
+                }
+                true
+            }
             "device/analyze_screenshot" -> {
                 runCatching {
                     val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
@@ -860,8 +893,9 @@ class AcpAgentProcessFactory(
     }
 
     /**
-     * Extracts preview coordinates from the LLM's JSON response and converts them to ADB coordinates.
-     * Returns a JsonObject like {"increment": [adb_x, adb_y], "reset": [adb_x, adb_y]} or null.
+     * Extracts semantic preview coordinates from the LLM answer and converts them
+     * to real ADB coordinates. Any top-level JSON-style `"key": [x, y]` pair is
+     * preserved with the same key in the returned object.
      */
     private fun extractAdbCoordinates(answer: String, prepared: VisionPreparedImage): JsonObject? {
         if (prepared.originalWidth == 0 || prepared.originalHeight == 0) return null
@@ -873,40 +907,22 @@ class AcpAgentProcessFactory(
         val matches = coordPattern.findAll(answer).toList()
         if (matches.isEmpty()) return null
 
-        var incX: Int? = null
-        var incY: Int? = null
-        var resX: Int? = null
-        var resY: Int? = null
-
-        for (m in matches) {
-            val key = m.groupValues[1]
-            val x = m.groupValues[2].toIntOrNull() ?: continue
-            val y = m.groupValues[3].toIntOrNull() ?: continue
-            when (key) {
-                "increment" -> { incX = x; incY = y }
-                "reset" -> { resX = x; resY = y }
-            }
-        }
-
-        if (incX == null || incY == null) return null
-
-        val adbIncX = (incX * ow / pw).coerceIn(0, ow - 1)
-        val adbIncY = (incY * oh / pw).coerceIn(0, oh - 1)
-
+        var found = false
         return buildJsonObject {
-            putJsonArray("increment") {
-                add(adbIncX)
-                add(adbIncY)
-            }
-            if (resX != null && resY != null) {
-                val adbResX = (resX * ow / pw).coerceIn(0, ow - 1)
-                val adbResY = (resY * oh / pw).coerceIn(0, oh - 1)
-                putJsonArray("reset") {
-                    add(adbResX)
-                    add(adbResY)
+            for (m in matches) {
+                val key = m.groupValues[1]
+                val x = m.groupValues[2].toIntOrNull() ?: continue
+                val y = m.groupValues[3].toIntOrNull() ?: continue
+                if (x !in 0..prepared.width || y !in 0..prepared.height) continue
+                val adbX = (x * ow / pw).coerceIn(0, ow - 1)
+                val adbY = (y * oh / prepared.height).coerceIn(0, oh - 1)
+                putJsonArray(key) {
+                    add(adbX)
+                    add(adbY)
                 }
+                found = true
             }
-        }
+        }.takeIf { found }
     }
 
     private suspend fun analyzeImageWithEndpoint(question: String, base64Image: String, mimeType: String): String =
@@ -1040,8 +1056,10 @@ class AcpAgentProcessFactory(
 
             The image is a ${width}x${height} stretched version of the real device screen (${originalWidth}x${originalHeight}).
             First describe where elements are (top, middle, bottom).
-            Then return JSON: {"increment": [preview_x, preview_y], "reset": [preview_x, preview_y], "counter": "value"}
-            preview_x and preview_y must be integers between 0 and $width.
+            If the question asks for tap targets or if you recommend an action, include a compact JSON object with semantic target names and preview coordinates, for example:
+            {"playButton": [preview_x, preview_y], "settingsButton": [preview_x, preview_y]}
+            Only include coordinates for real visible UI targets. Omit JSON coordinates when no actionable target is visible.
+            preview_x and preview_y must be integers between 0 and $width/$height in the stretched preview.
             Do NOT convert to device coordinates — the server does that automatically.
             """.trimIndent()
     }
@@ -1110,7 +1128,7 @@ class AcpAgentProcessFactory(
     private fun applyToolPolicy(text: String, policy: SubAgentToolPolicy): String {
         val enabled = when {
             policy.allowDevice && !policy.allowTerminal && !policy.allowFsWrite ->
-                listOf("device_screencap", "device_analyze_screenshot", "device_tap", "device_swipe")
+                listOf("device_launch_app", "device_screencap", "device_analyze_screenshot", "device_tap", "device_swipe")
             else -> emptyList()
         }
         val disabled = buildSet {
@@ -1126,6 +1144,7 @@ class AcpAgentProcessFactory(
             if (!policy.allowDevice) {
                 add("device_screencap")
                 add("device_analyze_screenshot")
+                add("device_launch_app")
                 add("device_tap")
                 add("device_swipe")
             }

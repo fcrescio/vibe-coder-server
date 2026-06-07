@@ -23,7 +23,8 @@ data class SubAgentToolPolicy(
                 extraInstructions = """
                     Server-enforced tool policy:
                     - Raw terminal/shell/ADB is disabled for this agent.
-                    - Use only device_screencap, device_analyze_screenshot, device_tap, and device_swipe for phone navigation.
+                    - Use only device_launch_app, device_screencap, device_analyze_screenshot, device_tap, and device_swipe for phone navigation.
+                    - Use device_launch_app to open the assigned app package. Do not launch apps by shell command.
                     - Do not edit files.
                     - Do not act on apps outside the package assigned in the prompt.
                     - If the wrong app is visible, stop and return a blocked trace instead of force-stopping, uninstalling, or manipulating other apps.
