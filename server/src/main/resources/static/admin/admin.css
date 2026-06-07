@@ -830,6 +830,63 @@ table.devices small.dim { font-size: 11px; }
     border-radius: 11px;
 }
 
+/* v1.27.0 — Collapsed non-dialog messages: single-line badge, expand on click.
+   tool, tool-out, tool-err, sys, thinking start collapsed by default. */
+.console-log .log-line.collapsed {
+    cursor: pointer;
+}
+.console-log .log-line.collapsed .log-content {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-height: 1.8em;
+    padding: 2px 10px;
+    font-size: 0.85em;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+    border-radius: 11px;
+    max-width: 90%;
+}
+.console-log .log-line.collapsed .log-body {
+    display: inline;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.console-log .log-line.collapsed .log-meta {
+    display: none;
+}
+.console-log .log-line.collapsed:hover .log-content {
+    opacity: 1;
+}
+.console-log .log-line.collapsed .log-label {
+    display: inline;
+    font-size: 0.78em;
+    font-weight: 600;
+    margin-right: 6px;
+    white-space: nowrap;
+}
+/* expanded: restore normal bubble appearance */
+.console-log .log-line.collapsed:not(.collapsed) .log-content {
+    white-space: normal;
+    max-height: none;
+    padding: 7px 12px;
+    font-size: inherit;
+    opacity: 1;
+    border-radius: 14px;
+    max-width: 82%;
+}
+.console-log .log-line.collapsed:not(.collapsed) .log-body {
+    display: block;
+    white-space: pre-wrap;
+}
+.console-log .log-line.collapsed:not(.collapsed) .log-meta {
+    display: flex;
+}
+.console-log .log-line.collapsed:not(.collapsed) .log-label {
+    display: none;
+}
+
 .console-image-result {
     max-width: min(100%, 520px);
     border: 1px solid var(--border);

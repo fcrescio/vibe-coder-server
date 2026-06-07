@@ -1264,6 +1264,10 @@ $authBannerHtml
     var timeStr = fmtTime(opts.ts);
     // v1.7.9 — meta (시각 + 복사 버튼) 를 응답 카드 내부 하단으로 이동.
     //          .log-content wrapper 안에 .log-body 위 + .log-meta 아래.
+    // v1.27.0 — non-dialog messages (tool, tool-out, tool-err, sys, thinking)
+    //           start collapsed: single-line badge, click to expand.
+    var isNonDialog = (cls === 'tool' || cls === 'tool-out' || cls === 'tool-err' || cls === 'sys' || cls === 'thinking');
+    if (isNonDialog) row.classList.add('collapsed');
     row.innerHTML =
       '<span class="log-label">' + escHtml(label) + '</span>' +
       '<div class="log-content">' +
@@ -1273,6 +1277,12 @@ $authBannerHtml
           '<button type="button" class="log-copy" title="Copy" aria-label="Copy">' + COPY_SVG + '</button>' +
         '</div>' +
       '</div>';
+    if (isNonDialog) {
+      row.addEventListener('click', function(e) {
+        if (e.target.closest('.log-copy')) return;
+        row.classList.toggle('collapsed');
+      });
+    }
     var btn = row.querySelector('.log-copy');
     if (btn) {
       btn.addEventListener('click', function(e) {
@@ -1316,6 +1326,8 @@ $authBannerHtml
     row.dataset.filterCat = cat;
     if (!isVisible(cat)) row.style.display = 'none';
     var timeStr = fmtTime(opts.ts);
+    var isNonDialog = (cls === 'tool' || cls === 'tool-out' || cls === 'tool-err' || cls === 'sys' || cls === 'thinking');
+    if (isNonDialog) row.classList.add('collapsed');
     row.innerHTML =
       '<span class="log-label">' + escHtml(label) + '</span>' +
       '<div class="log-content">' +
@@ -1325,6 +1337,12 @@ $authBannerHtml
           '<button type="button" class="log-copy" title="Copy" aria-label="Copy">' + COPY_SVG + '</button>' +
         '</div>' +
       '</div>';
+    if (isNonDialog) {
+      row.addEventListener('click', function(e) {
+        if (e.target.closest('.log-copy')) return;
+        row.classList.toggle('collapsed');
+      });
+    }
     var btn = row.querySelector('.log-copy');
     if (btn) {
       btn.addEventListener('click', function(e) {
