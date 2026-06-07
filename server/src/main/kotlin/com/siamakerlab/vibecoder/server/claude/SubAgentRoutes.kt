@@ -11,6 +11,7 @@ import com.siamakerlab.vibecoder.server.auth.requireProjectAcl
 import com.siamakerlab.vibecoder.server.env.AgentRegistry
 import com.siamakerlab.vibecoder.server.projects.ProjectService
 import com.siamakerlab.vibecoder.server.repo.DeviceRepository
+import com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -28,6 +29,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -52,6 +54,7 @@ fun Routing.subAgentRoutes(
     /** v0.65.0 — JSON endpoint Bearer 토큰 dual-auth 용. */
     tokens: TokenService,
     deviceRepo: DeviceRepository,
+    conversationRepo: ConversationTurnRepository,
 ) {
     // ── /projects/{id}/agents — index: active sessions + spawn form ─────────
     get("/projects/{id}/agents") {
@@ -177,13 +180,13 @@ $rowsHtml
         }
 
         val raw = call.receiveText()
-        val text = runCatching {
-            (Json.parseToJsonElement(raw) as? JsonObject)
-                ?.get("text")?.jsonPrimitive?.contentOrNull
-        }.getOrNull()
+        val body = runCatching { Json.parseToJsonElement(raw).jsonObject }.getOrNull()
+        val requestedText = body?.get("text")?.jsonPrimitive?.contentOrNull
+        val text = buildPromptTextForAgent(id, agentName, requestedText, body, conversationRepo)
         if (text.isNullOrBlank()) return@post call.respond(HttpStatusCode.BadRequest, "missing text")
+        val limits = parseRunLimits(agentName, body)
 
-        runCatching { manager.sendPrompt(id, agentName, text) }
+        runCatching { manager.sendPrompt(id, agentName, text, limits) }
             .onFailure {
                 log.warn(it) { "[$id::$agentName] sub-agent prompt failed" }
                 return@post call.respond(HttpStatusCode.InternalServerError, it.message ?: "send failed")
@@ -247,6 +250,62 @@ $rowsHtml
         }
         call.respondText(Json.encodeToString(JsonObject.serializer(), payload), ContentType.Application.Json)
     }
+}
+
+private fun buildPromptTextForAgent(
+    projectId: String,
+    agentName: String,
+    requestedText: String?,
+    body: JsonObject?,
+    conversationRepo: ConversationTurnRepository,
+): String? {
+    val sourceAgent = body?.get("sourceAgent")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+        ?: return requestedText
+    val sourceSessionId = body["sourceSessionId"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+    val limit = body["sourceLimit"]?.jsonPrimitive?.intOrNull?.coerceIn(1, 300) ?: 160
+    val rows = conversationRepo.list(
+        ConversationTurnRepository.Filter(
+            projectId = projectId,
+            sessionId = sourceSessionId,
+            agentName = sourceAgent,
+        ),
+        limit = limit,
+    ).filter { it.role in setOf("user", "assistant", "system", "error") }
+
+    val dialogue = rows.joinToString("\n\n") { row ->
+        val prefix = buildString {
+            append("[")
+            append(row.turnIdx)
+            append("] ")
+            append(row.role)
+            if (row.role == "system") row.toolName?.let { append("/").append(it) }
+        }
+        "$prefix:\n${row.content.trim()}"
+    }.ifBlank { "(no dialogue rows found for sourceAgent=$sourceAgent)" }
+
+    return buildString {
+        if (!requestedText.isNullOrBlank()) {
+            append(requestedText.trim())
+            append("\n\n")
+        }
+        if (agentName == "phone-ui-run-summarizer") {
+            append("Summarize only this filtered navigator dialogue. Tool calls, raw outputs, and usage rows were intentionally omitted by the server.\n\n")
+        }
+        append("FILTERED_DIALOGUE_FROM_AGENT: ")
+        append(sourceAgent)
+        append("\n")
+        append(dialogue)
+    }
+}
+
+private fun parseRunLimits(agentName: String, body: JsonObject?): SubAgentRunLimits {
+    val defaults = SubAgentRunLimits.defaultsFor(agentName)
+    fun JsonObject.intField(name: String): Int? =
+        get(name)?.jsonPrimitive?.intOrNull?.takeIf { it >= 0 }?.coerceAtMost(1000)
+    return SubAgentRunLimits(
+        maxToolCalls = body?.intField("maxToolCalls") ?: defaults.maxToolCalls,
+        maxAssistantMessages = body?.intField("maxTurns") ?: defaults.maxAssistantMessages,
+    )
 }
 
 /**

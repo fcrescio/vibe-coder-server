@@ -220,7 +220,7 @@ fun main(args: Array<String>) {
     val subAgentFactory: com.siamakerlab.vibecoder.server.agent.AgentProcessFactory =
         when (config.agent.provider.lowercase()) {
             "mistral-vibe-acp" -> com.siamakerlab.vibecoder.server.agent.AcpAgentProcessFactory(
-                config = config, workspace = workspace, adbService = adbService,
+                config = config, workspace = workspace, adbService = adbService, deviceService = deviceService,
             )
             else -> com.siamakerlab.vibecoder.server.agent.ClaudeAgentProcessFactory(
                 config = config,
