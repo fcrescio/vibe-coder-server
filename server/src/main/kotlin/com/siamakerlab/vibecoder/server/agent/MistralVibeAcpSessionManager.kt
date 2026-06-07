@@ -621,7 +621,8 @@ class MistralVibeAcpSessionManager(
                     ?: params["output_byte_limit"]?.jsonPrimitive?.intOrNull
                     ?: 200_000
                 val terminalId = "terminal-${nextTerminalId.getAndIncrement()}"
-                val process = ProcessBuilder("/bin/sh", "-lc", command)
+                // Use setsid to create a new process group so we can kill all children.
+                val process = ProcessBuilder("/bin/sh", "-lc", "exec setsid -w $command")
                     .directory(cwd.toFile())
                     .redirectErrorStream(true)
                     .also { pb ->
@@ -1219,8 +1220,11 @@ class MistralVibeAcpSessionManager(
         session.readerJob?.cancel()
         session.stderrJob?.cancel()
         // Kill any orphaned terminal processes left behind by timed-out bash commands.
+        // Use process group (negative PID) to kill all children spawned via setsid.
         terminals.values.forEach { terminal ->
             if (terminal.process.isAlive) {
+                val pid = terminal.process.pid()
+                runCatching { ProcessBuilder("kill", "--", "-${pid}").start().waitFor(3, TimeUnit.SECONDS) }
                 terminal.process.destroyForcibly()
                 terminal.readerJob?.cancel()
             }

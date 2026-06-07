@@ -532,7 +532,7 @@ class AcpAgentProcessFactory(
                     ?: params["output_byte_limit"]?.jsonPrimitive?.intOrNull
                     ?: 200_000
                 val terminalId = "subagent-terminal-${nextTerminalId.getAndIncrement()}"
-                val child = ProcessBuilder("/bin/sh", "-lc", command)
+                val child = ProcessBuilder("/bin/sh", "-lc", "exec setsid -w $command")
                     .directory(cwd.toFile())
                     .redirectErrorStream(true)
                     .also { pb ->
@@ -610,7 +610,12 @@ class AcpAgentProcessFactory(
                     respondRequestError(process, id, method, "terminal/shell commands are disabled for ${process.agentName}")
                     return true
                 }
-                terminals[terminalId(obj)]?.process?.destroyForcibly()
+                val tp = terminals[terminalId(obj)]
+                if (tp != null) {
+                    val pid = tp.process.pid()
+                    runCatching { ProcessBuilder("kill", "--", "-${pid}").start().waitFor(3, TimeUnit.SECONDS) }
+                    tp.process.destroyForcibly()
+                }
                 write(process, result(id) {})
                 true
             }
