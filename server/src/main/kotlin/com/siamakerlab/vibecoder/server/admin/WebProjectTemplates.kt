@@ -1073,6 +1073,7 @@ $authBannerHtml
   <a href="/agents" class="chip chip-link" style="font-size:11px;margin-left:0;flex-shrink:0">${esc(t("console.agent.manage"))}</a>
 </div>
 
+<script src="/static/console-render.js"></script>
 <script>
 (function() {
   var projectId = $projectIdJs;
@@ -1263,6 +1264,10 @@ $authBannerHtml
     var timeStr = fmtTime(opts.ts);
     // v1.7.9 — meta (시각 + 복사 버튼) 를 응답 카드 내부 하단으로 이동.
     //          .log-content wrapper 안에 .log-body 위 + .log-meta 아래.
+    // v1.27.0 — non-dialog messages (tool, tool-out, tool-err, sys, thinking)
+    //           start collapsed: single-line badge, click to expand.
+    var isNonDialog = (cls === 'tool' || cls === 'tool-out' || cls === 'tool-err' || cls === 'sys' || cls === 'thinking');
+    if (isNonDialog) row.classList.add('collapsed');
     row.innerHTML =
       '<span class="log-label">' + escHtml(label) + '</span>' +
       '<div class="log-content">' +
@@ -1272,6 +1277,12 @@ $authBannerHtml
           '<button type="button" class="log-copy" title="Copy" aria-label="Copy">' + COPY_SVG + '</button>' +
         '</div>' +
       '</div>';
+    if (isNonDialog) {
+      row.addEventListener('click', function(e) {
+        if (e.target.closest('.log-copy')) return;
+        row.classList.toggle('collapsed');
+      });
+    }
     var btn = row.querySelector('.log-copy');
     if (btn) {
       btn.addEventListener('click', function(e) {
@@ -1315,6 +1326,8 @@ $authBannerHtml
     row.dataset.filterCat = cat;
     if (!isVisible(cat)) row.style.display = 'none';
     var timeStr = fmtTime(opts.ts);
+    var isNonDialog = (cls === 'tool' || cls === 'tool-out' || cls === 'tool-err' || cls === 'sys' || cls === 'thinking');
+    if (isNonDialog) row.classList.add('collapsed');
     row.innerHTML =
       '<span class="log-label">' + escHtml(label) + '</span>' +
       '<div class="log-content">' +
@@ -1324,6 +1337,12 @@ $authBannerHtml
           '<button type="button" class="log-copy" title="Copy" aria-label="Copy">' + COPY_SVG + '</button>' +
         '</div>' +
       '</div>';
+    if (isNonDialog) {
+      row.addEventListener('click', function(e) {
+        if (e.target.closest('.log-copy')) return;
+        row.classList.toggle('collapsed');
+      });
+    }
     var btn = row.querySelector('.log-copy');
     if (btn) {
       btn.addEventListener('click', function(e) {
@@ -1521,115 +1540,8 @@ $authBannerHtml
     });
   })();
 
-  // v0.13.0 — tool_use 도구별 친화적 렌더링. raw JSON 대신 읽기 쉬운 한 줄.
-  function clip(s, n) {
-    s = String(s == null ? '' : s);
-    return s.length > n ? s.slice(0, n) + ' …(+' + (s.length - n) + ')' : s;
-  }
-  function renderToolUse(name, input) {
-    var i = input || {};
-    switch (name) {
-      case 'Bash': {
-        var cmd = i.command || '';
-        var desc = i.description ? ' — ' + i.description : '';
-        return { label: '$', body: clip(cmd, 400) + desc };
-      }
-      case 'Read': {
-        var p = i.file_path || i.path || '';
-        var range = (i.offset != null || i.limit != null)
-          ? ' [' + (i.offset || 0) + ', +' + (i.limit || '?') + ']' : '';
-        return { label: '📄 Read', body: p + range };
-      }
-      case 'Write': {
-        var p2 = i.file_path || i.path || '';
-        var sz = (i.content || '').length;
-        return { label: '✏️ Write', body: p2 + ' (' + sz + ' chars)' };
-      }
-      case 'Edit': {
-        var p3 = i.file_path || i.path || '';
-        var oldS = clip(i.old_string || '', 80);
-        var newS = clip(i.new_string || '', 80);
-        var ra = i.replace_all ? ' [all]' : '';
-        return { label: '✎ Edit' + ra, body: p3 + '\n  - ' + oldS + '\n  + ' + newS };
-      }
-      case 'Glob':
-        return { label: '🔍 Glob', body: (i.pattern || '') + (i.path ? ' in ' + i.path : '') };
-      case 'Grep':
-        return { label: '🔎 Grep', body: '"' + clip(i.pattern || '', 80) + '"' +
-          (i.path ? ' in ' + i.path : '') + (i.glob ? ' (' + i.glob + ')' : '') };
-      case 'TaskCreate':
-        return { label: '📋 TaskCreate', body: i.subject || i.description || '' };
-      case 'TaskUpdate':
-        return { label: '📋 TaskUpdate',
-          body: 'id=' + (i.taskId || '?') + (i.status ? ' status=' + i.status : '') +
-                (i.subject ? ' "' + i.subject + '"' : '') };
-      case 'TodoWrite':
-        var n = (i.todos || []).length;
-        return { label: '📋 TodoWrite', body: n + ' todo(s)' };
-      case 'WebSearch':
-        return { label: '🌐 WebSearch', body: '"' + clip(i.query || '', 200) + '"' };
-      case 'WebFetch':
-        return { label: '🌐 WebFetch', body: i.url || '' };
-      default: {
-        var raw = typeof input === 'string' ? input : JSON.stringify(input || {});
-        return { label: name || 'tool', body: clip(raw, 500) };
-      }
-    }
-  }
-
-  function tryParseJson(value) {
-    if (typeof value !== 'string') return value;
-    try { return JSON.parse(value); } catch (e) { return value; }
-  }
-
-  function extractToolImage(output) {
-    var o = tryParseJson(output);
-    if (o && typeof o === 'object' && typeof o.raw_output === 'string') {
-      o = tryParseJson(o.raw_output);
-    } else if (o && typeof o === 'object' && typeof o.rawOutput === 'string') {
-      o = tryParseJson(o.rawOutput);
-    }
-    if (!o || typeof o !== 'object') return null;
-    var data = o.data || o.imageData || o.base64 || null;
-    var mime = o.mimeType || o.mime_type || 'image/png';
-    if (!data || typeof data !== 'string' || String(mime).indexOf('image/') !== 0) return null;
-    return {
-      src: 'data:' + mime + ';base64,' + data,
-      mime: mime,
-      serial: o.serial || '',
-      text: o.answer || o.analysis || o.message || '',
-      copy: o.answer || o.analysis || o.message || ('image ' + mime)
-    };
-  }
-
-  function renderImageToolResult(image, isError, opts) {
-    var meta = [];
-    if (image.serial) meta.push('device ' + image.serial);
-    meta.push(image.mime);
-    var html =
-      (image.text ? '<div style="white-space:pre-wrap;margin-bottom:8px">' + escHtml(image.text) + '</div>' : '') +
-      '<div class="console-image-result">' +
-        '<img src="' + image.src + '" alt="' + escHtml(meta.join(' · ')) + '" loading="lazy">' +
-      '</div>' +
-      '<div class="dim" style="font-size:11px;margin-top:6px">' + escHtml(meta.join(' · ')) + '</div>';
-    appendHtml(isError ? 'tool-err' : 'tool-out', isError ? 'tool-err' : 'image result', html, image.copy, 'tool_result', opts);
-  }
-
-  function renderUserPrompt(text, images) {
-    images = images || [];
-    if (!images.length) {
-      append('user', 'user', text, 'assistant');
-      return;
-    }
-    var html = '<div style="white-space:pre-wrap;margin-bottom:8px">' + escHtml(text) + '</div>';
-    for (var i = 0; i < images.length; i++) {
-      var img = images[i];
-      html += '<div class="console-image-result" style="margin-top:8px">' +
-        '<img src="data:' + escHtml(img.mimeType || 'image/png') + ';base64,' + escHtml(img.data || '') + '" alt="Attached image" loading="lazy">' +
-        '</div>';
-    }
-    appendHtml('user', 'user', html, text, 'assistant');
-  }
+  // v0.13.0 — tool_use 도구별 친화적 렌더링. Delegated to console-render.js (VibeConsole).
+  var VC = window.VibeConsole;
 
   function renderFrame(f) {
     var t = f.type;
@@ -1639,15 +1551,16 @@ $authBannerHtml
       append('assistant', 'assistant', f.text || '', 'assistant');
       detectAuthFailure(f.text);
     } else if (t === 'console_tool_use') {
-      var rendered = renderToolUse(f.toolName, f.input);
+      var rendered = VC.renderToolUse(f.toolName, f.input);
       // v1.3.0 — task 계열 tool 은 별도 'todo' 카테고리로 분류해 콘솔/패널 양쪽에 반영.
       var isTodoTool = (f.toolName === 'TaskCreate' || f.toolName === 'TaskUpdate' || f.toolName === 'TodoWrite');
       append('tool', rendered.label, rendered.body, isTodoTool ? 'todo' : 'tool_use');
       if (isTodoTool) updateTodoStore(f.toolName, f.input);
     } else if (t === 'console_tool_result') {
-      var image = extractToolImage(f.output);
+      var image = VC.extractToolImage(f.output);
       if (image) {
-        renderImageToolResult(image, !!f.isError);
+        var r = VC.renderImageToolResult(image, !!f.isError);
+        appendHtml(r.cls, r.label, r.html, r.copy, r.cat);
         detectAuthFailure(image.text);
         return;
       }
@@ -1710,9 +1623,10 @@ $authBannerHtml
         var isTodoTool = (label === 'TaskCreate' || label === 'TaskUpdate' || label === 'TodoWrite');
         append('tool', label, body, isTodoTool ? 'todo' : 'tool_use', opts);
       } else if (role === 'tool_result') {
-        var histImage = extractToolImage(text);
+        var histImage = VC.extractToolImage(text);
         if (histImage) {
-          renderImageToolResult(histImage, false, opts);
+          var r = VC.renderImageToolResult(histImage, false, opts);
+          appendHtml(r.cls, r.label, r.html, r.copy, r.cat, opts);
           continue;
         }
         var out = text.length > 500 ? text.slice(0, 500) + ' …(+' + (text.length - 500) + ')' : text;
@@ -1839,7 +1753,12 @@ $authBannerHtml
         append('err', 'send', res.status + ' ' + msg, 'error');
         setInFlight(false);
       } else {
-        renderUserPrompt(text, imagesToSend);
+        var rp = VC.renderUserPrompt(text, imagesToSend);
+        if (rp.html) {
+          appendHtml(rp.cls, rp.label, rp.html, rp.copy, rp.cat);
+        } else {
+          append(rp.cls, rp.label, rp.body, rp.cat);
+        }
         input.value = '';
         clearPromptImages();
         // v1.20.0 — prompt 전송 직후엔 토글 모드 무관 항상 최하단으로 jump.

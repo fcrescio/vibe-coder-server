@@ -685,7 +685,9 @@ table.devices small.dim { font-size: 11px; }
     background: #0a0d12;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 12px 14px;
+    /* v1.70.1 — top padding 제거: sticky 프롬프트(top:0)가 최상단까지 올라가 그 위로
+       스크롤 내용이 비치던 문제 해소. 좌우/하단 여백만 유지. */
+    padding: 0 14px 12px;
     min-height: 320px;
     max-height: 60vh;
     overflow-y: auto;
@@ -749,36 +751,141 @@ table.devices small.dim { font-size: 11px; }
    - 90px label column 제거 → 단일 column + 짧은 ASCII prefix (::before pseudo).
    - 카드 사이 border 제거, padding tight (dense terminal feel).
    - role 별 색상 prefix 만 색 — 본문은 모노스페이스 흰색. */
+/* v1.86.0 — 채팅 버블 레이아웃. 각 메시지를 말풍선으로 감싼다.
+   user=우측 강조 / assistant=좌측 중립(마크다운) / tool=좌측 인셋 /
+   sys=중앙 pill / thinking·뱃지=좌측 흐린 작은 버블. */
 .console-log .log-line {
-    display: block;
-    padding: 1px 0 1px 1.6em;
-    position: relative;
+    display: flex;
+    margin: 6px 0;
+    align-items: flex-start;
     border-bottom: none;
 }
-.console-log .log-line::before {
-    position: absolute;
-    left: 0;
-    top: 1px;
-    font-family: inherit;
-    font-weight: 600;
-    white-space: pre;
-    user-select: none;
+.console-log .log-line::before { display: none; }
+.console-log .log-label { display: none; }
+.console-log .log-content {
+    display: flex; flex-direction: column; min-width: 0;
+    max-width: 82%;
+    padding: 7px 12px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.05);
 }
-.console-log .user::before      { content: '> ';   color: var(--primary, #6aa9ff); }
-.console-log .assistant::before { content: '⏺ ';   color: #5ed3a1; }
-.console-log .tool::before      { content: '⏺ ';   color: #cfa763; }
-.console-log .tool-out::before  { content: '  ⎿ '; color: #8ea0c2; padding-left: 0.4em; }
-.console-log .tool-err::before  { content: '  ⎿ '; color: var(--danger, #ff6b6b); padding-left: 0.4em; }
-.console-log .sys::before       { content: '⎯ ';   color: #6c7a93; }
-.console-log .err::before       { content: '! ';   color: var(--danger, #ff6b6b); font-weight: 700; }
+.console-log .log-body { white-space: pre-wrap; word-break: break-word; }
 
-/* v1.21.0 — 기존 .log-label 은 server 측에서 여전히 emit (script 가 사용) 하지만
-   시각적으로는 hide. role 정보는 ::before prefix + class 색으로 표현. */
-.console-log .log-label {
+/* v1.86.1 — 내 프롬프트는 버블 대신 과거 sticky 상단고정 + 터미널('> ') 스타일 유지.
+   버블 우측정렬(flex-end)이 .log-line.user 의 position:sticky 와 충돌해 UI 가 깨졌다. */
+.console-log .log-line.user { display: block; }
+.console-log .log-line.user::before {
+    display: inline; position: absolute;
+    content: '> '; color: var(--primary, #6aa9ff);
+    font-weight: 600; white-space: pre; user-select: none;
+}
+.console-log .user .log-content {
+    background: none; border: none; padding: 0;
+    max-width: 100%; border-radius: 0;
+}
+/* claude 응답 — 좌측 중립 버블 (마크다운 렌더) */
+.console-log .assistant .log-content {
+    background: rgba(94,211,161,0.09);
+    border-color: rgba(94,211,161,0.18);
+    border-bottom-left-radius: 4px;
+}
+/* 도구 호출/결과 — 좌측 인셋, 작은 모노 버블 */
+.console-log .tool .log-content {
+    background: rgba(207,167,99,0.09);
+    border-color: rgba(207,167,99,0.16);
+    font-size: 0.92em; max-width: 90%;
+}
+.console-log .tool-out .log-content {
+    background: rgba(142,160,194,0.08);
+    border-color: rgba(142,160,194,0.14);
+    font-size: 0.92em; max-width: 90%;
+}
+.console-log .tool-err .log-content,
+.console-log .err .log-content {
+    background: rgba(255,107,107,0.11);
+    border-color: rgba(255,107,107,0.26);
+}
+/* 시스템/완료/replay — 좌측 작은 pill (v1.86.2 — 모든 응답 버블 좌측 정렬) */
+.console-log .sys { justify-content: flex-start; }
+.console-log .sys .log-content {
+    background: rgba(108,122,147,0.15);
+    border: none;
+    font-size: 0.82em;
+    padding: 3px 11px;
+    border-radius: 11px;
+    color: #9aa7bd;
+    max-width: 90%;
+    text-align: center;
+}
+/* thinking / 파싱 불가 — 좌측 흐린 작은 뱃지(이름만) */
+.console-log .thinking { justify-content: flex-start; }
+.console-log .thinking .log-content {
+    background: rgba(138,127,176,0.14);
+    border-color: rgba(138,127,176,0.22);
+    font-style: italic;
+    opacity: 0.85;
+    font-size: 0.88em;
+    padding: 4px 10px;
+    border-radius: 11px;
+}
+
+/* v1.27.0 — Collapsed non-dialog messages: single-line badge, expand on click.
+   tool, tool-out, tool-err, sys, thinking start collapsed by default. */
+.console-log .log-line.collapsed {
+    cursor: pointer;
+}
+.console-log .log-line.collapsed .log-content {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-height: 1.8em;
+    padding: 2px 10px;
+    font-size: 0.85em;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+    border-radius: 11px;
+    max-width: 90%;
+}
+.console-log .log-line.collapsed .log-body {
+    display: inline;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.console-log .log-line.collapsed .log-meta {
     display: none;
 }
-.console-log .log-content { display: flex; flex-direction: column; min-width: 0; }
-.console-log .log-body { white-space: pre-wrap; word-break: break-word; }
+.console-log .log-line.collapsed:hover .log-content {
+    opacity: 1;
+}
+.console-log .log-line.collapsed .log-label {
+    display: inline;
+    font-size: 0.78em;
+    font-weight: 600;
+    margin-right: 6px;
+    white-space: nowrap;
+}
+/* expanded: restore normal bubble appearance */
+.console-log .log-line.collapsed:not(.collapsed) .log-content {
+    white-space: normal;
+    max-height: none;
+    padding: 7px 12px;
+    font-size: inherit;
+    opacity: 1;
+    border-radius: 14px;
+    max-width: 82%;
+}
+.console-log .log-line.collapsed:not(.collapsed) .log-body {
+    display: block;
+    white-space: pre-wrap;
+}
+.console-log .log-line.collapsed:not(.collapsed) .log-meta {
+    display: flex;
+}
+.console-log .log-line.collapsed:not(.collapsed) .log-label {
+    display: none;
+}
 
 .console-image-result {
     max-width: min(100%, 520px);
@@ -824,7 +931,6 @@ table.devices small.dim { font-size: 11px; }
 }
 .console-log .log-copy:hover { color: var(--text); }
 .console-log .log-copy.copied { color: #5ed3a1; }
-.console-log .log-copy svg { display: block; width: 14px; height: 14px; }
 
 /* v1.7.12 — 응답중 spinner. console-log 직후 위치, busy 일 때만 visible. */
 .console-spinner {
@@ -862,6 +968,84 @@ table.devices small.dim { font-size: 11px; }
 .console-log .tool-err .log-body  { color: var(--danger); }
 .console-log .err .log-label   { color: var(--danger); }
 .console-log .err .log-body    { color: var(--danger); }
+
+/* v1.59.2 → v1.70.1 — 내가 보낸 프롬프트 카드를 스크롤 상단에 고정(sticky).
+   지금 응답이 어떤 프롬프트에 대한 것인지 한눈에 보인다. sticky 형제 특성상 다음
+   user 카드가 올라오면 이전 카드를 교체(겹치지 않음) → 항상 "직전 프롬프트" 1장 고정.
+   v1.70.1:
+   - 불투명 파랑 틴트 배경 + 좌측 강조선(inset shadow) 으로 응답/시스템 카드와 구분.
+     불투명이라 고정 시 아래 내용이 비치지 않는다.
+   - 긴 프롬프트는 앞 2줄만 표시(line-clamp) — 콘솔 전체를 덮지 않음. 카드 클릭으로
+     펼침/접힘(.expanded). */
+.console-log .log-line.user {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: #121a28;
+    box-shadow: inset 3px 0 0 var(--primary, #6aa9ff),
+                0 8px 12px -10px rgba(0,0,0,0.75);
+    margin: 0 -14px;            /* console-log 좌우 padding 만큼 넓혀 가장자리까지 덮음 */
+    padding-top: 3px;
+    padding-bottom: 3px;
+    padding-left: calc(1.6em + 14px);
+    padding-right: 14px;
+    cursor: pointer;
+}
+.console-log .log-line.user::before { left: 14px; top: 3px; }  /* margin/padding 보정 */
+/* 기본: 앞 2줄만. 클릭 시 .expanded 로 전체(최대 40vh, 자체 스크롤). */
+.console-log .log-line.user .log-body {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.console-log .log-line.user.expanded .log-body {
+    display: block;
+    max-height: 40vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* v1.70.2 → v1.70.3 — 복사 아이콘 축소 (14 → 9px, 원본의 ~2/3). */
+.console-log .log-copy svg { display: block; width: 9px; height: 9px; }
+
+/* Markdown table rendering */
+.console-log .md-table {
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 0.92em;
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+.console-log .md-table th,
+.console-log .md-table td {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    text-align: left;
+}
+.console-log .md-table th {
+    background: rgba(255,255,255,0.04);
+    font-weight: 600;
+}
+.console-log .md-pre {
+    background: #0a0d12;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+.console-log .md-code {
+    background: rgba(255,255,255,0.06);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.92em;
+}
 
 .prompt-form textarea {
     width: 100%;
