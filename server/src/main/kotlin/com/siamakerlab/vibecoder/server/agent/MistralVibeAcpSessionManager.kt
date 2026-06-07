@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -78,6 +79,7 @@ class MistralVibeAcpSessionManager(
     private val assistantBuffers = ConcurrentHashMap<String, StringBuilder>()
     private val terminals = ConcurrentHashMap<String, TerminalProcess>()
     private val nextTerminalId = AtomicLong(1)
+    private val sessionRetried = ConcurrentHashMap.newKeySet<String>()
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val httpClient = HttpClient.newBuilder()
         .connectTimeout(java.time.Duration.ofSeconds(10))
@@ -138,6 +140,15 @@ class MistralVibeAcpSessionManager(
                     )
                 } else {
                     emitSystem(projectId, "agent_send_failed", e.message ?: "Mistral Vibe ACP prompt failed")
+                    // If vibe-acp is still alive, retry once (llama.cpp may have been in sleep).
+                    val s = sessions[projectId]
+                    if (s != null && s.process.isAlive && !sessionRetried.contains(projectId)) {
+                        sessionRetried.add(projectId)
+                        log.info { "[$projectId] LLM call failed but vibe-acp alive; retrying once" }
+                        emitSystem(projectId, "retry", "LLM call failed, retrying…")
+                        delay(2_000L)
+                        return sendPrompt(projectId, text, images)
+                    }
                     terminateSession(projectId)
                 }
                 throw e
