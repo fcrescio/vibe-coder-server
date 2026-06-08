@@ -1474,6 +1474,13 @@ internal object MessagesKo {
         "tabs.wrapper" to "Wrapper",
         "tabs.automation" to "자동화",
         "tabs.envFiles" to "환경 파일",
+        // env-files page (EnvFilesRoutes.kt)
+        "envFiles.title" to "Env / Build 파일",
+        "envFiles.notExist" to "(없음 — 저장 시 생성됨)",
+        "envFiles.secretWarning" to "⚠ 비밀번호/API key 가 포함될 수 있습니다. workspace 외부 (호스트) 로 노출되지 않도록 주의.",
+        "envFiles.save" to "저장",
+        "envFiles.desc" to "화이트리스트된 환경/빌드 설정 파일만 빠른 편집. 기타 파일은 <a href=\"/projects/%s/tree\">파일 트리</a>.",
+        "envFiles.atomicNote" to "저장은 atomic move (`.tmp` → `move REPLACE_EXISTING`) — 빌드 중 race 안전.",
         "tabs.more.label" to "더보기",
         // v1.12.0 — /projects/X/usage 는 없음 (global /usage 만 존재). 외부 link 로만.
         "tabs.more.usage" to "Claude 사용량 (글로벌)",

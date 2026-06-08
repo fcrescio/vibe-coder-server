@@ -6,6 +6,7 @@ import com.siamakerlab.vibecoder.server.admin.requireSessionOrRedirect
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens
 import com.siamakerlab.vibecoder.server.auth.CsrfTokens.requireCsrf
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
+import com.siamakerlab.vibecoder.server.i18n.Messages
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.server.application.call
@@ -120,15 +121,16 @@ internal object EnvFilesTemplates {
     
         lang: String,
     ): String {
+        val t = { key: String -> Messages.t(lang, key) }
         val okHtml = ok?.let { """<div class="ok-banner">✓ ${esc(it)}</div>""" } ?: ""
         val errHtml = err?.let { """<div class="error">${esc(it)}</div>""" } ?: ""
 
         val cards = files.joinToString("\n") { f ->
             val existsBadge = if (f.exists) """<span class="ok">✓ ${(f.sizeBytes / 1024.0).let { "%.1fKB".format(it) }}</span>"""
-            else """<span class="dim">(없음 — 저장 시 생성됨)</span>"""
+            else """<span class="dim">${esc(t("envFiles.notExist"))}</span>"""
             // Plain textarea — syntax highlight 는 /projects/{id}/view 의 highlight.js
             val isSecret = f.rel.contains(".env") || f.rel.endsWith(".properties")
-            val warn = if (isSecret) """<p class="hint" style="font-size:11px;color:#facc15">⚠ 비밀번호/API key 가 포함될 수 있습니다. workspace 외부 (호스트) 로 노출되지 않도록 주의.</p>""" else ""
+            val warn = if (isSecret) """<p class="hint" style="font-size:11px;color:#facc15">${esc(t("envFiles.secretWarning"))}</p>""" else ""
             """
 <div class="card" style="margin-bottom:16px">
   <details ${if (f.exists) "open" else ""}>
@@ -138,7 +140,7 @@ internal object EnvFilesTemplates {
       <input type="hidden" name="rel" value="${esc(f.rel)}">
       <textarea name="body" rows="14" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace;font-size:12px">${esc(f.body)}</textarea>
       <div>
-        <button type="submit" class="primary">저장</button>
+        <button type="submit" class="primary">${esc(t("envFiles.save"))}</button>
       </div>
       $warn
     </form>
@@ -153,7 +155,7 @@ internal object EnvFilesTemplates {
             csrf = csrf,
             body = """
 <header>
-  <h1>Env / Build 파일
+  <h1>${esc(t("envFiles.title"))}
     <small class="dim" style="font-size:14px;font-weight:400">${esc(p.name)} (${esc(p.id)}) · v0.32.0</small>
   </h1>
 </header>
@@ -162,8 +164,9 @@ $okHtml
 $errHtml
 
 <p class="hint" style="margin-bottom:14px">
-  화이트리스트된 환경/빌드 설정 파일만 빠른 편집. 기타 파일은 <a href="/projects/${esc(p.id)}/tree">파일 트리</a>.
-  저장은 atomic move (`.tmp` → `move REPLACE_EXISTING`) — 빌드 중 race 안전.
+  ${Messages.t(lang, "envFiles.desc", esc(p.id))}
+  <br>
+  ${esc(t("envFiles.atomicNote"))}
 </p>
 
 $cards

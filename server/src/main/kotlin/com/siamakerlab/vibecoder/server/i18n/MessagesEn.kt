@@ -1496,6 +1496,13 @@ internal object MessagesEn {
         "tabs.wrapper" to "Wrapper",
         "tabs.automation" to "Automation",
         "tabs.envFiles" to "Env files",
+        // env-files page (EnvFilesRoutes.kt)
+        "envFiles.title" to "Env / Build files",
+        "envFiles.notExist" to "(does not exist — created on save)",
+        "envFiles.secretWarning" to "⚠ May contain passwords/API keys. Be careful not to expose outside the workspace (host).",
+        "envFiles.save" to "Save",
+        "envFiles.desc" to "Quick-edit whitelisted environment/build config files. Other files via <a href=\"/projects/%s/tree\">file tree</a>.",
+        "envFiles.atomicNote" to "Save uses atomic move (`.tmp` → `move REPLACE_EXISTING`) — race-safe during build.",
         "tabs.more.label" to "More",
         // v1.12.0 — /projects/X/usage doesn't exist (only the global /usage). Keep as external link.
         "tabs.more.usage" to "Claude usage (global)",
