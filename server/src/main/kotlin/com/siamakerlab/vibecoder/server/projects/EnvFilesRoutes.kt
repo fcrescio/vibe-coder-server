@@ -101,6 +101,7 @@ internal val ENV_FILES_WHITELIST = listOf(
     "app/build.gradle.kts",
     "build.gradle.kts",
     "settings.gradle.kts",
+    "app/google-services.json",
 )
 
 private const val MAX_BODY_BYTES = 256 * 1024
