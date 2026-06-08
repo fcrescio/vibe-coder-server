@@ -682,9 +682,7 @@ class MistralVibeAcpSessionManager(
                     }
                     if (exit == null) {
                         // Timeout — kill the terminal process group and report error to agent.
-                        val pid = process.pid()
-                        runCatching { ProcessBuilder("kill", "--", "-${pid}").start().waitFor(3, TimeUnit.SECONDS) }
-                        process.destroyForcibly()
+                        killTerminalProcessGroup(process)
                         terminal?.readerJob?.cancel()
                         terminals.remove(terminalId(obj))
                         respondRequestError(session, id, method, "command timed out after ${timeoutMs / 1000}s")
@@ -712,14 +710,17 @@ class MistralVibeAcpSessionManager(
             }
             "terminal/release" -> {
                 terminals.remove(terminalId(obj))?.let { terminal ->
-                    if (terminal.process.isAlive) terminal.process.destroy()
+                    if (terminal.process.isAlive) killTerminalProcessGroup(terminal.process)
                     terminal.readerJob?.cancel()
                 }
                 session.write(result(id) {})
                 true
             }
             "terminal/kill" -> {
-                terminals[terminalId(obj)]?.process?.destroyForcibly()
+                terminals.remove(terminalId(obj))?.let { terminal ->
+                    killTerminalProcessGroup(terminal.process)
+                    terminal.readerJob?.cancel()
+                }
                 session.write(result(id) {})
                 true
             }
@@ -1129,6 +1130,12 @@ class MistralVibeAcpSessionManager(
         obj["params"]?.jsonObject?.get("terminalId")?.jsonPrimitive?.contentOrNull
             ?: obj["params"]?.jsonObject?.get("terminal_id")?.jsonPrimitive?.contentOrNull
             ?: ""
+
+    private fun killTerminalProcessGroup(process: Process) {
+        val pid = process.pid()
+        runCatching { ProcessBuilder("kill", "--", "-$pid").start().waitFor(3, TimeUnit.SECONDS) }
+        process.destroyForcibly()
+    }
 
     private fun result(id: JsonElement, block: JsonObjectBuilder.() -> Unit): JsonObject =
         buildJsonObject {

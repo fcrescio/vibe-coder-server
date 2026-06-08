@@ -573,9 +573,7 @@ class AcpAgentProcessFactory(
                         if (done) exit = child.exitValue()
                     }
                     if (exit == null) {
-                        val pid = child.pid()
-                        runCatching { ProcessBuilder("kill", "--", "-${pid}").start().waitFor(3, TimeUnit.SECONDS) }
-                        child.destroyForcibly()
+                        killTerminalProcessGroup(child)
                         terminal?.readerJob?.cancel()
                         terminals.remove(terminalId(obj))
                         respondRequestError(process, id, method, "command timed out after ${timeoutMs / 1000}s")
@@ -611,7 +609,7 @@ class AcpAgentProcessFactory(
                     return true
                 }
                 terminals.remove(terminalId(obj))?.let { terminal ->
-                    if (terminal.process.isAlive) terminal.process.destroy()
+                    if (terminal.process.isAlive) killTerminalProcessGroup(terminal.process)
                     terminal.readerJob?.cancel()
                 }
                 write(process, result(id) {})
@@ -622,11 +620,10 @@ class AcpAgentProcessFactory(
                     respondRequestError(process, id, method, "terminal/shell commands are disabled for ${process.agentName}")
                     return true
                 }
-                val tp = terminals[terminalId(obj)]
+                val tp = terminals.remove(terminalId(obj))
                 if (tp != null) {
-                    val pid = tp.process.pid()
-                    runCatching { ProcessBuilder("kill", "--", "-${pid}").start().waitFor(3, TimeUnit.SECONDS) }
-                    tp.process.destroyForcibly()
+                    killTerminalProcessGroup(tp.process)
+                    tp.readerJob?.cancel()
                 }
                 write(process, result(id) {})
                 true
@@ -1010,6 +1007,12 @@ class AcpAgentProcessFactory(
         obj["params"]?.jsonObject?.get("terminalId")?.jsonPrimitive?.contentOrNull
             ?: obj["params"]?.jsonObject?.get("terminal_id")?.jsonPrimitive?.contentOrNull
             ?: ""
+
+    private fun killTerminalProcessGroup(process: Process) {
+        val pid = process.pid()
+        runCatching { ProcessBuilder("kill", "--", "-$pid").start().waitFor(3, TimeUnit.SECONDS) }
+        process.destroyForcibly()
+    }
 
     private suspend fun respondRequestError(process: AgentProcess, id: JsonElement, method: String, message: String) {
         write(process, buildJsonObject {
