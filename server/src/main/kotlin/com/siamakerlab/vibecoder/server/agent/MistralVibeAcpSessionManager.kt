@@ -638,6 +638,7 @@ class MistralVibeAcpSessionManager(
                 val maxBytes = params["outputByteLimit"]?.jsonPrimitive?.intOrNull
                     ?: params["output_byte_limit"]?.jsonPrimitive?.intOrNull
                     ?: 200_000
+                val agentTimeout = params["timeout"]?.jsonPrimitive?.intOrNull
                 val terminalId = "terminal-${nextTerminalId.getAndIncrement()}"
                 // Use setsid to create a new process group so we can kill all children.
                 val process = ProcessBuilder("/bin/sh", "-lc", "exec setsid -w $command")
@@ -649,11 +650,11 @@ class MistralVibeAcpSessionManager(
                         pb.environment()["PATH"] = System.getenv("PATH").orEmpty()
                     }
                     .start()
-                val terminal = TerminalProcess(process, maxBytes.coerceAtLeast(4096))
+                val terminal = TerminalProcess(process, maxBytes.coerceAtLeast(4096), agentTimeout)
                 terminals[terminalId] = terminal
                 terminal.readerJob = scope.launch {
                     process.inputStream.use { input ->
-                        val buffer = ByteArray(8192)
+                        val buffer = ByteArray(65536)
                         while (true) {
                             val n = withContext(Dispatchers.IO) { input.read(buffer) }
                             if (n <= 0) break
@@ -672,7 +673,8 @@ class MistralVibeAcpSessionManager(
                 var exit: Int? = null
                 val process = terminal?.process
                 if (process != null) {
-                    val deadline = System.currentTimeMillis() + 30_000L
+                    val timeoutMs = terminal?.agentTimeoutMs?.let { it * 1000L } ?: 30_000L
+                    val deadline = System.currentTimeMillis() + timeoutMs
                     while (exit == null && System.currentTimeMillis() < deadline) {
                         session.touch()
                         val done = withContext(Dispatchers.IO) { process.waitFor(1, TimeUnit.SECONDS) }
@@ -685,7 +687,7 @@ class MistralVibeAcpSessionManager(
                         process.destroyForcibly()
                         terminal?.readerJob?.cancel()
                         terminals.remove(terminalId(obj))
-                        respondRequestError(session, id, method, "command timed out after 30s")
+                        respondRequestError(session, id, method, "command timed out after ${timeoutMs / 1000}s")
                         return@handleTerminalRequest true
                     }
                 }
@@ -1288,6 +1290,7 @@ class MistralVibeAcpSessionManager(
     private class TerminalProcess(
         val process: Process,
         private val maxBytes: Int,
+        val agentTimeoutMs: Int? = null,
     ) {
         private val bytes = ByteArrayOutputStream()
         @Volatile var truncated: Boolean = false

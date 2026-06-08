@@ -531,6 +531,7 @@ class AcpAgentProcessFactory(
                 val maxBytes = params["outputByteLimit"]?.jsonPrimitive?.intOrNull
                     ?: params["output_byte_limit"]?.jsonPrimitive?.intOrNull
                     ?: 200_000
+                val agentTimeout = params["timeout"]?.jsonPrimitive?.intOrNull
                 val terminalId = "subagent-terminal-${nextTerminalId.getAndIncrement()}"
                 val child = ProcessBuilder("/bin/sh", "-lc", "exec setsid -w $command")
                     .directory(cwd.toFile())
@@ -541,11 +542,11 @@ class AcpAgentProcessFactory(
                         pb.environment()["PATH"] = System.getenv("PATH").orEmpty()
                     }
                     .start()
-                val terminal = TerminalProcess(child, maxBytes.coerceAtLeast(4096))
+                val terminal = TerminalProcess(child, maxBytes.coerceAtLeast(4096), agentTimeout)
                 terminals[terminalId] = terminal
                 terminal.readerJob = kotlinx.coroutines.CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                     child.inputStream.use { input ->
-                        val buffer = ByteArray(8192)
+                        val buffer = ByteArray(65536)
                         while (true) {
                             val n = withContext(Dispatchers.IO) { input.read(buffer) }
                             if (n <= 0) break
@@ -565,7 +566,8 @@ class AcpAgentProcessFactory(
                 var exit: Int? = null
                 val child = terminal?.process
                 if (child != null) {
-                    val deadline = System.currentTimeMillis() + 30_000L
+                    val timeoutMs = terminal?.agentTimeoutMs?.let { it * 1000L } ?: 30_000L
+                    val deadline = System.currentTimeMillis() + timeoutMs
                     while (exit == null && System.currentTimeMillis() < deadline) {
                         val done = withContext(Dispatchers.IO) { child.waitFor(1, TimeUnit.SECONDS) }
                         if (done) exit = child.exitValue()
@@ -576,7 +578,7 @@ class AcpAgentProcessFactory(
                         child.destroyForcibly()
                         terminal?.readerJob?.cancel()
                         terminals.remove(terminalId(obj))
-                        respondRequestError(process, id, method, "command timed out after 30s")
+                        respondRequestError(process, id, method, "command timed out after ${timeoutMs / 1000}s")
                         return true
                     }
                 }
@@ -1038,6 +1040,7 @@ class AcpAgentProcessFactory(
     private class TerminalProcess(
         val process: Process,
         private val maxBytes: Int,
+        val agentTimeoutMs: Int? = null,
     ) {
         private val bytes = ByteArrayOutputStream()
         @Volatile var truncated: Boolean = false
