@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -154,6 +155,43 @@ class MistralVibeAcpSessionManager(
                             e.message ?: "Context too long. Send /compact to summarize the conversation, then retry.",
                         )
                         throw e
+                    }
+                    if (isToolCallParseError(e)) {
+                        flushAssistant(projectId)
+                        val correction = "The previous response produced malformed tool-call JSON. Retry using smaller tool calls. " +
+                            "For new files, use write_file with the complete file content. " +
+                            "For existing files, use read first, then edit with exact old_string/new_string replacements. " +
+                            "Keep each tool call compact and ensure JSON strings are valid."
+                        emitSystem(projectId, "tool_call_parse_error", correction)
+                        // Inject correction as a system message and retry
+                        val correctedPrompt = JsonArray(
+                            listOf(
+                                buildJsonObject { put("type", "text"); put("text", promptText) },
+                                buildJsonObject { put("type", "text"); put("text", "\n\n[System: $correction]") },
+                            )
+                        )
+                        try {
+                            val response = session.request(
+                                "session/prompt",
+                                buildJsonObject {
+                                    put("sessionId", session.sessionId)
+                                    put("prompt", correctedPrompt)
+                                },
+                                timeoutMs = config.agent.timeoutMinutes.coerceAtLeast(1) * 60_000L,
+                            )
+                            val stopReason = response["stop_reason"]?.jsonPrimitive?.contentOrNull ?: "end_turn"
+                            flushAssistant(projectId)
+                            history?.systemNotice(projectId, session.sessionId.ifBlank { readSessionId(projectId) }, "done", "Mistral Vibe ACP turn finished: $stopReason")
+                            setBusy(projectId, false)
+                            hub.emitConsole(topic(projectId)) { seq -> WsFrame.ConsoleDone(reason = stopReason, seq = seq) }
+                            return
+                        } catch (e2: Exception) {
+                            lastError = e2
+                            setBusy(projectId, false)
+                            emitSystem(projectId, "agent_send_failed", e2.message ?: "Mistral Vibe ACP prompt failed after tool call correction")
+                            terminateSession(projectId)
+                            throw e2
+                        }
                     }
                     emitSystem(projectId, "agent_send_failed", e.message ?: "Mistral Vibe ACP prompt failed")
                     val s = sessions[projectId]
@@ -485,6 +523,17 @@ class MistralVibeAcpSessionManager(
             ?.let { it in setOf("1", "true", "yes", "on") }
             ?: true
 
+    /**
+     * Detects whether an exception was caused by the LLM generating a malformed
+     * tool call JSON (e.g. unescaped quotes in write_file content).
+     */
+    private fun isToolCallParseError(e: Exception): Boolean {
+        val msg = e.message.orEmpty()
+        return msg.contains("Failed to parse tool call arguments as JSON", ignoreCase = true) ||
+            msg.contains("parse error", ignoreCase = true) ||
+            (e is AcpRequestException && e.code == 500 && msg.contains("invalid string", ignoreCase = true))
+    }
+
     private suspend fun readStdout(session: AcpProjectSession) {
         try {
             while (true) {
@@ -593,8 +642,26 @@ class MistralVibeAcpSessionManager(
             "fs/write_text_file" -> {
                 runCatching {
                     val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
-                    val path = safeProjectPath(session, params["path"]?.jsonPrimitive?.contentOrNull.orEmpty())
-                    val content = params["content"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    val rawPath = params["path"]?.jsonPrimitive?.contentOrNull
+                    val content = params["content"]?.jsonPrimitive?.contentOrNull
+                    if (rawPath.isNullOrBlank()) {
+                        respondRequestError(session, id, method, "path is required")
+                        return true
+                    }
+                    if (content == null) {
+                        respondRequestError(session, id, method, "content is required")
+                        return true
+                    }
+                    val contentBytes = content.toByteArray(StandardCharsets.UTF_8).size
+                    if (contentBytes > 200_000) {
+                        respondRequestError(
+                            session, id, method,
+                            "write_file content too large (${contentBytes} bytes, max 200000). " +
+                            "Use smaller files or use edit on existing files."
+                        )
+                        return true
+                    }
+                    val path = safeProjectPath(session, rawPath)
                     withContext(Dispatchers.IO) {
                         path.parent?.let { Files.createDirectories(it) }
                         Files.writeString(
@@ -1122,7 +1189,8 @@ class MistralVibeAcpSessionManager(
             - Prefer `./gradlew :app:assembleDebug --no-daemon` when a wrapper exists.
             - If `gradlew` is missing, use installed Gradle on PATH or `$gradleHint` to create the wrapper; do not download toolchains manually.
             - Before coding, inspect the project briefly with file reads or short shell commands. Before finishing, run a targeted build when practical and report the result.
-            - Keep responses concise: changed files, key decisions, build status, next blocker if any.$adbInfo$deviceTools
+            - Keep responses concise: changed files, key decisions, build status, next blocker if any.
+            - IMPORTANT: Use write_file to create or fully replace a file. Use edit for incremental changes to existing files. Before edit, read the target file and provide an exact old_string match. Do not split one file across multiple write_file calls: each write_file call replaces the whole file. Always escape special characters in JSON strings.$adbInfo$deviceTools
         """.trimIndent()
     }
 

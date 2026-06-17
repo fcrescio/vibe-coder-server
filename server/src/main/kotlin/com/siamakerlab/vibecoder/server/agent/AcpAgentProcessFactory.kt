@@ -352,6 +352,7 @@ class AcpAgentProcessFactory(
                 }
                 append("\nUse only the tools enabled for this sub-agent. ")
                 append("Do not invent file contents or command output.\n")
+                append("IMPORTANT: Use write_file to create or fully replace a file. Use edit for incremental changes to existing files. Before edit, read the target file and provide an exact old_string match. Do not split one file across multiple write_file calls: each write_file call replaces the whole file. Always escape special characters in JSON strings.\n")
                 if (adbInfo.isNotBlank()) {
                     append(adbInfo)
                     append("\n")
@@ -480,8 +481,26 @@ class AcpAgentProcessFactory(
                 }
                 runCatching {
                     val params = obj["params"]?.jsonObject ?: JsonObject(emptyMap())
-                    val path = safeProjectPath(process, params["path"]?.jsonPrimitive?.contentOrNull.orEmpty())
-                    val content = params["content"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    val rawPath = params["path"]?.jsonPrimitive?.contentOrNull
+                    val content = params["content"]?.jsonPrimitive?.contentOrNull
+                    if (rawPath.isNullOrBlank()) {
+                        respondRequestError(process, id, method, "path is required")
+                        return true
+                    }
+                    if (content == null) {
+                        respondRequestError(process, id, method, "content is required")
+                        return true
+                    }
+                    val contentBytes = content.toByteArray(StandardCharsets.UTF_8).size
+                    if (contentBytes > 200_000) {
+                        respondRequestError(
+                            process, id, method,
+                            "write_file content too large (${contentBytes} bytes, max 200000). " +
+                            "Use smaller files or use edit on existing files."
+                        )
+                        return true
+                    }
+                    val path = safeProjectPath(process, rawPath)
                     withContext(Dispatchers.IO) {
                         path.parent?.let { Files.createDirectories(it) }
                         Files.writeString(
