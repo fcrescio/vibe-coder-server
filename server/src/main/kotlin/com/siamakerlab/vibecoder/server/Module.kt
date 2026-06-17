@@ -150,6 +150,7 @@ data class ServerContext(
     val auditRepo: AuditLogRepository,
     val auditLogger: AuditLogger,
     val conversationRepo: com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository,
+    val contextPressure: com.siamakerlab.vibecoder.server.claude.ConversationContextPressureService,
     val emailNotifier: com.siamakerlab.vibecoder.server.notify.EmailNotifier,
     /** v0.27.0 — Slack / Discord / Telegram webhook notifier. */
     val webhookNotifier: com.siamakerlab.vibecoder.server.notify.WebhookNotifier,
@@ -411,7 +412,7 @@ fun Application.module(ctx: ServerContext) {
                     busy = ctx.sessionManager.isBusy(id),
                 )
             } else ctx.claudeStatusService.snapshot(id)
-        }, ctx.env, ctx.auditLogger, ctx.promptSuggestionService)
+        }, ctx.env, ctx.auditLogger, ctx.promptSuggestionService, ctx.contextPressure)
         projectActionRoutes(ctx.projects, ctx.actionRegistry, ctx.actionHandler, ctx.capabilityService)
         buildRoutes(ctx.build, ctx.hub, ctx.projects)
         artifactRoutes(ctx.artifactRepo, ctx.workspace, ctx.artifacts, ctx.apkVerifier)

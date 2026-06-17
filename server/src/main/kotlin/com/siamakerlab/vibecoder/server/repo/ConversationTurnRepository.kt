@@ -250,6 +250,28 @@ class ConversationTurnRepository(private val clock: Clock) {
         ConversationTurns.selectAll().where { filter.toCondition() }.count()
     }
 
+    data class SessionWeight(
+        val turns: Long,
+        val contentBytes: Long,
+    )
+
+    fun sessionWeight(projectId: String, sessionId: String?, agentName: String? = null): SessionWeight = transaction {
+        var cond: Op<Boolean> = ConversationTurns.projectId eq projectId
+        cond = if (sessionId == null) cond and IsNullOp(ConversationTurns.sessionId)
+        else cond and (ConversationTurns.sessionId eq sessionId)
+        cond = if (agentName == null) cond and IsNullOp(ConversationTurns.agentName)
+        else cond and (ConversationTurns.agentName eq agentName)
+
+        val contents = ConversationTurns
+            .select(ConversationTurns.content)
+            .where { cond }
+            .map { it[ConversationTurns.content] }
+        SessionWeight(
+            turns = contents.size.toLong(),
+            contentBytes = contents.sumOf { it.toByteArray(Charsets.UTF_8).size.toLong() },
+        )
+    }
+
     /** Project 내 distinct sessionId 목록 — UI dropdown 채움. */
     fun distinctSessions(projectId: String): List<String> = transaction {
         ConversationTurns

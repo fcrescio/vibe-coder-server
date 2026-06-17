@@ -147,6 +147,7 @@ fun main(args: Array<String>) {
     val auditLogger = com.siamakerlab.vibecoder.server.audit.AuditLogger(auditRepo)
     val conversationRepo = com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository(clock)
     val conversationHistory = com.siamakerlab.vibecoder.server.claude.ConversationHistoryService(conversationRepo)
+    val contextPressure = com.siamakerlab.vibecoder.server.claude.ConversationContextPressureService(conversationRepo)
     val emailNotifier = com.siamakerlab.vibecoder.server.notify.EmailNotifier { config.email }
     // v0.27.0 — webhook (Slack / Discord / Telegram) provider. enabled=false 시 silent.
     val webhookNotifier = com.siamakerlab.vibecoder.server.notify.WebhookNotifier({ config.webhook })
@@ -432,6 +433,7 @@ fun main(args: Array<String>) {
         auditRepo = auditRepo,
         auditLogger = auditLogger,
         conversationRepo = conversationRepo,
+        contextPressure = contextPressure,
         emailNotifier = emailNotifier,
         webhookNotifier = webhookNotifier,
         status = status,

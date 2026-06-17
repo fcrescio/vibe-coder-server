@@ -52,6 +52,7 @@ fun Routing.consoleRoutes(
     audit: AuditLogger,
     /** v0.31.0 — prompt 자동완성. */
     promptSuggestionService: PromptSuggestionService,
+    contextPressure: ConversationContextPressureService? = null,
 ) {
     authenticate(AUTH_BEARER) {
         post("/api/projects/{projectId}/claude/console/prompt") {
@@ -104,6 +105,15 @@ fun Routing.consoleRoutes(
             }
 
             try {
+                contextPressure?.warningFor(projectId, sessionManager.currentSessionId(projectId))?.let { warning ->
+                    hub.emitConsole(LogHub.consoleTopic(projectId)) { seq ->
+                        com.siamakerlab.vibecoder.shared.ws.WsFrame.ConsoleSystem(
+                            code = "context_pressure_${warning.level.name.lowercase()}",
+                            message = warning.message,
+                            seq = seq,
+                        )
+                    }
+                }
                 sessionManager.sendPrompt(projectId, text, images)
             } catch (e: Exception) {
                 log.warn(e) { "[$projectId] prompt failed" }
