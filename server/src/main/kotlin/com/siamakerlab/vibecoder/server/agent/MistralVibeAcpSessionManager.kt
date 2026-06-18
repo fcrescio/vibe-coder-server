@@ -211,7 +211,20 @@ class MistralVibeAcpSessionManager(
             append("/compact")
             if (instructions.isNotBlank()) append(" ").append(instructions.trim())
         }
-        sendCommandPrompt(projectId, command, noticeCode = "compact_requested")
+        try {
+            sendCommandPrompt(projectId, command, noticeCode = "compact_requested")
+        } catch (e: Exception) {
+            log.warn(e) { "[$projectId] Mistral Vibe ACP compact failed; resetting session so the next prompt can continue fresh" }
+            terminateSession(projectId)
+            assistantBuffers.remove(projectId)
+            runCatching { sessionIdFile(projectId).deleteIfExists() }
+            hub.resetConsole(topic(projectId))
+            emitSystem(
+                projectId,
+                "compact_failed_session_reset",
+                "Compact failed inside Mistral Vibe ACP (${e.message ?: "unknown error"}). The previous conversation remains in project history, but the active agent session was reset so the next prompt starts fresh.",
+            )
+        }
     }
 
     private suspend fun sendCommandPrompt(projectId: String, command: String, noticeCode: String) {
