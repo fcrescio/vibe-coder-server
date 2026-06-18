@@ -561,14 +561,19 @@ object WebProjectTemplates {
         // v1.14.4 — row 전체 영역이 클릭 가능 + 첫 화면 무조건 console (#console hash 명시).
         //           각 td 의 자식을 inherit color + block link 로 채워서 셀 어디든 클릭 통함.
         val rowsHtml = if (projects.isEmpty()) {
-            """<tr><td colspan="2" class="dim">${esc(t("projects.list.empty"))}</td></tr>"""
+            """<tr><td colspan="3" class="dim">${esc(t("projects.list.empty"))}</td></tr>"""
         } else {
             projects.joinToString("\n") { p ->
                 val href = "/projects/${esc(p.id)}#console"
                 val cellLinkStyle = "display:block;color:inherit;text-decoration:none"
+                val badge = when (p.projectType) {
+                    "flutter" -> """<span class="badge badge-flutter">Flutter</span>"""
+                    else -> """<span class="badge badge-kotlin">Kotlin</span>"""
+                }
                 """<tr class="row-link">
                     <td><a href="$href" style="$cellLinkStyle"><strong>${esc(p.name)}</strong><br><small class="dim">${esc(p.id)}</small></a></td>
                     <td><a href="$href" style="$cellLinkStyle"><code>${esc(p.packageName)}</code></a></td>
+                    <td><a href="$href" style="$cellLinkStyle">$badge</a></td>
                   </tr>"""
             }
         }
@@ -687,10 +692,13 @@ $errHtml
       table.devices tr.row-link td { padding: 0; }
       table.devices tr.row-link td a { padding: 10px 12px; }
       table.devices tr.row-link:hover { background: #1a1f2c; cursor: pointer; }
+      .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.3px; }
+      .badge-kotlin { background:#7f52ff22; color:#7f52ff; }
+      .badge-flutter { background:#54c5f822; color:#54c5f8; }
     </style>
     <table class="devices">
       <thead>
-        <tr><th>${esc(t("projects.list.col.name"))}</th><th>${esc(t("projects.list.col.package"))}</th></tr>
+        <tr><th>${esc(t("projects.list.col.name"))}</th><th>${esc(t("projects.list.col.package"))}</th><th>${esc(t("projects.list.col.type"))}</th></tr>
       </thead>
       <tbody>
         $rowsHtml

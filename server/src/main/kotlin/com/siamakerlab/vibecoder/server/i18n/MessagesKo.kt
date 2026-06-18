@@ -275,6 +275,7 @@ internal object MessagesKo {
         "projects.list.empty" to "등록된 프로젝트가 없습니다. 오른쪽 폼으로 새로 만드세요.",
         "projects.list.col.name" to "이름 / ID",
         "projects.list.col.package" to "패키지",
+        "projects.list.col.type" to "유형",
         "projects.list.col.lastBuild" to "최근 빌드",
         "projects.list.openConsole" to "콘솔 열기",
         "projects.new.title" to "새 프로젝트",

@@ -128,6 +128,16 @@ data class SshKeyDto(
     val createdAt: String? = null,
 )
 
+/**
+ * v1.125.0 — Project build type constants. Both are Android build targets.
+ */
+object ProjectTypes {
+    const val KOTLIN = "kotlin"
+    const val FLUTTER = "flutter"
+    val ALL = setOf(KOTLIN, FLUTTER)
+    fun normalize(value: String?): String = if (value?.trim()?.lowercase() == FLUTTER) FLUTTER else KOTLIN
+}
+
 @Serializable
 data class ProjectDto(
     val id: String,
@@ -145,6 +155,11 @@ data class ProjectDto(
      * 안 떠있거나 미감지). additive default-value 라 wire 호환.
      */
     val busy: Boolean = false,
+    /**
+     * v1.125.0 — Project build type. "kotlin" (Android-Kotlin) | "flutter" (Android-Flutter).
+     * Additive default for wire compatibility.
+     */
+    val projectType: String = ProjectTypes.KOTLIN,
 )
 
 @Serializable
