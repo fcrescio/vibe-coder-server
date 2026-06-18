@@ -1,12 +1,36 @@
-# Vibe Coder — Server
+# Vibe Coder ACP — Server
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/siamakerlab/vibe-coder-server)](https://hub.docker.com/r/siamakerlab/vibe-coder-server)
 
-> **Standalone Docker app.** A self-hostable Android development server that
-> drives Claude Code, Gradle, and Git as child processes — accessible from any
-> browser, no client install required. Spin up one container on your PC and
-> log in to create projects, send prompts, build, and download APKs.
+> **Fork notice.** This repository is a downstream fork of
+> [`siamakerlab/vibe-coder-server`](https://github.com/siamakerlab/vibe-coder-server).
+> The original project did the hard work of proving the product shape: a
+> self-hostable Android development server, reachable from the browser, able to
+> create projects, drive an agentic coding loop, build APKs, and manage the
+> surrounding developer workflow.
+>
+> This fork keeps that foundation and adapts the agent runtime toward
+> **Vibe ACP** and local/self-hosted model backends, while preserving the same
+> goal: a practical browser-based development environment for Android and
+> Flutter apps.
+
+## Credits and thanks
+
+This project exists because of the excellent work in the upstream
+`vibe-coder-server` repository. Huge thanks to the original author and
+contributors for building the server, web UI, Docker environment, Android
+workflow, build orchestration, history, project tooling, and the many small
+quality-of-life details that make the system usable in practice.
+
+This fork is intentionally standing on that work. The current direction is not
+to replace the original project, but to explore a different runtime model:
+using Vibe ACP instead of the original Claude Code-centric integration, and
+making the system work well with local LLM endpoints such as llama.cpp.
+
+Some sections below still use the historical "Claude" wording from upstream.
+In this fork, read those parts as documentation of the original architecture
+and as compatibility context unless a section explicitly refers to Vibe ACP.
 
 This repository contains the server body (Ktor backend) and the operations
 web UI. An Android companion app (`vibe-coder-android`, separate repo) is an
