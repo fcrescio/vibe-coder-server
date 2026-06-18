@@ -62,8 +62,15 @@ fun Routing.projectRoutes(service: ProjectService) {
 
         // v1.125.0 — project launcher icon (resized/cached via AppIconCache).
         get("/api/projects/{projectId}/app-icon") {
+            val p = call.requireDevice()
             val id = call.parameters["projectId"]
                 ?: throw com.siamakerlab.vibecoder.server.error.ApiException.localized(400, "bad_request", messageKey = "api.common.projectIdRequired")
+            val uid = p.device.userId
+            if (uid != null && !service.canUserAccess(uid, p.isAdmin, id)) {
+                throw com.siamakerlab.vibecoder.server.error.ApiException.localized(
+                    403, "project_forbidden", messageKey = "api.auth.projectForbidden",
+                )
+            }
             val row = service.rowOrThrow(id)
             val iconPath = service.resolveAppIcon(id, row.moduleName)
             if (iconPath == null || !Files.isRegularFile(iconPath)) {
@@ -77,7 +84,7 @@ fun Routing.projectRoutes(service: ProjectService) {
             }
             call.response.header("ETag", entry.etag)
             call.response.header("Cache-Control", "private, max-age=3600")
-            call.respondBytes(entry.bytes, ContentType.Image.PNG)
+            call.respondBytes(entry.bytes, ContentType.parse(entry.contentType))
         }
     }
 }
