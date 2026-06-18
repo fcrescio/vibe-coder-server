@@ -68,6 +68,7 @@ object Projects : Table("projects") {
     val debugTask = varchar("debug_task", 128)
     val createdAt = varchar("created_at", 64)
     val updatedAt = varchar("updated_at", 64)
+    val projectType = varchar("project_type", 16).default("kotlin")
     override val primaryKey = PrimaryKey(id)
 }
 

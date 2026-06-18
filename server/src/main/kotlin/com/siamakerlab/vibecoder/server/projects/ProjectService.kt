@@ -348,6 +348,7 @@ class ProjectService(
             lastBuildStatus = lastBuildStatus, hasGitChanges = hasGitChanges,
             updatedAt = updatedAt,
             busy = busy,
+            projectType = projectType,
         )
 
     /**
@@ -477,6 +478,92 @@ class ProjectService(
             }
         }.getOrNull()
     }
+
+    /**
+     * v1.64.0 — Module build.gradle(.kts) versionName. Returns null if not found.
+     * Reads the current gradle file on each call.
+     */
+    fun appVersionName(projectId: String, moduleName: String): String? {
+        if (isGhost(projectId)) return null
+        val projectRoot = runCatching { workspace.projectRoot(projectId) }.getOrNull() ?: return null
+        val moduleDir = projectRoot.resolve(moduleName.replace(':', '/'))
+        val props = loadVersionProps(projectRoot)
+        for (g in listOf("build.gradle.kts", "build.gradle")) {
+            val gf = moduleDir.resolve(g)
+            if (!Files.isRegularFile(gf)) continue
+            val text = runCatching { Files.readString(gf) }.getOrNull() ?: continue
+            VersionNameResolver.resolve(text, props)?.let { return it }
+        }
+        val pubspec = projectRoot.resolve("pubspec.yaml")
+        if (Files.isRegularFile(pubspec)) {
+            runCatching { Files.readString(pubspec) }.getOrNull()?.let { text ->
+                Regex("""(?m)^version:\s*([^\s#]+)""").find(text)?.let {
+                    return it.groupValues[1].substringBefore('+').take(32)
+                }
+            }
+        }
+        return null
+    }
+
+    private fun loadVersionProps(root: java.nio.file.Path): Map<String, String> {
+        val f = root.resolve("version.properties")
+        if (!Files.isRegularFile(f)) return emptyMap()
+        return runCatching {
+            Files.readAllLines(f).mapNotNull { line ->
+                val t = line.trim()
+                if (t.isEmpty() || t.startsWith("#")) return@mapNotNull null
+                val i = t.indexOf('=')
+                if (i < 0) null else t.substring(0, i).trim() to t.substring(i + 1).trim()
+            }.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
+    /**
+     * v1.64.0 — Launcher icon raster (png/webp) file. Returns null if only
+     * adaptive-icon (xml) exists — list shows a placeholder.
+     */
+    fun resolveAppIcon(projectId: String, moduleName: String): Path? {
+        if (isGhost(projectId)) return null
+        val projectRoot = runCatching { workspace.projectRoot(projectId) }.getOrNull() ?: return null
+        val resCandidates = listOf(
+            moduleName.replace(':', '/'),
+            "android/app",
+            "android/" + moduleName.replace(':', '/'),
+        ).distinct()
+        val densities = listOf("xxxhdpi", "xxhdpi", "xhdpi", "hdpi", "mdpi", "")
+        val bases = listOf("mipmap", "drawable")
+        val names = listOf("ic_launcher", "ic_launcher_round", "ic_launcher_foreground")
+        for (modPath in resCandidates) {
+            val resRoot = projectRoot.resolve(modPath).resolve("src/main/res")
+            if (!Files.isDirectory(resRoot)) continue
+            for (d in densities) for (b in bases) {
+                val dir = resRoot.resolve(if (d.isEmpty()) b else "$b-$d")
+                if (!Files.isDirectory(dir)) continue
+                for (n in names) for (ext in listOf("png", "webp")) {
+                    val f = dir.resolve("$n.$ext")
+                    if (Files.isRegularFile(f)) {
+                        return runCatching { workspace.ensureUnderWorkspace(f.toRealPath()) }.getOrNull()
+                    }
+                }
+            }
+        }
+        val rootIcon = projectRoot.resolve("icon.png")
+        if (Files.isRegularFile(rootIcon)) {
+            return runCatching { workspace.ensureUnderWorkspace(rootIcon.toRealPath()) }.getOrNull()
+        }
+        return null
+    }
+
+    /**
+     * Detects project type from the workspace directory.
+     * Returns "flutter" if pubspec.yaml exists, "kotlin" if gradle files exist, null otherwise.
+     */
+    fun detectProjectType(projectId: String): String? {
+        val projectRoot = runCatching { workspace.projectRoot(projectId) }.getOrNull() ?: return null
+        return PackageNameDetector.detectProjectType(projectRoot)
+    }
+
+    private fun isGhost(id: String): Boolean = id == SCRATCH_ID || id.startsWith("__chat_")
 
     companion object {
         const val DEFAULT_MODULE = "app"

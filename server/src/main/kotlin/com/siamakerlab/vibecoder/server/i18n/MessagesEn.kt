@@ -297,6 +297,7 @@ internal object MessagesEn {
         "projects.list.empty" to "No projects registered. Use the form on the right to create one.",
         "projects.list.col.name" to "Name / ID",
         "projects.list.col.package" to "Package",
+        "projects.list.col.type" to "Type",
         "projects.list.col.lastBuild" to "Last build",
         "projects.list.openConsole" to "Open console",
         "projects.new.title" to "New project",

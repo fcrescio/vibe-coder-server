@@ -18,6 +18,7 @@ data class ProjectRow(
     val debugTask: String,
     val createdAt: String,
     val updatedAt: String,
+    val projectType: String = "kotlin",
 )
 
 class ProjectRepository(private val clock: Clock) {
@@ -29,6 +30,7 @@ class ProjectRepository(private val clock: Clock) {
         sourcePath: String,
         moduleName: String,
         debugTask: String,
+        projectType: String = "kotlin",
     ): ProjectRow = transaction {
         val now = clock.nowIso()
         Projects.insert {
@@ -38,10 +40,11 @@ class ProjectRepository(private val clock: Clock) {
             it[Projects.sourcePath] = sourcePath
             it[Projects.moduleName] = moduleName
             it[Projects.debugTask] = debugTask
+            it[Projects.projectType] = projectType
             it[createdAt] = now
             it[updatedAt] = now
         }
-        ProjectRow(id, name, packageName, sourcePath, moduleName, debugTask, now, now)
+        ProjectRow(id, name, packageName, sourcePath, moduleName, debugTask, now, now, projectType)
     }
 
     fun findById(id: String): ProjectRow? = transaction {
@@ -68,5 +71,6 @@ class ProjectRepository(private val clock: Clock) {
         debugTask = this[Projects.debugTask],
         createdAt = this[Projects.createdAt],
         updatedAt = this[Projects.updatedAt],
+        projectType = this[Projects.projectType],
     )
 }
