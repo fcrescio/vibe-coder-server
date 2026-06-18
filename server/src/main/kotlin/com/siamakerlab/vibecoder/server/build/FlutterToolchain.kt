@@ -60,6 +60,12 @@ class FlutterToolchain(private val timeoutMinutes: Int) : BuildToolchain {
         false
     }
 
-    private fun flutterBin(): String =
-        System.getenv("FLUTTER_CMD")?.ifBlank { null } ?: "flutter"
+    private fun flutterBin(): String {
+        System.getenv("FLUTTER_CMD")?.ifBlank { null }?.let { return it }
+        val candidates = listOf(
+            Path.of("/home/vibe/.local/bin/flutter"),
+            Path.of("/home/vibe/.local/flutter/bin/flutter"),
+        )
+        return candidates.firstOrNull { Files.isExecutable(it) }?.toString() ?: "flutter"
+    }
 }
