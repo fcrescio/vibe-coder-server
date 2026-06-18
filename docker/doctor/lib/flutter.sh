@@ -15,6 +15,7 @@
 
 FLUTTER_HOME="/home/vibe/.local/flutter"
 FLUTTER_REPO="https://github.com/flutter/flutter.git"
+export PUB_CACHE="${PUB_CACHE:-/home/vibe/.pub-cache}"
 
 run_flutter_user() {
     if [[ "$(id -u)" == "0" ]] && command -v gosu >/dev/null 2>&1 && id vibe >/dev/null 2>&1; then

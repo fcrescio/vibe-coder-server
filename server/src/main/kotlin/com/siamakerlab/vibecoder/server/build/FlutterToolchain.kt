@@ -31,7 +31,13 @@ class FlutterToolchain(private val timeoutMinutes: Int) : BuildToolchain {
 
         val command = listOf(flutterBin(), "build", "apk", "--debug")
         logger.info("Flutter build command: ${command.joinToString(" ")}")
-        val result = ProcessRunner(workdir = source).run(
+        val result = ProcessRunner(
+            workdir = source,
+            env = mapOf(
+                "HOME" to "/home/vibe",
+                "PUB_CACHE" to "/home/vibe/.pub-cache",
+            ),
+        ).run(
             command = command,
             timeout = timeoutMinutes.minutes,
             cancellation = cancellation,
