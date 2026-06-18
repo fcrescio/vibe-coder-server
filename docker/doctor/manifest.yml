@@ -23,6 +23,13 @@ emulator:
     - "emulator"
     - "system-images;android-35;google_apis;x86_64"
 
+# Flutter SDK (Android 앱 빌드 전용). git channel 을 /home/vibe/.local/flutter 에 clone.
+flutter:
+  channel: "stable"
+  version: ""
+  precache_platforms:
+    - "android"
+
 # 선택적 MCP (npm). doctor가 사용자에게 individually 묻고 설치.
 mcp_optional:
   - name: "filesystem"

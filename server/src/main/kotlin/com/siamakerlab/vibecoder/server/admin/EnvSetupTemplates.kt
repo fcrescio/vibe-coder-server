@@ -290,6 +290,22 @@ git config --global user.email "&lt;email&gt;"
                 <p class="hint" style="margin-top:8px;font-size:12px">${esc(t("env.action.gradleNote"))}</p>"""
             }
 
+            SetupComponent.FLUTTER -> {
+                val label = when (status) {
+                    ComponentStatus.INSTALLED -> t("env.action.flutterLabel.installed")
+                    else -> t("env.action.flutterLabel.missing")
+                }
+                """<form method="post" action="/env-setup/${esc(c.id)}/install" style="margin-top:10px"
+                       onsubmit="return confirm(${jsLit(t("env.action.flutterConfirm"))})">
+                  ${CsrfTokens.hiddenInput(csrf)}
+                  <button type="submit" class="primary" style="width:auto;padding:8px 16px">${esc(label)}</button>
+                </form>
+                <p class="hint" style="margin-top:8px;font-size:12px">${esc(t("env.action.flutterNote"))}</p>
+                <details style="margin-top:8px"><summary class="dim" style="cursor:pointer;font-size:12px">${esc(t("env.action.cliHint"))}</summary>
+                  <pre class="diff-block" style="margin-top:6px">docker exec -it vibe-coder-server vibe-doctor flutter</pre>
+                </details>"""
+            }
+
             // v1.10.0 — 안드로이드 에뮬레이터 다운로드. 부피 1GB+ → 명시 confirm 필수.
             // 부팅 / KVM passthrough 는 본 카드의 책임이 아님 — /emulator 페이지 안내.
             SetupComponent.EMULATOR -> {

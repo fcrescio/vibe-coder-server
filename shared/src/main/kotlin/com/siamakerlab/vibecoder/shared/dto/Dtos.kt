@@ -201,6 +201,8 @@ data class RegisterProjectRequestDto(
      * 입력에 자동 주입 — Claude 가 그 가이드대로 scaffolding 시작.
      */
     val templateId: String? = null,
+    /** Android build target type: kotlin or flutter. */
+    val projectType: String = ProjectTypes.KOTLIN,
     /**
      * v1.7.18 — clone path 에서 기존 워크스페이스 폴더 (orphan, DB row 없음)
      * 가 존재할 때 강제 덮어쓰기. true 면 server 가 srcRoot 내용을 모두 삭제

@@ -601,6 +601,18 @@ $errHtml
     <form method="post" action="/projects" id="new-project-form" style="margin-top:12px">
       ${CsrfTokens.hiddenInput(csrf)}
 
+      <fieldset style="border:1px solid #333;padding:10px;border-radius:6px;margin-bottom:12px">
+        <legend style="padding:0 6px;font-size:13px">${esc(t("projects.new.type"))}</legend>
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="radio" name="projectType" value="kotlin" checked>
+          <span><strong>${esc(t("projects.new.typeKotlin"))}</strong>${esc(t("projects.new.typeKotlinDesc"))}</span>
+        </label>
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:6px">
+          <input type="radio" name="projectType" value="flutter">
+          <span><strong>${esc(t("projects.new.typeFlutter"))}</strong>${esc(t("projects.new.typeFlutterDesc"))}</span>
+        </label>
+      </fieldset>
+
       <!-- v1.7.0 — 소스 유형 선택을 가장 먼저. clone 선택 시 다른 fields 자동 hide +
            required 해제 (cloneUrl 만 입력하면 됨). -->
       <fieldset style="border:1px solid #333;padding:10px;border-radius:6px">

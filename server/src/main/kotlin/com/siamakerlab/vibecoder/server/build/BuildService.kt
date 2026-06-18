@@ -13,6 +13,7 @@ import com.siamakerlab.vibecoder.server.tasks.TaskLogger
 import com.siamakerlab.vibecoder.server.tasks.TaskQueue
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.dto.BuildDto
+import com.siamakerlab.vibecoder.shared.dto.ProjectTypes
 import com.siamakerlab.vibecoder.shared.dto.TaskStatus
 import com.siamakerlab.vibecoder.shared.ws.WsFrame
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -37,6 +38,12 @@ class BuildService(
      */
     private val keystores: com.siamakerlab.vibecoder.server.admin.KeystoreService? = null,
 ) {
+    private val gradleToolchain: BuildToolchain = GradleToolchain(builder)
+    private val flutterToolchain: BuildToolchain = FlutterToolchain(config)
+
+    private fun toolchainFor(projectType: String): BuildToolchain =
+        if (ProjectTypes.normalize(projectType) == ProjectTypes.FLUTTER) flutterToolchain else gradleToolchain
+
 
     /**
      * v1.26.1 — 운영 정책 "키스토어 임의 생성 금지" SSOT 가드. SSR / JSON API / WS
@@ -77,9 +84,11 @@ class BuildService(
             executor = { cancel ->
                 val logger = TaskLogger(buildId, logFile, hub, clock)
                 try {
-                    val exit = builder.runAssembleDebug(
+                    val toolchain = toolchainFor(row.projectType)
+                    val exit = toolchain.runBuild(
                         source = java.nio.file.Path.of(row.sourcePath),
                         moduleName = row.moduleName,
+                        variant = BuildVariant.DEBUG,
                         debugTask = row.debugTask,
                         logger = logger,
                         cancellation = cancel,
@@ -87,7 +96,7 @@ class BuildService(
                     )
                     if (exit != 0) throw ApiException.localized(500, "build_failed",
                         messageKey = "api.build.gradleExit", args = listOf(exit))
-                    val apk = ApkFinder.findLatestDebug(java.nio.file.Path.of(row.sourcePath), row.moduleName)
+                    val apk = toolchain.findArtifact(java.nio.file.Path.of(row.sourcePath), row.moduleName, BuildVariant.DEBUG)
                         ?: throw ApiException.localized(500, "apk_not_found", messageKey = "api.build.apkNotFound")
                     logger.info("Found APK: $apk")
                     val artifact = artifactService.storeDebugApk(projectId, buildId, apk)
