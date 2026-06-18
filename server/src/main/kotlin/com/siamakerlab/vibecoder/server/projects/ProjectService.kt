@@ -1,5 +1,7 @@
 package com.siamakerlab.vibecoder.server.projects
 
+import com.siamakerlab.vibecoder.server.admin.CreateKeystoreRequest
+import com.siamakerlab.vibecoder.server.admin.KeystoreService
 import com.siamakerlab.vibecoder.server.core.WorkspacePath
 import com.siamakerlab.vibecoder.server.error.ApiException
 import com.siamakerlab.vibecoder.server.git.GitCloneService
@@ -26,6 +28,7 @@ class ProjectService(
     private val repo: ProjectRepository,
     private val buildRepo: BuildRepository,
     private val keystoreGen: KeystoreGenerator,
+    private val managedKeystores: KeystoreService? = null,
     /** v0.9.0 — null 이면 clone 기능 비활성 (테스트 등). 운영에선 항상 주입. */
     private val gitClone: GitCloneService? = null,
     /**
@@ -93,10 +96,23 @@ class ProjectService(
         }
 
         // Keystore generation runs FIRST so a validation failure (weak password etc.)
-        // doesn't leave behind an orphaned project folder on disk.
+        // doesn't leave behind an orphaned project folder on disk. Runtime builds
+        // enforce packageName-based keystores, so prefer KeystoreService when wired.
         val keystoreSummary = body.keystore?.let { ksReq ->
-            val res = keystoreGen.generate(body.projectId, body.appName, ksReq)
-            "alias=${res.alias} file=${res.keystoreFile.fileName}"
+            if (managedKeystores != null) {
+                val entry = managedKeystores.create(
+                    CreateKeystoreRequest(
+                        packageName = body.packageName,
+                        name = body.appName,
+                        password = ksReq.password,
+                        validityYears = (ksReq.validityDays / 365).coerceAtLeast(1),
+                    ),
+                )
+                "packageName=${entry.packageName} file=${entry.packageName}.keystore"
+            } else {
+                val res = keystoreGen.generate(body.projectId, body.appName, ksReq)
+                "alias=${res.alias} file=${res.keystoreFile.fileName}"
+            }
         }
 
         val srcRoot = workspace.projectRoot(body.projectId)

@@ -193,6 +193,11 @@ fun main(args: Array<String>) {
     val projectAclRepo = com.siamakerlab.vibecoder.server.repo.ProjectAclRepository(clock)
     val adbService = AdbService().also { it.initHost(config.adb.host) }
     val deviceService = com.siamakerlab.vibecoder.server.devices.DeviceService(adbService)
+    // v1.8.0 — 키스토어 디렉토리는 호스트 영속 볼륨 (`/home/vibe/keystores`).
+    // Project registration, BuildService and keystoreRoutes share one packageName-based registry.
+    val keystoreService = com.siamakerlab.vibecoder.server.admin.KeystoreService(
+        defaults = config.keystore.defaults,
+    )
     val claudeSessionManager = ClaudeSessionManager(config, workspace, hub, history = conversationHistory)
     val sessionManager: AgentRuntime = when (config.agent.provider.lowercase()) {
         "mistral-vibe-acp" -> MistralVibeAcpSessionManager(config, workspace, hub, history = conversationHistory, deviceService = deviceService)
@@ -201,7 +206,7 @@ fun main(args: Array<String>) {
     // v1.1.0 — ProjectDto.busy 필드를 위해 sessionManager 를 lambda 로 주입.
     // 구성 순서: sessionManager 가 먼저 생성되어야 lambda 가 안전하게 호출 가능.
     val projects = ProjectService(
-        workspace, projectRepo, buildRepo, keystoreGen, gitClone,
+        workspace, projectRepo, buildRepo, keystoreGen, managedKeystores = keystoreService, gitClone = gitClone,
         artifactRepo = artifactRepo, uploadedFileRepo = uploadedRepo,
         conversationRepo = conversationRepo,
         projectAclRepo = projectAclRepo,
@@ -233,13 +238,6 @@ fun main(args: Array<String>) {
     )
     val gradle = GradleBuilder(config)
     val artifacts = ArtifactService(config, workspace, artifactRepo, buildRepo, clock)
-    // v1.8.0 — 키스토어 디렉토리는 호스트 영속 볼륨 (`/home/vibe/keystores`).
-    // 빌드 시 packageName 매칭으로 Gradle signing inject (Phase 1) 와
-    // keystoreRoutes 의 "Apply to project" Claude prompt (Phase 2) 가
-    // 같은 KeystoreService 인스턴스를 공유.
-    val keystoreService = com.siamakerlab.vibecoder.server.admin.KeystoreService(
-        defaults = config.keystore.defaults,
-    )
     val build = BuildService(
         config, workspace, projects, buildRepo, queue, gradle, artifacts, clock,
         notifier = notifiers, keystores = keystoreService,
