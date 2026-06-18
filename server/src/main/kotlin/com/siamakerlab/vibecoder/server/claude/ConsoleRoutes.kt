@@ -113,6 +113,9 @@ fun Routing.consoleRoutes(
                             seq = seq,
                         )
                     }
+                    if (warning.autoCompact) {
+                        sessionManager.compact(projectId, "Preserve the current Android project state, recent decisions, failing commands, test results, open tasks, and any device/UI testing findings.")
+                    }
                 }
                 sessionManager.sendPrompt(projectId, text, images)
             } catch (e: Exception) {
@@ -132,6 +135,16 @@ fun Routing.consoleRoutes(
             call.requireProjectAcl(projects, projectId)
             projects.rowOrThrow(projectId)
             sessionManager.startNew(projectId)
+            call.respond(HttpStatusCode.Accepted)
+        }
+
+        post("/api/projects/{projectId}/claude/console/compact") {
+            call.requireApiWrite()
+            val projectId = call.parameters["projectId"]
+                ?: throw ApiException.localized(400, "bad_request", messageKey = "api.console.projectIdRequired")
+            call.requireProjectAcl(projects, projectId)
+            projects.rowOrThrow(projectId)
+            sessionManager.compact(projectId)
             call.respond(HttpStatusCode.Accepted)
         }
 

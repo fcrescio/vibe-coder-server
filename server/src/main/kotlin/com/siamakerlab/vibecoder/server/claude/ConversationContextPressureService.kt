@@ -14,11 +14,13 @@ class ConversationContextPressureService(
         val turns: Long,
         val contentBytes: Long,
         val message: String,
+        val autoCompact: Boolean,
     )
 
     enum class Level { WARN, CRITICAL }
 
-    private val emitted = ConcurrentHashMap.newKeySet<String>()
+    private val emittedWarnings = ConcurrentHashMap.newKeySet<String>()
+    private val autoCompacted = ConcurrentHashMap.newKeySet<String>()
 
     fun warningFor(projectId: String, sessionId: String?): Warning? {
         if (!enabled || sessionId.isNullOrBlank()) return null
@@ -29,10 +31,11 @@ class ConversationContextPressureService(
             else -> return null
         }
         val key = "$projectId:$sessionId:$level"
-        if (!emitted.add(key)) return null
+        if (!emittedWarnings.add(key)) return null
+        val shouldAutoCompact = level == Level.CRITICAL && autoCompacted.add("$projectId:$sessionId")
         val mb = "%.2f".format(weight.contentBytes.toDouble() / (1024.0 * 1024.0))
         val action = if (level == Level.CRITICAL) {
-            "Start a new session or run /compact before continuing with large changes."
+            if (shouldAutoCompact) "Automatic /compact will run before the next prompt." else "Run /compact before continuing with large changes."
         } else {
             "Consider /compact soon, especially before asking for broad edits."
         }
@@ -41,6 +44,7 @@ class ConversationContextPressureService(
             turns = weight.turns,
             contentBytes = weight.contentBytes,
             message = "Conversation context is getting large: $mb MiB persisted across ${weight.turns} turns. $action",
+            autoCompact = shouldAutoCompact,
         )
     }
 

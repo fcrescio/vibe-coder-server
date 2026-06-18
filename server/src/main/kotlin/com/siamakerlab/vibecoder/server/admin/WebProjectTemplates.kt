@@ -897,6 +897,8 @@ $authBannerHtml
         }
       </style>
       $sideLinks
+      <button type="button" id="compact-btn" class="chip"
+              title="Compact conversation history with Vibe">${esc("Compact")}</button>
       <button type="button" id="stop-btn" class="chip chip-danger" style="display:none"
               title="${esc(t("console.stop.title"))}">${esc(t("console.stop"))}</button>
       <form method="post" action="/projects/${esc(p.id)}/console/new" style="display:inline"
@@ -909,10 +911,11 @@ $authBannerHtml
   <!--
     v0.75.0 — slash chip 제거. vibe-coder 의 콘솔은 `claude --print --output-format
     stream-json` non-interactive 모드라 Claude Code 의 interactive slash commands
-    (`/status` / `/cost` / `/model` / `/memory` / `/plan` / `/compact` / `/clear`)
+    (`/status` / `/cost` / `/model` / `/memory` / `/plan` / `/clear`)
     가 동작하지 않음 — 그냥 prompt 텍스트로 처리되어 Claude 가 못 알아들음.
     `/status` 의 사용량/모델 정보는 우측 상단 status snapshot (ClaudeStatusService)
-    이 별도로 표시. `/clear` 는 "새 세션" 버튼이 같은 역할.
+    이 별도로 표시. `/clear` 는 "새 세션" 버튼이 같은 역할. `/compact` 는
+    Vibe/Claude runtime 에서 지원되므로 별도 버튼으로 노출한다.
   -->
 </div>
 
@@ -1685,6 +1688,7 @@ $authBannerHtml
   // v0.98.0 — busy badge 추가 — 응답중/대기중 시각화.
   // v0.99.0 — pendingPrompts 큐. busy 중에도 submit 허용, console_done 후 자동 발사.
   var stopBtn = document.getElementById('stop-btn');
+  var compactBtn = document.getElementById('compact-btn');
   var busyBadge = document.getElementById('busy-badge');
   var BUSY_RESPONDING = ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.busy.responding"))};
   var BUSY_IDLE = ${jsLit(com.siamakerlab.vibecoder.server.i18n.Messages.t(lang, "console.busy.idle"))};
@@ -1712,6 +1716,7 @@ $authBannerHtml
     var wasOn = inFlight;
     inFlight = on;
     if (stopBtn) stopBtn.style.display = on ? 'inline-block' : 'none';
+    if (compactBtn) compactBtn.disabled = on;
     if (spinnerEl) spinnerEl.hidden = !on;
     updateBusyBadge();
     // busy → idle 전이 시 큐에서 하나 꺼내 자동 발사. 작은 delay 로 UI/server 안정.
@@ -1736,6 +1741,25 @@ $authBannerHtml
     }
   }
   if (stopBtn) stopBtn.addEventListener('click', cancelTurn);
+
+  async function compactConversation() {
+    if (inFlight) return;
+    setInFlight(true);
+    try {
+      append('sys', 'compact', 'Compacting conversation history...', 'system');
+      var res = await fetch('/api/projects/' + projectId + '/claude/console/compact', {
+        method: 'POST', credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        append('err', 'compact', res.status + ' ' + await res.text(), 'error');
+        setInFlight(false);
+      }
+    } catch (e) {
+      append('err', 'compact', String(e), 'error');
+      setInFlight(false);
+    }
+  }
+  if (compactBtn) compactBtn.addEventListener('click', compactConversation);
 
   async function sendPrompt(text) {
     sendBtn.disabled = true;

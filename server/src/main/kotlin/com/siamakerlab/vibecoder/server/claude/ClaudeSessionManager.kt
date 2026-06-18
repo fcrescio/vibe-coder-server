@@ -137,6 +137,14 @@ class ClaudeSessionManager(
         }
     }
 
+    override suspend fun compact(projectId: String, instructions: String) {
+        val prompt = buildString {
+            append("/compact")
+            if (instructions.isNotBlank()) append(" ").append(instructions.trim())
+        }
+        sendPrompt(projectId, prompt)
+    }
+
     /** Stop the current process (if any), forget its session-id, clear replay ring. */
     override suspend fun startNew(projectId: String) {
         terminateSession(projectId)

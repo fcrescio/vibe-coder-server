@@ -206,6 +206,47 @@ class MistralVibeAcpSessionManager(
         }
     }
 
+    override suspend fun compact(projectId: String, instructions: String) {
+        val command = buildString {
+            append("/compact")
+            if (instructions.isNotBlank()) append(" ").append(instructions.trim())
+        }
+        sendCommandPrompt(projectId, command, noticeCode = "compact_requested")
+    }
+
+    private suspend fun sendCommandPrompt(projectId: String, command: String, noticeCode: String) {
+        val session = ensureSession(projectId)
+        history?.systemNotice(projectId, session.sessionId.ifBlank { readSessionId(projectId) }, noticeCode, command)
+        session.stdinMutex.withLock {
+            setBusy(projectId, true)
+            try {
+                val response = session.request(
+                    "session/prompt",
+                    buildJsonObject {
+                        put("sessionId", session.sessionId)
+                        putJsonArray("prompt") {
+                            add(buildJsonObject {
+                                put("type", "text")
+                                put("text", command)
+                            })
+                        }
+                    },
+                    timeoutMs = config.agent.timeoutMinutes.coerceAtLeast(1) * 60_000L,
+                )
+                val stopReason = response["stop_reason"]?.jsonPrimitive?.contentOrNull ?: "end_turn"
+                flushAssistant(projectId)
+                history?.systemNotice(projectId, session.sessionId.ifBlank { readSessionId(projectId) }, "done", "Mistral Vibe ACP command finished: $stopReason")
+                setBusy(projectId, false)
+                hub.emitConsole(topic(projectId)) { seq -> WsFrame.ConsoleDone(reason = stopReason, seq = seq) }
+            } catch (e: Exception) {
+                setBusy(projectId, false)
+                emitSystem(projectId, "agent_command_failed", e.message ?: "Mistral Vibe ACP command failed")
+                if (sessions[projectId]?.process?.isAlive != true) terminateSession(projectId)
+                throw e
+            }
+        }
+    }
+
     override suspend fun startNew(projectId: String) {
         terminateSession(projectId)
         assistantBuffers.remove(projectId)
