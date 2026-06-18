@@ -16,6 +16,21 @@
 FLUTTER_HOME="/home/vibe/.local/flutter"
 FLUTTER_REPO="https://github.com/flutter/flutter.git"
 
+run_flutter_user() {
+    if [[ "$(id -u)" == "0" ]] && command -v gosu >/dev/null 2>&1 && id vibe >/dev/null 2>&1; then
+        gosu vibe "$@"
+    else
+        "$@"
+    fi
+}
+
+fix_flutter_owner() {
+    if [[ "$(id -u)" == "0" ]] && id vibe >/dev/null 2>&1; then
+        chown -R vibe:vibe "$FLUTTER_HOME" 2>/dev/null || true
+        chown -h vibe:vibe /home/vibe/.local/bin/flutter /home/vibe/.local/bin/dart 2>/dev/null || true
+    fi
+}
+
 flutter_manifest_value() {
     local manifest="/opt/vibe-doctor/manifest.yml"
     [[ -f "$manifest" ]] || return 0
@@ -63,12 +78,13 @@ install_flutter() {
 
     ln -sf "$FLUTTER_HOME/bin/flutter" /home/vibe/.local/bin/flutter
     ln -sf "$FLUTTER_HOME/bin/dart" /home/vibe/.local/bin/dart
+    fix_flutter_owner
 
-    "$FLUTTER_HOME/bin/flutter" config --no-analytics >/dev/null 2>&1 || true
-    "$FLUTTER_HOME/bin/flutter" --disable-analytics  >/dev/null 2>&1 || true
+    run_flutter_user "$FLUTTER_HOME/bin/flutter" config --no-analytics >/dev/null 2>&1 || true
+    run_flutter_user "$FLUTTER_HOME/bin/flutter" --disable-analytics  >/dev/null 2>&1 || true
 
     log_info "플랫폼 활성화: Android 만 (iOS/web/desktop 비활성)"
-    "$FLUTTER_HOME/bin/flutter" config \
+    run_flutter_user "$FLUTTER_HOME/bin/flutter" config \
         --enable-android \
         --no-enable-ios \
         --no-enable-web \
@@ -78,19 +94,20 @@ install_flutter() {
         >/dev/null 2>&1 || log_warn "flutter config 일부 플래그 미지원 (버전차) — 무시"
 
     log_step "Flutter precache (Android only)"
-    if ! "$FLUTTER_HOME/bin/flutter" precache \
+    if ! run_flutter_user "$FLUTTER_HOME/bin/flutter" precache \
             --android --no-ios --no-web --no-linux --no-windows --no-macos --no-fuchsia; then
         log_warn "precache 일부 실패 — 첫 빌드 시 자동 재시도됨"
     fi
 
     if [[ -n "${ANDROID_HOME:-}" && -d "${ANDROID_HOME:-}" ]]; then
         log_info "Android SDK 연결: $ANDROID_HOME"
-        "$FLUTTER_HOME/bin/flutter" config --android-sdk "$ANDROID_HOME" >/dev/null 2>&1 || true
+        run_flutter_user "$FLUTTER_HOME/bin/flutter" config --android-sdk "$ANDROID_HOME" >/dev/null 2>&1 || true
     else
         log_warn "ANDROID_HOME 미설정 — 'vibe-doctor android' 로 Android SDK 를 먼저 설치하세요."
     fi
 
-    if "$FLUTTER_HOME/bin/flutter" --version 2>/dev/null | head -3; then
+    fix_flutter_owner
+    if run_flutter_user "$FLUTTER_HOME/bin/flutter" --version 2>/dev/null | head -3; then
         log_ok "Flutter 설치 완료 — $FLUTTER_HOME"
         log_dim "디스크 사용량 확인: du -sh $FLUTTER_HOME"
     else

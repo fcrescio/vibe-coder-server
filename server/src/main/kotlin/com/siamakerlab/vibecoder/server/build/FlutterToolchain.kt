@@ -46,18 +46,22 @@ class FlutterToolchain(private val timeoutMinutes: Int) : BuildToolchain {
         return apk.takeIf { Files.isRegularFile(it) }
     }
 
-    private fun isFlutterAvailable(): Boolean = try {
-        val p = ProcessBuilder(flutterBin(), "--version")
-            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-            .redirectError(ProcessBuilder.Redirect.DISCARD)
-            .start()
-        if (p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) p.exitValue() == 0
-        else {
-            p.destroyForcibly()
+    private fun isFlutterAvailable(): Boolean {
+        return try {
+            val bin = flutterBin()
+            if (bin.startsWith("/") && Files.isExecutable(Path.of(bin))) return true
+            val p = ProcessBuilder(bin, "--version")
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start()
+            if (p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) p.exitValue() == 0
+            else {
+                p.destroyForcibly()
+                false
+            }
+        } catch (_: Throwable) {
             false
         }
-    } catch (_: Throwable) {
-        false
     }
 
     private fun flutterBin(): String {
