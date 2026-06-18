@@ -9,6 +9,7 @@ import com.siamakerlab.vibecoder.server.repo.ProjectRepository
 import com.siamakerlab.vibecoder.server.repo.ProjectRow
 import com.siamakerlab.vibecoder.server.repo.UploadedFileRepository
 import com.siamakerlab.vibecoder.shared.dto.ProjectDto
+import com.siamakerlab.vibecoder.shared.dto.ProjectTypes
 import com.siamakerlab.vibecoder.shared.dto.RegisterProjectRequestDto
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Files
@@ -192,6 +193,10 @@ class ProjectService(
             projectYml.writeText(buildProjectYml(body, srcRoot, keystoreSummary))
         }
 
+        // v1.125.0 — detect project type from cloned repo (flutter vs kotlin).
+        val detectedType = if (isClone) detectProjectType(body.projectId) else null
+        val projectTypeFinal = detectedType ?: ProjectTypes.KOTLIN
+
         val row = repo.insert(
             id = body.projectId,
             name = body.appName,
@@ -199,6 +204,7 @@ class ProjectService(
             sourcePath = srcRoot.toString(),
             moduleName = moduleNameFinal,
             debugTask = DEFAULT_DEBUG_TASK,
+            projectType = projectTypeFinal,
         )
 
         // v0.18.0 — 템플릿 starter prompt 기록. 같은 turn 에서 사용자가 콘솔로 가면
