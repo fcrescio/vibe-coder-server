@@ -224,6 +224,8 @@ internal object MessagesEn {
         "env.comp.mcp.desc" to "filesystem / sqlite / fetch / playwright and other common MCP servers. Each is installed individually after user consent.",
         "env.comp.gradle.name" to "Gradle",
         "env.comp.gradle.desc" to "Bootstrap for Android builds. BuildService uses this when a new project lacks gradle wrapper. After install, the wrapper version in build.gradle.kts drives actual builds (this is a bootstrap tool).",
+        "env.comp.flutter.name" to "Flutter (Android-only)",
+        "env.comp.flutter.desc" to "Flutter SDK for Android APK builds from Dart. Installed under /home/vibe/.local/flutter with Android-only precache.",
         // v1.10.0 — Android emulator build environment card.
         "env.comp.emulator.name" to "Android Emulator",
         "env.comp.emulator.desc" to "Emulator binary + system-image (android-35, google_apis, x86_64). Required for creating/booting AVDs. Booting itself happens separately (`--device /dev/kvm` + privileged or the :full image + /emulator page).",
@@ -233,6 +235,7 @@ internal object MessagesEn {
         "env.size.platformTools" to "~12 MB",
         "env.size.optional" to "Optional",
         "env.size.gradle" to "~130 MB",
+        "env.size.flutter" to "~2.5 GB · Android-only",
         "env.size.emulator" to "~1.5-2 GB · 5-10 min",
         // v1.7.16 — EnvSetupService probe messages.
         "probe.cmd.missing" to "Not installed: %s failed",
@@ -258,6 +261,8 @@ internal object MessagesEn {
         "probe.gradle.fetchFail" to "%s (latest check failed)",
         "probe.gradle.update" to "Current %s → latest %s available",
         "probe.gradle.latest" to "%s (latest)",
+        "probe.flutter.ok" to "Installed — %s",
+        "probe.flutter.missing" to "Flutter not found. Install it to build Flutter Android projects.",
         // v1.7.17 — Claude Auth help text + workspace probe.
         "diag.claudeAuth.help" to "Credentials file missing: %s/.credentials.json\n\nDocker — `--user vibe` required (root saves to /root/.claude):\n  docker exec -it --user vibe vibe-coder-server claude login\n\nHost — if compose mounts ~/.claude, you can log in on the host once:\n  claude login\n\nReload this page after login. refresh_token auto-renews access_token, so this is a one-time step.",
         "diag.workspace.ok" to "read/write OK",
@@ -305,6 +310,11 @@ internal object MessagesEn {
         "projects.new.idLabel" to "Project ID (kebab-case)",
         "projects.new.appName" to "App name (human-readable)",
         "projects.new.packageName" to "Package name (applicationId)",
+        "projects.new.type" to "Project type",
+        "projects.new.typeKotlin" to "Kotlin",
+        "projects.new.typeKotlinDesc" to " — Android/Kotlin, Gradle build",
+        "projects.new.typeFlutter" to "Flutter (Android-only)",
+        "projects.new.typeFlutterDesc" to " — Flutter/Dart, builds Android APKs only",
         "projects.new.source" to "Source",
         "projects.new.empty" to "Empty project",
         "projects.new.emptyDesc" to " — empty folder + CLAUDE.md template (Claude scaffolds from scratch)",
@@ -633,6 +643,10 @@ internal object MessagesEn {
         "env.action.gradleLabel.missing" to "Install (latest stable)",
         "env.action.gradleConfirm" to "Downloads the latest Gradle stable and installs it under /home/vibe/.local/gradle (~130 MB). Used to bootstrap wrappers in new projects. Continue?",
         "env.action.gradleNote" to "Wrapper bootstrap tool. After install the wrapper version pinned in your build.gradle.kts is what actually runs. Persisted via bind mount.",
+        "env.action.flutterLabel.installed" to "Reinstall / Update",
+        "env.action.flutterLabel.missing" to "Install (Android-only)",
+        "env.action.flutterConfirm" to "Clones Flutter stable to /home/vibe/.local/flutter and precaches Android artifacts only (~2.5 GB). iOS/web/desktop are skipped. Continue?",
+        "env.action.flutterNote" to "Android app builds only. Requires Android SDK first. Persisted via bind mount.",
         // v1.10.0 — emulator card actions.
         "env.action.emulatorLabel.installed" to "Reinstall / add system-image",
         "env.action.emulatorLabel.partial" to "Continue install",

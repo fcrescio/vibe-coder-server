@@ -16,6 +16,7 @@ import com.siamakerlab.vibecoder.server.repo.BuildRepository
 import com.siamakerlab.vibecoder.server.repo.ConversationTurnRepository
 import com.siamakerlab.vibecoder.server.ws.LogHub
 import com.siamakerlab.vibecoder.shared.dto.BuildDto
+import com.siamakerlab.vibecoder.shared.dto.ProjectTypes
 import com.siamakerlab.vibecoder.shared.dto.RegisterProjectRequestDto
 import java.nio.file.Files
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -101,6 +102,7 @@ fun Routing.webProjectRoutes(
         val cloneUrl = params["cloneUrl"]?.trim()?.ifBlank { null }
         val cloneBranch = params["cloneBranch"]?.trim()?.ifBlank { null }
         val templateId = params["templateId"]?.trim()?.ifBlank { null }
+        val projectType = ProjectTypes.normalize(params["projectType"])
         // v1.7.18 — clone path 의 "기존 폴더 덮어쓰기" 체크박스.
         val overwrite = params["overwrite"]?.let { it == "true" || it == "on" || it == "1" } == true
 
@@ -138,6 +140,7 @@ fun Routing.webProjectRoutes(
                     cloneUrl = cloneUrl,
                     cloneBranch = cloneBranch,
                     templateId = templateId,
+                    projectType = projectType,
                     overwrite = overwrite,
                 )
             )

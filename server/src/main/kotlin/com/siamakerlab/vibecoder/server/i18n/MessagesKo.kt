@@ -202,6 +202,8 @@ internal object MessagesKo {
         "env.comp.mcp.desc" to "filesystem / sqlite / fetch / playwright 등 자주 쓰는 MCP 서버. 각 서버는 사용자 동의 후 개별 설치.",
         "env.comp.gradle.name" to "Gradle",
         "env.comp.gradle.desc" to "Android 빌드 wrapper bootstrap 용. 신규 프로젝트에 gradle wrapper 가 없을 때 BuildService 가 자동 사용. 설치 후 사용자 build.gradle.kts 의 wrapper 버전이 실제 빌드를 좌우 (이건 부트스트랩 도구).",
+        "env.comp.flutter.name" to "Flutter (Android 전용)",
+        "env.comp.flutter.desc" to "Dart 로 Android APK 를 빌드하는 Flutter SDK. /home/vibe/.local/flutter 에 설치하고 Android artifact 만 precache.",
         // v1.10.0 — 안드로이드 에뮬레이터 빌드환경 카드.
         "env.comp.emulator.name" to "Android 에뮬레이터",
         "env.comp.emulator.desc" to "에뮬레이터 바이너리 + system-image (android-35, google_apis, x86_64). AVD 생성/부팅에 필요. 부팅 자체는 별도 (`/dev/kvm` privileged 또는 :full 이미지 + /emulator 페이지).",
@@ -211,6 +213,7 @@ internal object MessagesKo {
         "env.size.platformTools" to "약 12 MB",
         "env.size.optional" to "선택적",
         "env.size.gradle" to "약 130 MB",
+        "env.size.flutter" to "약 2.5 GB · Android 전용",
         "env.size.emulator" to "약 1.5~2 GB · 5~10 분",
         // v1.7.16 — EnvSetupService probe 메시지.
         "probe.cmd.missing" to "미설치: %s 실행 실패",
@@ -236,6 +239,8 @@ internal object MessagesKo {
         "probe.gradle.fetchFail" to "%s (최신 조회 실패)",
         "probe.gradle.update" to "현재 %s → 최신 %s 사용가능",
         "probe.gradle.latest" to "%s (최신)",
+        "probe.flutter.ok" to "설치됨 — %s",
+        "probe.flutter.missing" to "Flutter 미발견. Flutter Android 프로젝트 빌드를 위해 설치하세요.",
         // v1.7.17 — Claude Auth help text + workspace probe.
         "diag.claudeAuth.help" to "자격증명 파일이 없습니다: %s/.credentials.json\n\n도커 환경 — `--user vibe` 옵션 필수 (root 로 실행하면 /root/.claude 로 저장됨):\n  docker exec -it --user vibe vibe-coder-server claude login\n\n호스트 환경 (compose 가 ~/.claude 를 마운트한 경우 호스트에서 한 번만 해도 됨):\n  claude login\n\n로그인 완료 후 이 페이지를 새로고침하세요. refresh token 으로 access token 은 자동 갱신되므로 한 번만 진행하면 됩니다.",
         "diag.workspace.ok" to "읽기/쓰기 정상",
@@ -283,6 +288,11 @@ internal object MessagesKo {
         "projects.new.idLabel" to "프로젝트 ID (kebab-case)",
         "projects.new.appName" to "앱 이름 (사람이 읽는 이름)",
         "projects.new.packageName" to "패키지명 (applicationId)",
+        "projects.new.type" to "프로젝트 타입",
+        "projects.new.typeKotlin" to "Kotlin",
+        "projects.new.typeKotlinDesc" to " — Android/Kotlin, Gradle 빌드",
+        "projects.new.typeFlutter" to "Flutter (Android 전용)",
+        "projects.new.typeFlutterDesc" to " — Flutter/Dart, Android APK 만 빌드",
         "projects.new.source" to "소스",
         "projects.new.empty" to "빈 프로젝트",
         "projects.new.emptyDesc" to " — 빈 폴더 + CLAUDE.md 템플릿 (Claude 가 처음부터 scaffold)",
@@ -612,6 +622,10 @@ internal object MessagesKo {
         "env.action.gradleLabel.missing" to "설치 (최신 stable)",
         "env.action.gradleConfirm" to "Gradle 최신 stable 을 다운로드해 /home/vibe/.local/gradle 에 설치합니다 (~130MB). 신규 프로젝트의 wrapper bootstrap 에 사용됩니다. 계속할까요?",
         "env.action.gradleNote" to "Wrapper bootstrap 도구. 한 번 설치 후엔 사용자 build.gradle.kts 의 wrapper 버전이 실제 빌드에 사용됨. 영구 보존 (bind mount).",
+        "env.action.flutterLabel.installed" to "재설치 / 업데이트",
+        "env.action.flutterLabel.missing" to "설치 (Android 전용)",
+        "env.action.flutterConfirm" to "Flutter stable 을 /home/vibe/.local/flutter 에 clone 하고 Android artifact 만 precache 합니다 (~2.5GB). iOS/web/desktop 은 받지 않습니다. 계속할까요?",
+        "env.action.flutterNote" to "Android 앱 빌드 전용. Android SDK 가 먼저 필요합니다. 영구 보존 (bind mount).",
         // v1.10.0 — 안드로이드 에뮬레이터 카드 액션.
         "env.action.emulatorLabel.installed" to "재설치 / system-image 추가",
         "env.action.emulatorLabel.partial" to "이어서 설치",

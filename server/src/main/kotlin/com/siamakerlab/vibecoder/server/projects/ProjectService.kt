@@ -156,6 +156,9 @@ class ProjectService(
             runCatching { detectAppModuleFromClonedRepo(srcRoot) }.getOrNull()
         } else null
         val moduleNameFinal = detectedModule ?: DEFAULT_MODULE
+        // v1.125.0 — project type controls build toolchain and CLAUDE.md rules.
+        val detectedType = if (isClone) detectProjectType(body.projectId) else null
+        val projectTypeFinal = detectedType ?: ProjectTypes.normalize(body.projectType)
         if (detectedModule != null && detectedModule != DEFAULT_MODULE) {
             log.info { "[clone:${body.projectId}] auto-detected app moduleName: $detectedModule" }
         }
@@ -174,6 +177,7 @@ class ProjectService(
                 sourceType = body.sourceType,
                 cloneUrl = body.cloneUrl,
                 cloneBranch = body.cloneBranch,
+                projectType = projectTypeFinal,
             )
             Files.writeString(claudeMd, ClaudeMdTemplate.render(info))
         }
@@ -190,12 +194,8 @@ class ProjectService(
         val vibeDir = workspace.vibecoderDir(body.projectId)
         val projectYml = vibeDir.resolve("project.yml")
         if (projectYml.notExists()) {
-            projectYml.writeText(buildProjectYml(body, srcRoot, keystoreSummary))
+            projectYml.writeText(buildProjectYml(body, srcRoot, keystoreSummary, moduleNameFinal, projectTypeFinal))
         }
-
-        // v1.125.0 — detect project type from cloned repo (flutter vs kotlin).
-        val detectedType = if (isClone) detectProjectType(body.projectId) else null
-        val projectTypeFinal = detectedType ?: ProjectTypes.KOTLIN
 
         val row = repo.insert(
             id = body.projectId,
@@ -332,14 +332,17 @@ class ProjectService(
         req: RegisterProjectRequestDto,
         absSource: Path,
         keystoreSummary: String?,
+        moduleName: String,
+        projectType: String,
     ): String = """
         |# Vibe Coder project metadata
         |id: ${req.projectId}
         |appName: ${req.appName}
         |packageName: ${req.packageName}
         |sourcePath: $absSource
-        |moduleName: $DEFAULT_MODULE
+        |moduleName: $moduleName
         |debugTask: $DEFAULT_DEBUG_TASK
+        |projectType: $projectType
         |keystore: ${keystoreSummary ?: "none"}
     """.trimMargin()
 

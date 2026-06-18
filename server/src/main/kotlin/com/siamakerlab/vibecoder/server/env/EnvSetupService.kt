@@ -104,6 +104,13 @@ enum class SetupComponent(
         description = "env.comp.gradle.desc",
         sizeHint = "env.size.gradle",
     ),
+    FLUTTER(
+        id = "flutter",
+        displayName = "env.comp.flutter.name",
+        doctorCmd = "flutter",
+        description = "env.comp.flutter.desc",
+        sizeHint = "env.size.flutter",
+    ),
     /**
      * v1.10.0 — 안드로이드 에뮬레이터 빌드환경.
      *
@@ -185,7 +192,21 @@ class EnvSetupService(
         SetupComponent.PLATFORM_TOOLS -> probePlatformTools(c, lang)
         SetupComponent.MCP_DEFAULTS -> probeMcpDefaults(c, lang)
         SetupComponent.GRADLE -> probeGradle(c, lang)
+        SetupComponent.FLUTTER -> probeFlutter(c, lang)
         SetupComponent.EMULATOR -> probeEmulator(c, lang)
+    }
+
+    private fun probeFlutter(c: SetupComponent, lang: String): ComponentState {
+        val bin = flutterBinPath()
+        if (bin != null && bin.exists()) {
+            return ComponentState(c, ComponentStatus.INSTALLED, t(lang, "probe.flutter.ok", bin.toString()))
+        }
+        val r = runtimeCommand(listOf("flutter", "--version"), timeoutSec = 8)
+        return if (r.exitCode == 0) {
+            ComponentState(c, ComponentStatus.INSTALLED, r.combined.lineSequence().firstOrNull().orEmpty().ifBlank { "flutter" })
+        } else {
+            ComponentState(c, ComponentStatus.MISSING, t(lang, "probe.flutter.missing"))
+        }
     }
 
     /**
@@ -416,6 +437,14 @@ class EnvSetupService(
             ?: System.getenv("ANDROID_SDK_ROOT")?.ifBlank { null }
             ?: return null
         return Path.of(candidate)
+    }
+
+    private fun flutterBinPath(): Path? {
+        val home = System.getProperty("user.home")
+            ?: System.getenv("HOME")
+            ?: System.getenv("USERPROFILE")
+            ?: return null
+        return Path.of(home).resolve(".local/flutter/bin/flutter")
     }
 
     private fun claudeConfigDir(): Path {

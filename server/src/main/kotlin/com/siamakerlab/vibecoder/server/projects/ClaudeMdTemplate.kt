@@ -1,5 +1,7 @@
 package com.siamakerlab.vibecoder.server.projects
 
+import com.siamakerlab.vibecoder.shared.dto.ProjectTypes
+
 object ClaudeMdTemplate {
 
     /**
@@ -22,6 +24,7 @@ object ClaudeMdTemplate {
         val sourceType: String? = null,  // "empty" | "clone"
         val cloneUrl: String? = null,
         val cloneBranch: String? = null,
+        val projectType: String = ProjectTypes.KOTLIN,
     )
 
     fun render(info: ProjectInfo? = null): String {
@@ -33,6 +36,14 @@ object ClaudeMdTemplate {
             }
             else -> "- **Source**: empty scaffold (no upstream)"
         }
+        return if (info.projectType == ProjectTypes.FLUTTER) {
+            renderFlutter(info, cloneLine)
+        } else {
+            renderKotlin(info, cloneLine)
+        }
+    }
+
+    private fun renderKotlin(info: ProjectInfo, cloneLine: String): String {
         val infoBlock = """# CLAUDE.md — ${info.appName}
 
 ## Project Info (auto-populated on project creation)
@@ -53,6 +64,27 @@ $cloneLine
 """
         // CONTENT 의 첫 `# CLAUDE.md` 라인을 위 헤더로 치환. 본문 (Project Rules 이하) 은 그대로.
         val body = CONTENT.substringAfter("# CLAUDE.md — Vibe Coder Android Project Rules\n\n")
+        return infoBlock + body
+    }
+
+    private fun renderFlutter(info: ProjectInfo, cloneLine: String): String {
+        val infoBlock = """# CLAUDE.md — ${info.appName}
+
+## Project Info (auto-populated on project creation)
+
+- **App name (display)**: ${info.appName}
+- **Project ID (workspace folder)**: `${info.projectId}`
+- **Android applicationId**: `${info.packageName}` (in `android/app/build.gradle(.kts)` defaultConfig.applicationId)
+- **Project type**: Flutter — **Android build target only**
+$cloneLine
+
+> Flutter (Dart) project, **Android only**. When scaffolding a new app run
+> `flutter create --platforms=android .` (never create ios/web/linux/windows/macos).
+> Set `android/app/build.gradle(.kts)` defaultConfig.applicationId = "${info.packageName}".
+> The applicationId is canonical — do not change it without explicit user request.
+
+"""
+        val body = CONTENT_FLUTTER.substringAfter("# CLAUDE.md — Vibe Coder Flutter (Android-only) Project Rules\n\n")
         return infoBlock + body
     }
 
@@ -177,5 +209,62 @@ vibe-coder 환경은 인터랙티브 입력이 불가능합니다. 화살표 키
 - 대기하는 명령(`adb logcat`, `gradle --watch-fs`, 인터랙티브 `claude login`
   등)은 절대 호출하지 마세요.
 - 한 턴은 항상 자기완결적이어야 합니다.
+"""
+
+    const val CONTENT_FLUTTER = """# CLAUDE.md — Vibe Coder Flutter (Android-only) Project Rules
+
+## Project Rules
+
+- This is a Flutter/Dart project managed through Vibe Coder.
+- Android is the only supported build target here.
+- Prefer Material 3 and keep business logic out of widgets.
+- Avoid unnecessary packages and preserve existing structure unless asked.
+- Run `flutter analyze` and fix obvious build errors before finishing a task.
+
+## Platform Restriction
+
+- Do not add or build iOS, web, or desktop targets.
+- `flutter create` must use `--platforms=android`.
+- Never run `flutter build ios`, `flutter build web`, or desktop builds.
+- Android applicationId lives in `android/app/build.gradle(.kts)`.
+
+## Build Rules
+
+- Build debug APKs with `flutter build apk --debug`.
+- Build output is `build/app/outputs/flutter-apk/app-debug.apk`.
+- Release signing uses Flutter's Android convention: `android/key.properties` plus `signingConfigs.release`.
+
+## Installed Build Tools — USE THESE, DO NOT RE-DOWNLOAD
+
+Host provisioned tools into bind-mounted volumes through `/env-setup` or `vibe-doctor`.
+If Flutter is missing, stop and report that `/env-setup` or `vibe-doctor flutter` must be run.
+
+| Tool | Container path | Notes |
+|---|---|---|
+| Flutter SDK | `/home/vibe/.local/flutter` (binary on PATH as `flutter`) | Android-only precache. |
+| Android SDK | `${'$'}ANDROID_HOME` (typically `/opt/android-sdk`) | Required by Flutter Android builds. |
+| JDK | bundled in the server image | OpenJDK 17, on PATH as `java`. |
+
+### Cache reuse
+
+Do not delete `~/.gradle/caches/`, `${'$'}ANDROID_HOME/build-tools/*`, `${'$'}HOME/.pub-cache`,
+or `/home/vibe/.local/flutter`. These are shared bind-mounted caches and re-downloading is expensive.
+
+## Response Rules
+
+- Summarize modified files.
+- Summarize important implementation decisions.
+- Mention whether `flutter analyze` or build was executed.
+- If build failed, explain the likely cause and next step.
+
+## Non-Interactive Environment (CRITICAL)
+
+Vibe Coder runs Claude as a non-interactive child process behind a web/mobile UI.
+Every turn is one-shot.
+
+- Do not call commands that wait on stdin.
+- Do not enter watch / REPL / TUI modes.
+- Do not run `flutter run` without a clear stop condition.
+- Do not pause and ask "should I continue?". Proceed with a sensible default, or list options at the end for the next prompt.
 """
 }
